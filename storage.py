@@ -190,10 +190,19 @@ def get_recent_orders(path, lookback_days=14, now=None):
             if session_date.timestamp() < cutoff:
                 continue
             for item in session.get("items", []):
-                key = (item["line_code"], item["item_code"])
+                line_code = str(item.get("line_code", "")).strip()
+                item_code = str(item.get("item_code", "")).strip()
+                try:
+                    qty = max(0, int(float(item.get("qty", 0) or 0)))
+                except Exception:
+                    continue
+                vendor = str(item.get("vendor", "")).strip().upper()
+                if not line_code or not item_code or qty <= 0:
+                    continue
+                key = (line_code, item_code)
                 recent[key].append({
-                    "qty": item["qty"],
-                    "vendor": item["vendor"],
+                    "qty": qty,
+                    "vendor": vendor,
                     "date": session["date"][:10],
                 })
         except Exception:
@@ -207,17 +216,28 @@ def append_order_history(path, assigned_items, now=None):
     try:
         history = load_order_history(path)
         current = now or datetime.now()
+        exported_items = []
+        for item in assigned_items:
+            line_code = str(item.get("line_code", "")).strip()
+            item_code = str(item.get("item_code", "")).strip()
+            try:
+                qty = max(0, int(float(item.get("order_qty", 0) or 0)))
+            except Exception:
+                continue
+            vendor = str(item.get("vendor", "")).strip().upper()
+            if not line_code or not item_code or qty <= 0:
+                continue
+            exported_items.append({
+                "line_code": line_code,
+                "item_code": item_code,
+                "qty": qty,
+                "vendor": vendor,
+            })
+        if not exported_items:
+            return {"payload": history, "meta": _get_meta(path), "conflict": False}
         session = {
             "date": current.isoformat(),
-            "items": [
-                {
-                    "line_code": item["line_code"],
-                    "item_code": item["item_code"],
-                    "qty": item["order_qty"],
-                    "vendor": item["vendor"],
-                }
-                for item in assigned_items
-            ],
+            "items": exported_items,
         }
         history.append(session)
         save_order_history(path, history)

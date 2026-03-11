@@ -147,7 +147,10 @@ def parse_suspended_csv(filepath):
         rows = list(reader)
     if not rows:
         return items, seen
-    first = rows[0]
+    first_idx = next((i for i, row in enumerate(rows) if any(str(c).strip() for c in row)), None)
+    if first_idx is None:
+        return items, seen
+    first = rows[first_idx]
     is_suspense_report = any("SUSPENSE REPORT" in str(c).upper() for c in first[:10])
     if is_suspense_report:
         seen_rows = set()
@@ -189,7 +192,7 @@ def parse_suspended_csv(filepath):
         if h in ("item code", "item_code", "itemcode", "part number", "part"):
             ic_idx = i
     if ic_idx is not None:
-        for row in rows[1:]:
+        for row in rows[first_idx + 1:]:
             if len(row) > max(x for x in [pg_idx or 0, ic_idx] if x is not None):
                 lc = row[pg_idx].strip() if pg_idx is not None else ""
                 ic = row[ic_idx].strip()
@@ -210,6 +213,7 @@ def parse_po_listing_csv(filepath):
             if lc is None or lc + 5 >= len(row):
                 continue
             try:
+                po_number = row[lc - 1].strip() if lc > 0 else ""
                 line_code = row[lc].strip()
                 item_code = row[lc + 1].strip()
                 po_type = row[lc + 2].strip()
@@ -220,6 +224,7 @@ def parse_po_listing_csv(filepath):
             if not item_code:
                 continue
             po_items.append({
+                "po_number": po_number,
                 "line_code": line_code,
                 "item_code": item_code,
                 "po_type": po_type,
@@ -263,7 +268,10 @@ def parse_pack_sizes_csv(filepath):
         rows = list(reader)
     if not rows:
         return lookup
-    first = rows[0]
+    first_idx = next((i for i, row in enumerate(rows) if any(str(c).strip() for c in row)), None)
+    if first_idx is None:
+        return lookup
+    first = rows[first_idx]
     is_x4_om = any("ORDER MULTIPLE" in str(c).upper() for c in first[:7])
     if is_x4_om:
         seen = set()
@@ -301,10 +309,10 @@ def parse_pack_sizes_csv(filepath):
             ps_idx = i
     if ic_idx is None or ps_idx is None:
         raise ValueError(
-            f"Could not find required columns. Found headers: {rows[0]}\n"
+            f"Could not find required columns. Found headers: {first}\n"
             f"Need at least 'item code' and 'pack size' (or similar) columns."
         )
-    for row in rows[1:]:
+    for row in rows[first_idx + 1:]:
         if len(row) <= max(ic_idx, ps_idx):
             continue
         lc = row[pg_idx].strip() if pg_idx is not None else ""

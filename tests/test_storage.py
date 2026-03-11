@@ -33,6 +33,59 @@ class StorageTests(unittest.TestCase):
             self.assertEqual(recent[("AER-", "GH781-4")][0]["qty"], 250)
             self.assertEqual(recent[("AER-", "GH781-4")][0]["vendor"], "GREGDIST")
 
+    def test_append_order_history_skips_zero_qty_and_blank_keys(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "order_history.json"
+            now = datetime(2026, 3, 10, 12, 0, 0)
+            assigned = [
+                {"line_code": "AER-", "item_code": "GH781-4", "order_qty": 250, "vendor": "gregdist"},
+                {"line_code": "AER-", "item_code": "ZERO-1", "order_qty": 0, "vendor": "MOTION"},
+                {"line_code": "", "item_code": "BAD-1", "order_qty": 5, "vendor": "SOURCE"},
+            ]
+
+            result = storage.append_order_history(str(path), assigned, now=now)
+            payload = storage.load_order_history(str(path))
+
+            self.assertEqual(len(result["payload"]), 1)
+            self.assertEqual(len(payload[0]["items"]), 1)
+            self.assertEqual(payload[0]["items"][0]["vendor"], "GREGDIST")
+
+    def test_append_order_history_does_not_create_empty_session_for_non_orders(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "order_history.json"
+            now = datetime(2026, 3, 10, 12, 0, 0)
+
+            result = storage.append_order_history(
+                str(path),
+                [{"line_code": "AER-", "item_code": "ZERO-1", "order_qty": 0, "vendor": "MOTION"}],
+                now=now,
+            )
+
+            self.assertEqual(result["payload"], [])
+            self.assertEqual(storage.load_order_history(str(path)), [])
+
+    def test_get_recent_orders_ignores_zero_qty_and_normalizes_vendor(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "order_history.json"
+            path.write_text(
+                json.dumps([
+                    {
+                        "date": "2026-03-10T12:00:00",
+                        "items": [
+                            {"line_code": "AER-", "item_code": "GH781-4", "qty": "250", "vendor": "gregdist "},
+                            {"line_code": "AER-", "item_code": "ZERO-1", "qty": 0, "vendor": "MOTION"},
+                        ],
+                    }
+                ]),
+                encoding="utf-8",
+            )
+
+            recent = storage.get_recent_orders(str(path), lookback_days=14, now=datetime(2026, 3, 10, 12, 0, 0))
+
+            self.assertIn(("AER-", "GH781-4"), recent)
+            self.assertNotIn(("AER-", "ZERO-1"), recent)
+            self.assertEqual(recent[("AER-", "GH781-4")][0]["vendor"], "GREGDIST")
+
     def test_duplicate_whitelist_round_trip(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "duplicate_whitelist.txt"

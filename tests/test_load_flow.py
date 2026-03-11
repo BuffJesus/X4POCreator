@@ -95,6 +95,45 @@ class LoadFlowTests(unittest.TestCase):
         self.assertEqual(session.pack_size_by_item, {"GH781-4": 6})
         self.assertEqual(session.pack_size_conflicts, {"DUP-1"})
 
+    def test_parse_all_files_old_po_warning_includes_po_reference(self):
+        with patch("load_flow.parsers.parse_part_sales_csv", return_value=[{
+            "line_code": "AER-",
+            "item_code": "GH781-4",
+            "description": "HOSE",
+            "qty_received": 0,
+            "qty_sold": 2,
+        }]), patch(
+            "load_flow.parsers.parse_sales_date_range",
+            return_value=(None, None),
+        ), patch(
+            "load_flow.parsers.parse_po_listing_csv",
+            return_value=[{
+                "po_number": "PO12345",
+                "line_code": "AER-",
+                "item_code": "GH781-4",
+                "po_type": "S",
+                "qty": 6,
+                "date_issued": "01-Jan-2025",
+            }],
+        ):
+            result = load_flow.parse_all_files(
+                {
+                    "sales": "sales.csv",
+                    "po": "po.csv",
+                    "susp": "",
+                    "onhand": "",
+                    "minmax": "",
+                    "packsize": "",
+                },
+                old_po_warning_days=90,
+                short_sales_window_days=7,
+                now=datetime(2026, 3, 10),
+            )
+
+        rows = [row for row in result["startup_warning_rows"] if row["warning_type"] == "Old Open PO Warning"]
+        self.assertEqual(len(rows), 1)
+        self.assertIn("PO12345/S 01-Jan-2025 qty 6", rows[0]["po_reference"])
+
 
 if __name__ == "__main__":
     unittest.main()
