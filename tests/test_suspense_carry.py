@@ -27,10 +27,13 @@ class SuspenseCarryTests(unittest.TestCase):
                 }
             ],
             suspense_carry={("AER-", "GH781-4"): {"qty": 5, "updated_at": "2026-03-10T00:00:00"}},
+            _loaded_suspense_carry={("AER-", "GH781-4"): {"qty": 5, "updated_at": "2026-03-10T00:00:00"}},
         )
         fake_app._get_suspense_carry_qty = lambda key: po_builder.POBuilderApp._get_suspense_carry_qty(fake_app, key)
+        fake_app._data_path = lambda key: f"C:\\Temp\\{key}"
 
         with patch("po_builder.storage.save_suspense_carry") as mocked_save:
+            mocked_save.return_value = {"payload": {("AER-", "GH781-4"): {"qty": 6, "updated_at": "2026-03-10T12:00:00"}}, "meta": None, "conflict": False}
             po_builder.POBuilderApp._persist_suspense_carry(fake_app)
 
         self.assertEqual(fake_app.suspense_carry[("AER-", "GH781-4")]["qty"], 6)

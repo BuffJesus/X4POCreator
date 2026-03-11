@@ -79,6 +79,41 @@ These files are created and used locally beside the script or beside the built `
 
 These are operational/user data files and should generally stay out of public version control.
 
+## Optional Shared Data Folder
+
+The app can be pointed at a shared OneDrive or network folder for shared operational data.
+
+- Configure it from the `Load Files` tab with `Set Shared Folder...`
+- Use `Use Local Data` to switch back to the default local storage beside the app
+- The active data source is shown in the UI so users can confirm whether they are on local or shared data
+
+Shared-folder safeguards:
+
+- JSON writes are atomic to reduce corruption risk
+- lock files are used during writes to reduce simultaneous-save collisions
+- shared rule/vendor/whitelist saves merge against the latest on-disk version where possible
+- session snapshots get unique filenames so multiple users can save into the same shared `sessions/` folder
+
+Practical guidance:
+
+- A shared network folder is more predictable than OneDrive for active multi-user editing
+- `sessions/` is safe to share because snapshots are append-only
+- `suspense_carry.json` is shared too, but it is still the most concurrency-sensitive file
+
+## Startup Update Check
+
+The app can check GitHub for a newer release when it starts.
+
+- The startup check is controlled from the `Load Files` tab with `Check GitHub for new releases on startup`
+- It uses the latest GitHub release for `BuffJesus/X4POCreator`
+- If a newer release is found, the app prompts the user and can open the release page
+- Network failures or missing connectivity do not block startup
+
+Versioning note:
+
+- The current app version is read from [`VERSION`](/C:/Users/Cornelio/Desktop/POCreator/VERSION)
+- Update that file when cutting a new release so the startup check compares correctly
+
 ## Repository Layout
 
 Main application modules:
@@ -164,5 +199,7 @@ If you clone this repo elsewhere, you may need to supply local assets like:
 - `loading.gif`
 - `loading.wav`
 - `icon.ico`
+
+This repo now tracks `loading.gif` and `loading.wav` directly so builds can bundle them without extra manual setup.
 
 The app will still run and build without them, but those optional presentation features will be missing.

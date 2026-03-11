@@ -14,6 +14,26 @@ def build_load_tab(app):
         wraplength=900,
     ).pack(anchor="w", pady=(2, 12))
 
+    data_frame = ttk.LabelFrame(frame, text="Shared Data Folder", padding=10)
+    data_frame.pack(fill=tk.X, pady=(0, 8))
+
+    app.lbl_data_source = ttk.Label(data_frame, text="", style="Info.TLabel")
+    app.lbl_data_source.pack(anchor="w")
+
+    data_button_row = ttk.Frame(data_frame)
+    data_button_row.pack(anchor="w", pady=(8, 0))
+    ttk.Button(data_button_row, text="Set Shared Folder...", command=app._set_shared_data_folder).pack(side=tk.LEFT, padx=(0, 8))
+    ttk.Button(data_button_row, text="Use Local Data", command=app._use_local_data_folder).pack(side=tk.LEFT)
+
+    app.var_check_updates = tk.BooleanVar(value=app.update_check_enabled)
+    ttk.Checkbutton(
+        data_frame,
+        text="Check GitHub for new releases on startup",
+        variable=app.var_check_updates,
+        command=app._set_update_check_enabled,
+    ).pack(anchor="w", pady=(8, 0))
+    app._refresh_data_folder_labels()
+
     scan_frame = ttk.LabelFrame(frame, text="Auto-Detect from Folder", padding=10)
     scan_frame.pack(fill=tk.X, pady=(0, 8))
 

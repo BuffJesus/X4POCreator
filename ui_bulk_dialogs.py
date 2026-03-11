@@ -392,7 +392,10 @@ def open_buy_rule_editor(app, idx, order_rules_file):
             new_rule.pop("policy_locked", None)
 
         app.order_rules[rule_key] = new_rule
-        storage.save_order_rules(order_rules_file, app.order_rules)
+        if hasattr(app, "_save_order_rules"):
+            app._save_order_rules()
+        else:
+            storage.save_order_rules(order_rules_file, app.order_rules)
         enrich_item(item, inv, item.get("pack_size"), new_rule)
         write_debug(
             "buy_rule_editor.save.applied",

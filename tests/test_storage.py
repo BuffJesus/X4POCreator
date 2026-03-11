@@ -45,6 +45,32 @@ class StorageTests(unittest.TestCase):
             storage.save_vendor_codes(str(path), ["gregdist", "motion", "GREGDIST"])
             self.assertEqual(storage.load_vendor_codes(str(path)), ["GREGDIST", "MOTION"])
 
+    def test_order_rules_merge_preserves_unrelated_remote_changes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "order_rules.json"
+            base = {"AER-:GH781-4": {"pack_size": 500}}
+            storage.save_order_rules(str(path), base)
+            loaded = storage.load_order_rules(str(path))
+            storage.save_order_rules(str(path), {"GDY-:5VX560": {"pack_size": 3}})
+
+            desired = dict(loaded)
+            desired["AER-:GH781-4"] = {"pack_size": 600}
+            result = storage.save_order_rules(str(path), desired, base_rules=loaded)
+
+            self.assertEqual(result["payload"]["AER-:GH781-4"]["pack_size"], 600)
+            self.assertEqual(result["payload"]["GDY-:5VX560"]["pack_size"], 3)
+
+    def test_vendor_codes_merge_local_remove_with_remote_add(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "vendor_codes.txt"
+            storage.save_vendor_codes(str(path), ["MOTION", "SOURCE"])
+            loaded = storage.load_vendor_codes(str(path))
+            storage.save_vendor_codes(str(path), ["MOTION", "SOURCE", "GREGDIST"])
+
+            result = storage.save_vendor_codes(str(path), ["MOTION"], base_vendor_codes=loaded)
+
+            self.assertEqual(result["payload"], ["GREGDIST", "MOTION"])
+
     def test_save_session_snapshot_persists_json_artifact(self):
         with tempfile.TemporaryDirectory() as tmp:
             directory = Path(tmp) / "sessions"
@@ -83,6 +109,7 @@ class StorageTests(unittest.TestCase):
             self.assertEqual(payload["created_at"], "2026-03-10T12:00:00")
             self.assertEqual(payload["po_files"][0], "C:\\Exports\\PO_A.xlsx")
             self.assertEqual(payload["maintenance_issues"][0]["pack_size"], "500")
+            self.assertTrue(Path(path).name.startswith("Session_20260310_120000_"))
 
     def test_suspense_carry_round_trip_and_prunes_stale_entries(self):
         with tempfile.TemporaryDirectory() as tmp:

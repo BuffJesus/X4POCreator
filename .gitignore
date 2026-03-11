@@ -19,5 +19,7 @@ sessions/
 *.gif
 *.wav
 *.ico
+!loading.gif
+!loading.wav
 
 ^

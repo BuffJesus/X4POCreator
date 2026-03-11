@@ -1,24 +1,104 @@
 from dataclasses import asdict, is_dataclass
 import json
 import os
+import tempfile
+import time
 from collections import defaultdict
 from datetime import datetime
 
 
-def load_json_file(path, default):
+LOCK_TIMEOUT_SECONDS = 10
+LOCK_STALE_SECONDS = 120
+
+
+def _ensure_parent_dir(path):
+    directory = os.path.dirname(path)
+    if directory:
+        os.makedirs(directory, exist_ok=True)
+
+
+def _get_meta(path):
+    try:
+        stat = os.stat(path)
+    except FileNotFoundError:
+        return None
+    return {"mtime_ns": stat.st_mtime_ns, "size": stat.st_size}
+
+
+def _atomic_write_text(path, content, encoding="utf-8"):
+    _ensure_parent_dir(path)
+    directory = os.path.dirname(path) or "."
+    fd, temp_path = tempfile.mkstemp(prefix=".tmp_", dir=directory)
+    try:
+        with os.fdopen(fd, "w", encoding=encoding, newline="") as handle:
+            handle.write(content)
+        os.replace(temp_path, path)
+    finally:
+        if os.path.exists(temp_path):
+            try:
+                os.remove(temp_path)
+            except OSError:
+                pass
+
+
+def _acquire_lock(path, timeout_seconds=LOCK_TIMEOUT_SECONDS, stale_seconds=LOCK_STALE_SECONDS):
+    lock_path = path + ".lock"
+    deadline = time.time() + timeout_seconds
+    while True:
+        try:
+            fd = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+            with os.fdopen(fd, "w", encoding="utf-8") as handle:
+                handle.write(str(time.time()))
+            return lock_path
+        except FileExistsError:
+            try:
+                age_seconds = time.time() - os.path.getmtime(lock_path)
+                if age_seconds > stale_seconds:
+                    os.remove(lock_path)
+                    continue
+            except OSError:
+                pass
+            if time.time() >= deadline:
+                raise TimeoutError(f"Timed out waiting for lock: {os.path.basename(path)}")
+            time.sleep(0.1)
+
+
+def _release_lock(lock_path):
+    try:
+        os.remove(lock_path)
+    except OSError:
+        pass
+
+
+def validate_storage_directory(path):
+    try:
+        os.makedirs(path, exist_ok=True)
+        probe = os.path.join(path, ".write_test.tmp")
+        _atomic_write_text(probe, "ok")
+        os.remove(probe)
+        return True, ""
+    except Exception as exc:
+        return False, str(exc)
+
+
+def load_json_file(path, default, with_meta=False):
     if os.path.exists(path):
         try:
             with open(path, "r", encoding="utf-8") as f:
-                return json.load(f)
+                payload = json.load(f)
+                if with_meta:
+                    return payload, _get_meta(path)
+                return payload
         except Exception:
             pass
+    if with_meta:
+        return default, _get_meta(path)
     return default
 
 
 def save_json_file(path, payload):
     try:
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(payload, f, indent=2)
+        _atomic_write_text(path, json.dumps(payload, indent=2), encoding="utf-8")
     except Exception:
         pass
 
@@ -40,9 +120,45 @@ def load_order_rules(path):
     return load_json_file(path, {})
 
 
-def save_order_rules(path, rules):
+def load_order_rules_with_meta(path):
+    """Load per-item buy rules from disk with file metadata."""
+    return load_json_file(path, {}, with_meta=True)
+
+
+def _merge_dict_by_key(base, current_on_disk, desired):
+    merged = dict(current_on_disk)
+    conflict = False
+    all_keys = set(base) | set(current_on_disk) | set(desired)
+    for key in all_keys:
+        base_value = base.get(key)
+        disk_value = current_on_disk.get(key)
+        desired_value = desired.get(key)
+        if desired_value == base_value:
+            continue
+        if disk_value == base_value or desired_value == disk_value:
+            if key in desired:
+                merged[key] = desired_value
+            else:
+                merged.pop(key, None)
+            continue
+        conflict = True
+        if key in desired:
+            merged[key] = desired_value
+        else:
+            merged.pop(key, None)
+    return merged, conflict
+
+
+def save_order_rules(path, rules, base_rules=None):
     """Save per-item buy rules to disk."""
-    save_json_file(path, rules)
+    lock_path = _acquire_lock(path)
+    try:
+        current_on_disk, _ = load_order_rules_with_meta(path)
+        merged, conflict = _merge_dict_by_key(base_rules or {}, current_on_disk, rules)
+        save_json_file(path, merged)
+        return {"payload": merged, "meta": _get_meta(path), "conflict": conflict}
+    finally:
+        _release_lock(lock_path)
 
 
 def load_order_history(path):
@@ -86,25 +202,30 @@ def get_recent_orders(path, lookback_days=14, now=None):
 
 def append_order_history(path, assigned_items, now=None):
     """Append a new session's orders to the history file."""
-    history = load_order_history(path)
-    current = now or datetime.now()
-    session = {
-        "date": current.isoformat(),
-        "items": [
-            {
-                "line_code": item["line_code"],
-                "item_code": item["item_code"],
-                "qty": item["order_qty"],
-                "vendor": item["vendor"],
-            }
-            for item in assigned_items
-        ],
-    }
-    history.append(session)
-    save_order_history(path, history)
+    lock_path = _acquire_lock(path)
+    try:
+        history = load_order_history(path)
+        current = now or datetime.now()
+        session = {
+            "date": current.isoformat(),
+            "items": [
+                {
+                    "line_code": item["line_code"],
+                    "item_code": item["item_code"],
+                    "qty": item["order_qty"],
+                    "vendor": item["vendor"],
+                }
+                for item in assigned_items
+            ],
+        }
+        history.append(session)
+        save_order_history(path, history)
+        return {"payload": history, "meta": _get_meta(path), "conflict": False}
+    finally:
+        _release_lock(lock_path)
 
 
-def load_duplicate_whitelist(path):
+def load_duplicate_whitelist(path, with_meta=False):
     """Load the set of item codes whitelisted as intentional duplicates."""
     whitelist = set()
     if os.path.exists(path):
@@ -116,20 +237,27 @@ def load_duplicate_whitelist(path):
                         whitelist.add(ic)
         except Exception:
             pass
+    if with_meta:
+        return whitelist, _get_meta(path)
     return whitelist
 
 
-def save_duplicate_whitelist(path, whitelist):
+def save_duplicate_whitelist(path, whitelist, base_whitelist=None):
     """Save the whitelist set to disk."""
+    lock_path = _acquire_lock(path)
     try:
-        with open(path, "w", encoding="utf-8") as f:
-            for ic in sorted(whitelist):
-                f.write(ic + "\n")
-    except Exception:
-        pass
+        disk_whitelist = load_duplicate_whitelist(path)
+        base = set(base_whitelist or set())
+        desired = set(whitelist)
+        merged = (set(disk_whitelist) | (desired - base)) - (base - desired)
+        content = "".join(f"{ic}\n" for ic in sorted(merged))
+        _atomic_write_text(path, content, encoding="utf-8")
+        return {"payload": merged, "meta": _get_meta(path), "conflict": False}
+    finally:
+        _release_lock(lock_path)
 
 
-def load_vendor_codes(path, default=None):
+def load_vendor_codes(path, default=None, with_meta=False):
     """Load persisted vendor codes from disk, one code per line."""
     codes = []
     if os.path.exists(path):
@@ -142,20 +270,28 @@ def load_vendor_codes(path, default=None):
         except Exception:
             pass
     if codes:
-        return codes
-    return list(default or [])
+        payload = codes
+    else:
+        payload = list(default or [])
+    if with_meta:
+        return payload, _get_meta(path)
+    return payload
 
 
-def save_vendor_codes(path, vendor_codes):
+def save_vendor_codes(path, vendor_codes, base_vendor_codes=None):
     """Persist vendor codes to disk, one code per line."""
+    lock_path = _acquire_lock(path)
     try:
-        with open(path, "w", encoding="utf-8") as f:
-            for code in vendor_codes:
-                normalized = str(code).strip().upper()
-                if normalized:
-                    f.write(normalized + "\n")
-    except Exception:
-        pass
+        disk_codes = load_vendor_codes(path, default=[])
+        base = {str(code).strip().upper() for code in (base_vendor_codes or []) if str(code).strip()}
+        desired = {str(code).strip().upper() for code in vendor_codes if str(code).strip()}
+        disk = {str(code).strip().upper() for code in disk_codes if str(code).strip()}
+        merged = sorted((disk | (desired - base)) - (base - desired))
+        content = "".join(f"{code}\n" for code in merged)
+        _atomic_write_text(path, content, encoding="utf-8")
+        return {"payload": merged, "meta": _get_meta(path), "conflict": False}
+    finally:
+        _release_lock(lock_path)
 
 
 def load_suspense_carry(path, now=None, max_age_days=14):
@@ -179,10 +315,16 @@ def load_suspense_carry(path, now=None, max_age_days=14):
     return lookup
 
 
-def save_suspense_carry(path, carry, now=None):
+def load_suspense_carry_with_meta(path, now=None, max_age_days=14):
+    """Load persisted suspense carry with file metadata."""
+    return load_suspense_carry(path, now=now, max_age_days=max_age_days), _get_meta(path)
+
+
+def save_suspense_carry(path, carry, now=None, base_carry=None):
     """Persist suspense carry keyed by (line_code, item_code)."""
     current = now or datetime.now()
-    payload = {}
+    max_age_days = 14
+    desired_payload = {}
     for (line_code, item_code), entry in carry.items():
         try:
             qty = max(0, int(float(entry.get("qty", 0))))
@@ -190,19 +332,32 @@ def save_suspense_carry(path, carry, now=None):
             continue
         if qty <= 0:
             continue
-        payload[f"{line_code}:{item_code}"] = {
+        desired_payload[f"{line_code}:{item_code}"] = {
             "qty": qty,
             "updated_at": entry.get("updated_at") or current.isoformat(),
         }
-    save_json_file(path, payload)
+    normalized_base = {}
+    for (line_code, item_code), entry in (base_carry or {}).items():
+        normalized_base[f"{line_code}:{item_code}"] = {
+            "qty": entry.get("qty"),
+            "updated_at": entry.get("updated_at", ""),
+        }
+    lock_path = _acquire_lock(path)
+    try:
+        disk_payload = load_json_file(path, {})
+        merged_payload, conflict = _merge_dict_by_key(normalized_base, disk_payload, desired_payload)
+        save_json_file(path, merged_payload)
+        merged_lookup = load_suspense_carry(path, now=current, max_age_days=max_age_days)
+        return {"payload": merged_lookup, "meta": _get_meta(path), "conflict": conflict}
+    finally:
+        _release_lock(lock_path)
 
 
 def save_session_snapshot(directory, snapshot, now=None):
     """Persist a session snapshot JSON artifact and return its path."""
     current = now or datetime.now()
     os.makedirs(directory, exist_ok=True)
-    filename = f"Session_{current.strftime('%Y%m%d_%H%M%S')}.json"
+    filename = f"Session_{current.strftime('%Y%m%d_%H%M%S_%f')}_{os.getpid()}.json"
     path = os.path.join(directory, filename)
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(_to_jsonable(snapshot), f, indent=2)
+    _atomic_write_text(path, json.dumps(_to_jsonable(snapshot), indent=2), encoding="utf-8")
     return path

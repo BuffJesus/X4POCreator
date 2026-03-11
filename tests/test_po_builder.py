@@ -1,5 +1,6 @@
 import sys
 import unittest
+import json
 from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
@@ -21,6 +22,8 @@ class POBuilderTests(unittest.TestCase):
             filtered_items=[],
             qoh_adjustments={},
             vendor_codes_used=[],
+            _loaded_order_rules={},
+            _loaded_vendor_codes=[],
             _suggest_min_max=lambda key: (None, None),
         )
         fake_app._find_filtered_item = lambda key: po_builder.POBuilderApp._find_filtered_item(fake_app, key)
@@ -45,7 +48,59 @@ class POBuilderTests(unittest.TestCase):
         fake_app._update_bulk_summary = lambda: None
         fake_app._refresh_vendor_inputs = lambda: None
         fake_app._save_vendor_codes = lambda: None
+        fake_app._data_path = lambda key: str(ROOT / f"test_{key}")
+        fake_app._save_order_rules = lambda: None
         return fake_app
+
+    def test_is_newer_version_compares_semver_tags(self):
+        self.assertTrue(po_builder.is_newer_version("v1.2.4", "1.2.3"))
+        self.assertFalse(po_builder.is_newer_version("v1.2.3", "1.2.3"))
+        self.assertFalse(po_builder.is_newer_version("dev", "1.2.3"))
+
+    def test_set_update_check_enabled_persists_setting(self):
+        saved = {}
+        fake_app = SimpleNamespace(
+            var_check_updates=SimpleNamespace(get=lambda: False),
+            app_settings={},
+            _save_app_settings=lambda: saved.update({"called": True}),
+        )
+
+        po_builder.POBuilderApp._set_update_check_enabled(fake_app)
+
+        self.assertFalse(fake_app.update_check_enabled)
+        self.assertFalse(fake_app.app_settings["check_for_updates_on_startup"])
+        self.assertTrue(saved["called"])
+
+    def test_start_update_check_skips_non_release_versions(self):
+        fake_app = SimpleNamespace(update_check_enabled=True)
+        fake_app._check_for_updates_worker = lambda: self.fail("worker should not run")
+
+        with patch("po_builder.APP_VERSION", "dev"), patch("po_builder.threading.Thread") as mocked_thread:
+            po_builder.POBuilderApp._start_update_check(fake_app)
+
+        mocked_thread.assert_not_called()
+
+    def test_fetch_latest_github_release_parses_expected_fields(self):
+        payload = {
+            "tag_name": "v1.2.3",
+            "html_url": "https://github.com/BuffJesus/X4POCreator/releases/tag/v1.2.3",
+            "name": "PO Builder 1.2.3",
+            "published_at": "2026-03-11T12:00:00Z",
+        }
+
+        class FakeResponse:
+            def __enter__(self):
+                return self
+            def __exit__(self, exc_type, exc, tb):
+                return False
+            def read(self):
+                return json.dumps(payload).encode("utf-8")
+
+        with patch("po_builder.urllib.request.urlopen", return_value=FakeResponse()):
+            release = po_builder.fetch_latest_github_release("https://example.com/releases/latest", timeout=1)
+
+        self.assertEqual(release["tag_name"], "v1.2.3")
+        self.assertEqual(release["name"], "PO Builder 1.2.3")
 
     def test_default_vendor_for_key_uses_supplier(self):
         fake_app = SimpleNamespace(
@@ -307,12 +362,17 @@ class POBuilderTests(unittest.TestCase):
         po_builder.POBuilderApp._recalculate_item(fake_app, fake_app.filtered_items[0])
 
         saved_rules = {}
+        fake_app._save_order_rules = lambda: po_builder.POBuilderApp._save_order_rules(fake_app)
         original_save = po_builder.storage.save_order_rules
         try:
-            po_builder.storage.save_order_rules = lambda path, rules: saved_rules.update(rules)
+            po_builder.storage.save_order_rules = (
+                lambda path, rules, base_rules=None: {"payload": dict(saved_rules, **rules), "meta": None, "conflict": False}
+            )
             po_builder.POBuilderApp._bulk_apply_editor_value(fake_app, "0", "pack_size", "6")
         finally:
             po_builder.storage.save_order_rules = original_save
+
+        saved_rules.update(fake_app.order_rules)
 
         item = fake_app.filtered_items[0]
         self.assertEqual(item["pack_size"], 6)

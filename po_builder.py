@@ -14,11 +14,14 @@ import sys
 import threading
 import re
 import copy
+import urllib.request
+import urllib.error
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox, simpledialog
 from collections import defaultdict
 from datetime import datetime
 import json
+import webbrowser
 import export_flow
 import parsers
 import storage
@@ -66,12 +69,18 @@ else:
     _BUNDLE_DIR = os.path.dirname(os.path.abspath(__file__))
     _DATA_DIR = _BUNDLE_DIR
 
-DUPLICATE_WHITELIST_FILE = os.path.join(_DATA_DIR, "duplicate_whitelist.txt")
-ORDER_HISTORY_FILE = os.path.join(_DATA_DIR, "order_history.json")
-ORDER_RULES_FILE = os.path.join(_DATA_DIR, "order_rules.json")
-SUSPENSE_CARRY_FILE = os.path.join(_DATA_DIR, "suspense_carry.json")
-SESSIONS_DIR = os.path.join(_DATA_DIR, "sessions")
-VENDOR_CODES_FILE = os.path.join(_DATA_DIR, "vendor_codes.txt")
+LOCAL_DATA_DIR = _DATA_DIR
+APP_SETTINGS_FILE = os.path.join(_DATA_DIR, "po_builder_settings.json")
+VERSION_FILE = os.path.join(_DATA_DIR, "VERSION")
+DUPLICATE_WHITELIST_FILE = os.path.join(LOCAL_DATA_DIR, "duplicate_whitelist.txt")
+ORDER_HISTORY_FILE = os.path.join(LOCAL_DATA_DIR, "order_history.json")
+ORDER_RULES_FILE = os.path.join(LOCAL_DATA_DIR, "order_rules.json")
+SUSPENSE_CARRY_FILE = os.path.join(LOCAL_DATA_DIR, "suspense_carry.json")
+SESSIONS_DIR = os.path.join(LOCAL_DATA_DIR, "sessions")
+VENDOR_CODES_FILE = os.path.join(LOCAL_DATA_DIR, "vendor_codes.txt")
+GITHUB_REPO = "BuffJesus/X4POCreator"
+GITHUB_RELEASES_API_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
+GITHUB_RELEASES_PAGE_URL = f"https://github.com/{GITHUB_REPO}/releases/latest"
 LOADING_GIF_FILE = os.path.join(_BUNDLE_DIR, "loading.gif")
 LOADING_WAV_FILE = os.path.join(_BUNDLE_DIR, "loading.wav")
 ICON_FILE = os.path.join(_BUNDLE_DIR, "icon.ico")
@@ -90,6 +99,56 @@ REVIEW_EDITABLE_COLS = ("vendor", "order_qty", "pack_size")
 def get_rule_key(line_code, item_code):
     """Build a consistent key for the order rules dict."""
     return f"{line_code}:{item_code}"
+
+
+def load_app_version(path=VERSION_FILE):
+    try:
+        with open(path, "r", encoding="utf-8") as handle:
+            value = handle.read().strip()
+            return value or "dev"
+    except Exception:
+        return "dev"
+
+
+APP_VERSION = load_app_version()
+
+
+def _parse_version_parts(value):
+    normalized = str(value or "").strip().lstrip("vV")
+    match = re.match(r"^(\d+)\.(\d+)\.(\d+)$", normalized)
+    if not match:
+        return None
+    return tuple(int(part) for part in match.groups())
+
+
+def is_release_version(value):
+    return _parse_version_parts(value) is not None
+
+
+def is_newer_version(candidate, current):
+    candidate_parts = _parse_version_parts(candidate)
+    current_parts = _parse_version_parts(current)
+    if candidate_parts is None or current_parts is None:
+        return False
+    return candidate_parts > current_parts
+
+
+def fetch_latest_github_release(url=GITHUB_RELEASES_API_URL, timeout=3):
+    request = urllib.request.Request(
+        url,
+        headers={
+            "Accept": "application/vnd.github+json",
+            "User-Agent": f"PO-Builder/{APP_VERSION}",
+        },
+    )
+    with urllib.request.urlopen(request, timeout=timeout) as response:
+        payload = json.loads(response.read().decode("utf-8"))
+    return {
+        "tag_name": str(payload.get("tag_name", "")).strip(),
+        "html_url": str(payload.get("html_url", "")).strip() or GITHUB_RELEASES_PAGE_URL,
+        "name": str(payload.get("name", "")).strip(),
+        "published_at": str(payload.get("published_at", "")).strip(),
+    }
 
 try:
     import openpyxl
@@ -209,6 +268,13 @@ def export_vendor_po(vendor_code, items, output_dir):
 class POBuilderApp:
     def __init__(self, root):
         self.root = root
+        self.app_settings = self._load_app_settings()
+        self._startup_data_dir_warning = ""
+        self.shared_data_dir = ""
+        self.data_dir = LOCAL_DATA_DIR
+        self.data_paths = {}
+        self.update_check_enabled = False
+        self._configure_initial_data_dir()
         self.root.title("PO Builder — X4 Import Tool")
         self.root.geometry("1100x720")
         self.root.minsize(900, 600)
@@ -233,16 +299,23 @@ class POBuilderApp:
         self.on_po_qty = {}             # (line_code, item_code) -> total qty on PO
         self.qoh_adjustments = {}       # (line_code, item_code) -> {old, new}
         self.duplicate_ic_lookup = {}   # item_code -> set of line_codes (only dupes)
-        self.dup_whitelist = storage.load_duplicate_whitelist(DUPLICATE_WHITELIST_FILE)  # persistent whitelist
+        self.dup_whitelist = set()      # persistent whitelist
         self.recent_orders = {}         # (lc, ic) -> [{qty, vendor, date}]
-        self.order_rules = storage.load_order_rules(ORDER_RULES_FILE)  # persistent per-item buy rules
-        self.suspense_carry = storage.load_suspense_carry(SUSPENSE_CARRY_FILE)
-        self.vendor_codes_used = storage.load_vendor_codes(VENDOR_CODES_FILE, KNOWN_VENDORS)
+        self.order_rules = {}           # persistent per-item buy rules
+        self.suspense_carry = {}
+        self.vendor_codes_used = []
+        self.filtered_items = []
+        self.individual_items = []
         self.assigned_items = []        # final list of {item data + vendor + order_qty}
         self.last_removed_bulk_items = []  # [(index, item_dict)] for one-step undo
         self.startup_warning_rows = []  # structured rows for startup warning CSV export
         self.bulk_sheet = None
         self.review_grid_editor = None
+        self._loaded_dup_whitelist = set()
+        self._loaded_order_rules = {}
+        self._loaded_suspense_carry = {}
+        self._loaded_vendor_codes = []
+        self._load_persistent_state()
 
         # Build the notebook (tabbed interface) — styles set by apply_dark_theme()
         self.notebook = ttk.Notebook(root)
@@ -266,8 +339,159 @@ class POBuilderApp:
         # Disable tabs 2-6 until data is loaded
         for i in (1, 2, 3, 4, 5):
             self.notebook.tab(i, state="disabled")
+        if self._startup_data_dir_warning:
+            self.root.after(100, lambda: messagebox.showwarning("Shared Data Folder", self._startup_data_dir_warning))
+        if self.update_check_enabled:
+            self.root.after(1500, self._start_update_check)
 
     # ── Loading Overlay ──────────────────────────────────────────────────
+
+    @staticmethod
+    def _build_data_paths(data_dir):
+        return {
+            "duplicate_whitelist": os.path.join(data_dir, "duplicate_whitelist.txt"),
+            "order_history": os.path.join(data_dir, "order_history.json"),
+            "order_rules": os.path.join(data_dir, "order_rules.json"),
+            "suspense_carry": os.path.join(data_dir, "suspense_carry.json"),
+            "sessions": os.path.join(data_dir, "sessions"),
+            "vendor_codes": os.path.join(data_dir, "vendor_codes.txt"),
+        }
+
+    def _data_path(self, key):
+        return self.data_paths[key]
+
+    def _load_app_settings(self):
+        settings = storage.load_json_file(APP_SETTINGS_FILE, {})
+        return settings if isinstance(settings, dict) else {}
+
+    def _save_app_settings(self):
+        storage.save_json_file(APP_SETTINGS_FILE, self.app_settings)
+
+    def _configure_initial_data_dir(self):
+        requested = str(self.app_settings.get("shared_data_dir", "") or "").strip()
+        self.update_check_enabled = bool(self.app_settings.get("check_for_updates_on_startup", True))
+        if requested:
+            normalized = os.path.abspath(requested)
+            ok, reason = storage.validate_storage_directory(normalized)
+            if ok:
+                self.shared_data_dir = normalized
+                self.data_dir = normalized
+            else:
+                self._startup_data_dir_warning = (
+                    "Shared data folder is unavailable, so the app fell back to local data.\n\n"
+                    f"Requested folder:\n{normalized}\n\nReason:\n{reason}"
+                )
+                self.app_settings["shared_data_dir"] = ""
+                self._save_app_settings()
+        self.data_paths = self._build_data_paths(self.data_dir)
+
+    def _load_persistent_state(self):
+        dup_whitelist, _ = storage.load_duplicate_whitelist(self._data_path("duplicate_whitelist"), with_meta=True)
+        order_rules, _ = storage.load_order_rules_with_meta(self._data_path("order_rules"))
+        suspense_carry, _ = storage.load_suspense_carry_with_meta(self._data_path("suspense_carry"))
+        vendor_codes, _ = storage.load_vendor_codes(self._data_path("vendor_codes"), KNOWN_VENDORS, with_meta=True)
+        self.dup_whitelist = set(dup_whitelist)
+        self.order_rules = dict(order_rules)
+        self.suspense_carry = dict(suspense_carry)
+        self.vendor_codes_used = list(vendor_codes)
+        self._loaded_dup_whitelist = set(self.dup_whitelist)
+        self._loaded_order_rules = copy.deepcopy(self.order_rules)
+        self._loaded_suspense_carry = copy.deepcopy(self.suspense_carry)
+        self._loaded_vendor_codes = list(self.vendor_codes_used)
+        self._refresh_data_folder_labels()
+
+    def _active_data_folder_label(self):
+        if self.shared_data_dir:
+            return f"Shared Folder: {self.data_dir}"
+        return f"Local Data: {self.data_dir}"
+
+    def _refresh_data_folder_labels(self):
+        if hasattr(self, "lbl_data_source"):
+            self.lbl_data_source.config(text=self._active_data_folder_label())
+
+    def _set_shared_data_folder(self):
+        selected = filedialog.askdirectory(
+            title="Select Shared Data Folder",
+            initialdir=self.data_dir,
+            mustexist=False,
+        )
+        if not selected:
+            return
+        normalized = os.path.abspath(selected)
+        ok, reason = storage.validate_storage_directory(normalized)
+        if not ok:
+            messagebox.showerror("Shared Data Folder", f"Cannot use that folder:\n{reason}")
+            return
+        self.shared_data_dir = normalized
+        self.data_dir = normalized
+        self.data_paths = self._build_data_paths(self.data_dir)
+        self.app_settings["shared_data_dir"] = normalized
+        self._save_app_settings()
+        self._load_persistent_state()
+        if self.filtered_items or self.assigned_items:
+            messagebox.showinfo(
+                "Shared Data Folder Updated",
+                "Reload files to apply the shared rules, history, and vendor list to the current session.",
+            )
+
+    def _use_local_data_folder(self):
+        self.shared_data_dir = ""
+        self.data_dir = LOCAL_DATA_DIR
+        self.data_paths = self._build_data_paths(self.data_dir)
+        self.app_settings["shared_data_dir"] = ""
+        self._save_app_settings()
+        self._load_persistent_state()
+        if self.filtered_items or self.assigned_items:
+            messagebox.showinfo(
+                "Local Data Enabled",
+                "Reload files to apply the local rules, history, and vendor list to the current session.",
+            )
+
+    def _set_update_check_enabled(self):
+        if hasattr(self, "var_check_updates"):
+            self.update_check_enabled = bool(self.var_check_updates.get())
+        else:
+            self.update_check_enabled = True
+        self.app_settings["check_for_updates_on_startup"] = self.update_check_enabled
+        self._save_app_settings()
+
+    def _start_update_check(self):
+        if not self.update_check_enabled or not is_release_version(APP_VERSION):
+            return
+        worker = threading.Thread(target=self._check_for_updates_worker, daemon=True)
+        worker.start()
+
+    def _check_for_updates_worker(self):
+        try:
+            release = fetch_latest_github_release()
+        except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, OSError, json.JSONDecodeError):
+            return
+        latest_tag = release.get("tag_name", "")
+        if not is_newer_version(latest_tag, APP_VERSION):
+            return
+        self.root.after(0, lambda: self._prompt_for_update(release))
+
+    def _prompt_for_update(self, release):
+        latest_tag = release.get("tag_name", "")
+        release_name = release.get("name") or latest_tag
+        published_at = release.get("published_at", "")
+        details = f"Version {latest_tag}"
+        if release_name and release_name != latest_tag:
+            details = f"{release_name} ({latest_tag})"
+        if published_at:
+            details += f"\nPublished: {published_at[:10]}"
+        answer = messagebox.askyesno(
+            "Update Available",
+            f"A newer release is available on GitHub.\n\nCurrent version: {APP_VERSION}\nLatest release: {details}\n\nOpen the release page now?",
+        )
+        if answer:
+            try:
+                webbrowser.open(release.get("html_url") or GITHUB_RELEASES_PAGE_URL)
+            except Exception:
+                messagebox.showinfo(
+                    "Release Page",
+                    f"Open this page in your browser:\n{release.get('html_url') or GITHUB_RELEASES_PAGE_URL}",
+                )
 
     def _load_gif_frames(self):
         """Load animated GIF frames for the loading overlay."""
@@ -974,7 +1198,13 @@ class POBuilderApp:
             if next_qty > 0:
                 next_carry[key] = {"qty": next_qty, "updated_at": current_stamp}
         self.suspense_carry = next_carry
-        storage.save_suspense_carry(SUSPENSE_CARRY_FILE, self.suspense_carry)
+        result = storage.save_suspense_carry(
+            self._data_path("suspense_carry"),
+            self.suspense_carry,
+            base_carry=self._loaded_suspense_carry,
+        )
+        self.suspense_carry = dict(result["payload"])
+        self._loaded_suspense_carry = copy.deepcopy(self.suspense_carry)
 
     def _proceed_to_assign(self):
         """Apply all filters, merge suspended items, and move to bulk vendor assignment."""
@@ -1120,17 +1350,18 @@ class POBuilderApp:
             days = self.var_lookback_days.get()
         except Exception:
             days = 14
-        self.recent_orders = storage.get_recent_orders(ORDER_HISTORY_FILE, days)
+        self.recent_orders = storage.get_recent_orders(self._data_path("order_history"), days)
 
         # Reset assignment state
         self.assigned_items = []
         self.qoh_adjustments = {}
-        self.vendor_codes_used = storage.load_vendor_codes(VENDOR_CODES_FILE, KNOWN_VENDORS)
+        self.vendor_codes_used = storage.load_vendor_codes(self._data_path("vendor_codes"), KNOWN_VENDORS)
         for item in self.filtered_items:
             vendor = item.get("vendor", "").strip().upper()
             if vendor and vendor not in self.vendor_codes_used:
                 self.vendor_codes_used.append(vendor)
         self.vendor_codes_used.sort()
+        self._loaded_vendor_codes = list(self.vendor_codes_used)
         self.last_removed_bulk_items = []
         self._refresh_vendor_inputs()
 
@@ -1204,7 +1435,31 @@ class POBuilderApp:
         return str(value or "").strip().upper()
 
     def _save_vendor_codes(self):
-        storage.save_vendor_codes(VENDOR_CODES_FILE, self.vendor_codes_used)
+        result = storage.save_vendor_codes(
+            self._data_path("vendor_codes"),
+            self.vendor_codes_used,
+            base_vendor_codes=self._loaded_vendor_codes,
+        )
+        self.vendor_codes_used = list(result["payload"])
+        self._loaded_vendor_codes = list(self.vendor_codes_used)
+
+    def _save_order_rules(self):
+        result = storage.save_order_rules(
+            self._data_path("order_rules"),
+            self.order_rules,
+            base_rules=self._loaded_order_rules,
+        )
+        self.order_rules = dict(result["payload"])
+        self._loaded_order_rules = copy.deepcopy(self.order_rules)
+
+    def _save_duplicate_whitelist(self):
+        result = storage.save_duplicate_whitelist(
+            self._data_path("duplicate_whitelist"),
+            self.dup_whitelist,
+            base_whitelist=self._loaded_dup_whitelist,
+        )
+        self.dup_whitelist = set(result["payload"])
+        self._loaded_dup_whitelist = set(self.dup_whitelist)
 
     def _refresh_vendor_inputs(self):
         if hasattr(self, "combo_bulk_vendor"):
@@ -1346,7 +1601,7 @@ class POBuilderApp:
             days = self.var_lookback_days.get()
         except Exception:
             days = 14
-        self.recent_orders = storage.get_recent_orders(ORDER_HISTORY_FILE, days)
+        self.recent_orders = storage.get_recent_orders(self._data_path("order_history"), days)
         self._apply_bulk_filter()
 
     def _update_bulk_summary(self):
@@ -1701,7 +1956,7 @@ class POBuilderApp:
                 if not rule.get("policy_locked") and rule.get("order_policy") in ("exact_qty", "standard"):
                     rule.pop("order_policy", None)
                 self.order_rules[rule_key] = rule
-                storage.save_order_rules(ORDER_RULES_FILE, self.order_rules)
+                self._save_order_rules()
                 self._clear_manual_override(item)
                 self._recalculate_item(item)
                 write_debug(
@@ -1741,7 +1996,7 @@ class POBuilderApp:
             item_code=item.get("item_code", ""),
             right_click_context=repr(getattr(self, "_right_click_bulk_context", None)),
         )
-        ui_bulk_dialogs.open_buy_rule_editor(self, idx, ORDER_RULES_FILE)
+        ui_bulk_dialogs.open_buy_rule_editor(self, idx, self._data_path("order_rules"))
 
     def _view_item_details(self):
         ui_bulk_dialogs.view_item_details(self)
@@ -1758,7 +2013,7 @@ class POBuilderApp:
     def _dismiss_duplicate(self, item_code):
         """Add an item code to the persistent duplicate whitelist."""
         self.dup_whitelist.add(item_code)
-        storage.save_duplicate_whitelist(DUPLICATE_WHITELIST_FILE, self.dup_whitelist)
+        self._save_duplicate_whitelist()
         # Remove from the active lookup
         self.duplicate_ic_lookup.pop(item_code, None)
         # Refresh the tree to clear the Also Under column
@@ -1935,7 +2190,12 @@ class POBuilderApp:
         self.notebook.select(3)
 
     def _do_export(self):
-        export_flow.do_export(self, export_vendor_po, ORDER_HISTORY_FILE, SESSIONS_DIR)
+        export_flow.do_export(
+            self,
+            export_vendor_po,
+            self._data_path("order_history"),
+            self._data_path("sessions"),
+        )
 
     def _build_maintenance_report(self):
         """
