@@ -7,6 +7,8 @@ except ImportError as exc:
     HAS_TKSHEET = False
     TKSHEET_IMPORT_ERROR = exc
 
+from debug_log import write_debug
+
 
 class BulkSheetView:
     def __init__(self, app, parent, columns, labels, widths, editable_cols):
@@ -76,10 +78,13 @@ class BulkSheetView:
     def _handle_edit(self, event_data):
         row = event_data.get("row")
         col = event_data.get("column")
+        write_debug("bulk_sheet.handle_edit.begin", row=row, col=col, event_value=str(event_data.get("value", "")))
         if row is None or col is None or row >= len(self.row_ids) or col >= len(self.columns):
+            write_debug("bulk_sheet.handle_edit.skip", reason="row_or_col_out_of_range", row=row, col=col)
             return
         row_id = str(self.row_ids[row])
         col_name = self.columns[col]
+        write_debug("bulk_sheet.handle_edit.target", row=row, row_id=row_id, col=col, col_name=col_name)
         if col_name not in self.editable_cols:
             self._pending_edit = {
                 "row": row,
@@ -90,11 +95,13 @@ class BulkSheetView:
                 "target_row_ids": (),
                 "fallback_value": event_data.get("value", ""),
             }
+            write_debug("bulk_sheet.handle_edit.readonly", row_id=row_id, col_name=col_name)
             self._queue_post_edit_refresh()
             return
         target_row_ids = list(self._snapshot_target_row_ids(col_name))
         if row_id not in target_row_ids:
             target_row_ids = [row_id]
+        write_debug("bulk_sheet.handle_edit.queued", col_name=col_name, row_id=row_id, target_row_ids=",".join(target_row_ids))
         self._pending_edit = {
             "row": row,
             "col": col,
@@ -122,12 +129,39 @@ class BulkSheetView:
             if value is None:
                 value = pending.get("fallback_value", "")
             value = str(value)
+            write_debug(
+                "bulk_sheet.post_edit.commit",
+                row=pending.get("row"),
+                col=pending.get("col"),
+                row_id=row_id,
+                col_name=col_name,
+                editable=pending.get("editable"),
+                committed_value=value,
+            )
             if pending.get("editable"):
                 for target_row_id in pending.get("target_row_ids", ()):
+                    write_debug(
+                        "bulk_sheet.post_edit.apply",
+                        row_id=target_row_id,
+                        col_name=col_name,
+                        value=value,
+                    )
                     self.app._bulk_apply_editor_value(target_row_id, col_name, value)
             elif row_id is not None:
                 self.refresh_row(row_id, self.app._bulk_row_values(self.app.filtered_items[int(row_id)]))
         self.app._apply_bulk_filter()
+        write_debug("bulk_sheet.post_edit.filtered")
+        if pending and pending.get("row_id") is not None:
+            try:
+                rendered = self.app._bulk_row_values(self.app.filtered_items[int(pending["row_id"])])
+                write_debug(
+                    "bulk_sheet.post_edit.rendered_row",
+                    row_id=pending["row_id"],
+                    col_name=pending.get("col_name", ""),
+                    rendered=" || ".join("" if value is None else str(value) for value in rendered),
+                )
+            except Exception as exc:
+                write_debug("bulk_sheet.post_edit.rendered_row_error", row_id=pending["row_id"], error=str(exc))
         self.clear_selection()
         self.app._update_bulk_summary()
         self.app._update_bulk_sheet_status()
@@ -140,8 +174,10 @@ class BulkSheetView:
                 pass
             self._edit_refresh_after_id = None
         try:
+            write_debug("bulk_sheet.post_edit.schedule", delay_ms=1)
             self._edit_refresh_after_id = self.sheet.after(1, self._run_post_edit_refresh)
         except Exception:
+            write_debug("bulk_sheet.post_edit.schedule_fallback")
             self._run_post_edit_refresh()
 
     def set_rows(self, rows, row_ids):

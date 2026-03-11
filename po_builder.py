@@ -22,6 +22,7 @@ import json
 import export_flow
 import parsers
 import storage
+from debug_log import DEBUG_LOG_FILE, write_debug
 from bulk_sheet import BulkSheetView
 import ui_assignment_actions
 import ui_bulk
@@ -1449,21 +1450,35 @@ class POBuilderApp:
             row_ids = list(self.bulk_sheet.selected_target_row_ids(col_name))
         if not row_ids and self.bulk_sheet:
             row_ids = list(self.bulk_sheet.selected_row_ids())
+        write_debug("bulk_begin_edit", col_name=col_name, row_ids=",".join(row_ids), row_count=len(row_ids))
         if col_name in BULK_EDITABLE_COLS and len(row_ids) > 1:
             prompt = f"Enter a value for {col_name} across {len(row_ids)} selected row(s):"
             initial = self.bulk_sheet.current_cell_value()
             value = simpledialog.askstring("Bulk Edit Selection", prompt, parent=self.root, initialvalue=initial)
+            write_debug("bulk_begin_edit.prompt_result", col_name=col_name, value="" if value is None else value, cancelled=value is None)
             if value is None:
                 return "break"
             for row_id in row_ids:
                 self._bulk_apply_editor_value(row_id, col_name, value.strip())
             self._apply_bulk_filter()
+            for row_id in row_ids[:12]:
+                try:
+                    rendered = self._bulk_row_values(self.filtered_items[int(row_id)])
+                    write_debug(
+                        "bulk_begin_edit.rendered_row",
+                        row_id=row_id,
+                        col_name=col_name,
+                        rendered=" || ".join("" if cell is None else str(cell) for cell in rendered),
+                    )
+                except Exception as exc:
+                    write_debug("bulk_begin_edit.rendered_row_error", row_id=row_id, col_name=col_name, error=str(exc))
             if self.bulk_sheet:
                 self.bulk_sheet.clear_selection()
             self._update_bulk_summary()
             self._update_bulk_cell_status()
             return "break"
         self.bulk_sheet.sheet.open_cell()
+        write_debug("bulk_begin_edit.open_cell", col_name=col_name, row_count=len(row_ids))
         return "break"
 
     def _bulk_fit_columns(self):
@@ -1558,10 +1573,13 @@ class POBuilderApp:
 
     def _bulk_apply_editor_value(self, row_id, col_name, raw):
         idx = int(row_id)
+        write_debug("bulk_apply_editor_value.begin", row_id=row_id, col_name=col_name, raw=str(raw))
         if col_name == "buy_rule":
             self._open_buy_rule_editor(idx)
+            write_debug("bulk_apply_editor_value.buy_rule_editor", row_id=row_id)
             return
         if col_name not in BULK_EDITABLE_COLS:
+            write_debug("bulk_apply_editor_value.skip", row_id=row_id, col_name=col_name, reason="not_editable")
             return
         item = self.filtered_items[idx]
         key = (item["line_code"], item["item_code"])
@@ -1574,12 +1592,22 @@ class POBuilderApp:
                 item["vendor"] = new_val
                 self._remember_vendor_code(new_val)
                 self._update_bulk_summary()
+                write_debug("bulk_apply_editor_value.vendor", row_id=row_id, vendor=new_val)
         elif col_name == "final_qty":
             try:
                 qty = int(float(raw))
                 self._set_effective_order_qty(item, qty, manual_override=True)
                 self._recalculate_item(item)
+                write_debug(
+                    "bulk_apply_editor_value.final_qty",
+                    row_id=row_id,
+                    qty=qty,
+                    suggested=item.get("suggested_qty"),
+                    final=item.get("final_qty"),
+                    why=item.get("why", ""),
+                )
             except ValueError:
+                write_debug("bulk_apply_editor_value.error", row_id=row_id, col_name=col_name, raw=str(raw), reason="value_error")
                 pass
         elif col_name == "qoh":
             try:
@@ -1590,7 +1618,17 @@ class POBuilderApp:
                     if key in self.inventory_lookup:
                         self.inventory_lookup[key]["qoh"] = new_qoh
                     self._recalculate_item(item)
+                write_debug(
+                    "bulk_apply_editor_value.qoh",
+                    row_id=row_id,
+                    old_qoh=old_qoh,
+                    new_qoh=new_qoh,
+                    raw_need=item.get("raw_need"),
+                    suggested=item.get("suggested_qty"),
+                    final=item.get("final_qty"),
+                )
             except ValueError:
+                write_debug("bulk_apply_editor_value.error", row_id=row_id, col_name=col_name, raw=str(raw), reason="value_error")
                 pass
         elif col_name in ("cur_min", "cur_max"):
             if key not in self.inventory_lookup:
@@ -1606,10 +1644,24 @@ class POBuilderApp:
                 else:
                     self.inventory_lookup[key]["max"] = parsed
                 self._recalculate_item(item)
+                write_debug(
+                    "bulk_apply_editor_value.minmax",
+                    row_id=row_id,
+                    col_name=col_name,
+                    parsed=parsed,
+                    raw_need=item.get("raw_need"),
+                    suggested=item.get("suggested_qty"),
+                    final=item.get("final_qty"),
+                )
             except ValueError:
+                write_debug("bulk_apply_editor_value.error", row_id=row_id, col_name=col_name, raw=str(raw), reason="value_error")
                 pass
         elif col_name == "pack_size":
             try:
+                old_pack = item.get("pack_size")
+                old_policy = item.get("order_policy", "")
+                old_suggested = item.get("suggested_qty")
+                old_final = item.get("final_qty")
                 item["pack_size"] = None if raw == "" else int(float(raw))
                 rule = dict(rule or {})
                 if item["pack_size"] is None:
@@ -1622,8 +1674,33 @@ class POBuilderApp:
                 storage.save_order_rules(ORDER_RULES_FILE, self.order_rules)
                 self._clear_manual_override(item)
                 self._recalculate_item(item)
+                write_debug(
+                    "bulk_apply_editor_value.pack_size",
+                    row_id=row_id,
+                    line_code=item.get("line_code", ""),
+                    item_code=item.get("item_code", ""),
+                    old_pack=old_pack,
+                    new_pack=item.get("pack_size"),
+                    old_policy=old_policy,
+                    new_policy=item.get("order_policy", ""),
+                    old_suggested=old_suggested,
+                    new_suggested=item.get("suggested_qty"),
+                    old_final=old_final,
+                    new_final=item.get("final_qty"),
+                    rule=json.dumps(self.order_rules.get(rule_key, {}), sort_keys=True),
+                    why=item.get("why", ""),
+                )
             except ValueError:
+                write_debug("bulk_apply_editor_value.error", row_id=row_id, col_name=col_name, raw=str(raw), reason="value_error")
                 pass
+
+    def _apply_bulk_filter(self):
+        ui_bulk.apply_bulk_filter(self)
+        sample = ""
+        if self.filtered_items:
+            item = self.filtered_items[0]
+            sample = f"{item.get('line_code', '')}:{item.get('item_code', '')}"
+        write_debug("bulk_filter.applied", total=len(self.filtered_items), sample=sample)
 
     def _open_buy_rule_editor(self, idx):
         ui_bulk_dialogs.open_buy_rule_editor(self, idx, ORDER_RULES_FILE)
