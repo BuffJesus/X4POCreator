@@ -80,7 +80,6 @@ def _clean_item_description(text):
 
 def parse_part_sales_csv(filepath):
     agg = {}
-    seen_exact = set()
     with open(filepath, "r", encoding="utf-8-sig") as f:
         reader = csv.reader(f)
         for row in reader:
@@ -97,10 +96,6 @@ def parse_part_sales_csv(filepath):
                 continue
             if not item_code:
                 continue
-            exact_key = (line_code, item_code, qty_received, qty_sold)
-            if exact_key in seen_exact:
-                continue
-            seen_exact.add(exact_key)
             key = (line_code, item_code)
             if key not in agg:
                 agg[key] = {

@@ -1593,6 +1593,10 @@ class POBuilderApp:
 
     def _refresh_suggestions(self):
         """Recalculate suggestions when the reorder cycle changes."""
+        for item in self.filtered_items:
+            self._recalculate_item(item)
+        for item in self.assigned_items:
+            self._sync_review_item_to_filtered(item)
         self._apply_bulk_filter()
 
     def _refresh_recent_orders(self):
@@ -2115,6 +2119,16 @@ class POBuilderApp:
         elif col_name == "pack_size":
             try:
                 item["pack_size"] = None if raw == "" else int(float(raw))
+                rule_key = get_rule_key(item["line_code"], item["item_code"])
+                rule = dict(self.order_rules.get(rule_key) or {})
+                if item["pack_size"] is None:
+                    rule.pop("pack_size", None)
+                else:
+                    rule["pack_size"] = item["pack_size"]
+                if not rule.get("policy_locked") and rule.get("order_policy") in ("exact_qty", "standard"):
+                    rule.pop("order_policy", None)
+                self.order_rules[rule_key] = rule
+                self._save_order_rules()
                 self._clear_manual_override(item)
                 self._sync_review_item_to_filtered(item)
             except ValueError:

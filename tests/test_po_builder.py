@@ -28,6 +28,7 @@ class POBuilderTests(unittest.TestCase):
         )
         fake_app._find_filtered_item = lambda key: po_builder.POBuilderApp._find_filtered_item(fake_app, key)
         fake_app._normalize_vendor_code = lambda value: po_builder.POBuilderApp._normalize_vendor_code(value)
+        fake_app._get_cycle_weeks = lambda: po_builder.POBuilderApp._get_cycle_weeks(fake_app)
         fake_app._get_effective_order_qty = lambda item: po_builder.POBuilderApp._get_effective_order_qty(fake_app, item)
         fake_app._set_effective_order_qty = (
             lambda item, qty, manual_override=False: po_builder.POBuilderApp._set_effective_order_qty(
@@ -44,6 +45,7 @@ class POBuilderTests(unittest.TestCase):
         fake_app._sync_review_item_to_filtered = (
             lambda item: po_builder.POBuilderApp._sync_review_item_to_filtered(fake_app, item)
         )
+        fake_app._apply_bulk_filter = lambda: po_builder.POBuilderApp._apply_bulk_filter(fake_app)
         fake_app._update_review_summary = lambda: None
         fake_app._update_bulk_summary = lambda: None
         fake_app._refresh_vendor_inputs = lambda: None
@@ -139,6 +141,74 @@ class POBuilderTests(unittest.TestCase):
         result = po_builder.POBuilderApp._suggest_min_max(fake_app, ("AER-", "GH781-4"))
 
         self.assertEqual(result, (1, 2))
+
+    def test_refresh_suggestions_recalculates_filtered_and_assigned_items(self):
+        fake_app = self._make_calc_app()
+        key = ("AER-", "GH781-4")
+        filtered_item = {
+            "line_code": key[0],
+            "item_code": key[1],
+            "description": "HOSE",
+            "qty_sold": 10,
+            "qty_suspended": 0,
+            "qty_on_po": 0,
+            "demand_signal": 10,
+            "vendor": "MOTION",
+            "pack_size": 5,
+            "final_qty": 5,
+            "order_qty": 5,
+        }
+        assigned_item = dict(filtered_item)
+        fake_app.inventory_lookup[key] = {"qoh": 0, "max": 2, "mo12_sales": 52}
+        fake_app.filtered_items = [filtered_item]
+        fake_app.assigned_items = [assigned_item]
+        fake_app.var_reorder_cycle = SimpleNamespace(get=lambda: "Monthly")
+        fake_app._suggest_min_max = lambda item_key: po_builder.POBuilderApp._suggest_min_max(fake_app, item_key)
+        fake_app.var_bulk_lc_filter = SimpleNamespace(get=lambda: "ALL")
+        fake_app.var_bulk_status_filter = SimpleNamespace(get=lambda: "ALL")
+        fake_app.var_bulk_source_filter = SimpleNamespace(get=lambda: "ALL")
+        fake_app.var_bulk_item_status = SimpleNamespace(get=lambda: "ALL")
+        fake_app.bulk_sheet = None
+
+        po_builder.POBuilderApp._refresh_suggestions(fake_app)
+
+        self.assertEqual(filtered_item["suggested_min"], 4)
+        self.assertEqual(filtered_item["suggested_max"], 8)
+        self.assertEqual(filtered_item["suggested_qty"], 10)
+        self.assertEqual(filtered_item["final_qty"], 10)
+        self.assertIn("Target stock: 8", filtered_item["why"])
+        self.assertEqual(assigned_item["suggested_qty"], 10)
+        self.assertEqual(assigned_item["order_qty"], 10)
+
+    def test_review_pack_size_edit_persists_order_rule(self):
+        fake_app = self._make_calc_app()
+        key = ("AER-", "GH781-4")
+        filtered_item = {
+            "line_code": key[0],
+            "item_code": key[1],
+            "description": "HOSE",
+            "qty_sold": 8,
+            "qty_suspended": 0,
+            "qty_on_po": 0,
+            "demand_signal": 8,
+            "vendor": "MOTION",
+            "pack_size": 6,
+            "final_qty": 12,
+            "order_qty": 12,
+        }
+        assigned_item = dict(filtered_item)
+        fake_app.inventory_lookup[key] = {"qoh": 0, "max": 10, "mo12_sales": 26}
+        fake_app.filtered_items = [filtered_item]
+        fake_app.assigned_items = [assigned_item]
+        saved = {}
+        fake_app._save_order_rules = lambda: saved.update({"payload": dict(fake_app.order_rules)})
+
+        po_builder.POBuilderApp._review_apply_editor_value(fake_app, "0", "pack_size", "12")
+
+        self.assertEqual(assigned_item["pack_size"], 12)
+        self.assertEqual(filtered_item["pack_size"], 12)
+        self.assertEqual(fake_app.order_rules["AER-:GH781-4"]["pack_size"], 12)
+        self.assertEqual(saved["payload"]["AER-:GH781-4"]["pack_size"], 12)
 
     def test_quantity_helpers_keep_fields_aligned(self):
         fake_app = self._make_calc_app()

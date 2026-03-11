@@ -31,6 +31,20 @@ class ParserSmokeTests(unittest.TestCase):
             lookup = parsers.parse_pack_sizes_csv(str(path))
             self.assertEqual(lookup[("AER-", "GH781-4")], 500)
 
+    def test_parse_part_sales_csv_aggregates_repeated_rows(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "sales.csv"
+            with open(path, "w", newline="", encoding="utf-8-sig") as f:
+                writer = csv.writer(f)
+                writer.writerow(["hdr", "AER-", "GH781-4", "HOSE", "5", "skip", "7"])
+                writer.writerow(["hdr", "AER-", "GH781-4", "HOSE", "5", "skip", "7"])
+
+            rows = parsers.parse_part_sales_csv(str(path))
+
+            self.assertEqual(len(rows), 1)
+            self.assertEqual(rows[0]["qty_received"], 10)
+            self.assertEqual(rows[0]["qty_sold"], 14)
+
     def test_build_pack_size_fallbacks_detects_conflicts(self):
         lookup = {
             ("AER-", "GH781-4"): 500,
