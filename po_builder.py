@@ -316,11 +316,15 @@ class POBuilderApp:
     pack_size_source_lookup = _session_field("pack_size_source_lookup")
     pack_size_by_item = _session_field("pack_size_by_item")
     pack_size_conflicts = _session_field("pack_size_conflicts")
+    on_po_qty = _session_field("on_po_qty")
     qoh_adjustments = _session_field("qoh_adjustments")
+    duplicate_ic_lookup = _session_field("duplicate_ic_lookup")
     recent_orders = _session_field("recent_orders")
     order_rules = _session_field("order_rules")
+    suspense_carry = _session_field("suspense_carry")
     vendor_codes_used = _session_field("vendor_codes_used")
     filtered_items = _session_field("filtered_items")
+    individual_items = _session_field("individual_items")
     assigned_items = _session_field("assigned_items")
     startup_warning_rows = _session_field("startup_warning_rows")
     def __init__(self, root):
@@ -341,11 +345,7 @@ class POBuilderApp:
         self.excluded_line_codes = set()
         self.all_customers = []         # (code, name, count) from suspended items
         self.excluded_customers = set() # customer codes to exclude
-        self.on_po_qty = {}             # (line_code, item_code) -> total qty on PO
-        self.duplicate_ic_lookup = {}   # item_code -> set of line_codes (only dupes)
         self.dup_whitelist = set()      # persistent whitelist
-        self.suspense_carry = {}
-        self.individual_items = []
         self.last_removed_bulk_items = []  # [(index, item_dict)] for one-step undo
         self.bulk_undo_stack = []
         self.bulk_redo_stack = []

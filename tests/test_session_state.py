@@ -30,6 +30,15 @@ class SessionStateTests(unittest.TestCase):
         self.assertEqual(result, [{"item_code": "GH781-4"}])
         self.assertIs(fake_app.session.filtered_items, result)
 
+    def test_po_builder_mapping_properties_proxy_to_session_state(self):
+        fake_app = SimpleNamespace(session=AppSessionState())
+
+        po_builder.POBuilderApp.suspense_carry.fset(fake_app, {("AER-", "GH781-4"): {"qty": 2}})
+        result = po_builder.POBuilderApp.suspense_carry.fget(fake_app)
+
+        self.assertEqual(result, {("AER-", "GH781-4"): {"qty": 2}})
+        self.assertIs(fake_app.session.suspense_carry, result)
+
 
 if __name__ == "__main__":
     unittest.main()
