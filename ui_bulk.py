@@ -176,6 +176,7 @@ def build_bulk_tab(app, editable_cols):
         app.bulk_sheet.sheet.bind("<Control-V>", app._bulk_paste_selection)
         app.bulk_sheet.sheet.bind("<F2>", app._bulk_begin_edit)
         app.bulk_sheet.sheet.bind("<Return>", app._bulk_begin_edit)
+        app.bulk_sheet.sheet.bind("<Double-Button-1>", app._bulk_begin_edit)
         app.bulk_sheet.sheet.bind("<Shift-space>", app._bulk_select_current_row)
         app.bulk_sheet.sheet.bind("<Control-space>", app._bulk_select_current_column)
         app.bulk_sheet.sheet.bind("<ButtonRelease-1>", lambda e: app._update_bulk_sheet_status())

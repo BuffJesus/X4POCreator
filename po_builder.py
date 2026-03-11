@@ -1451,8 +1451,11 @@ class POBuilderApp:
         if not row_ids and self.bulk_sheet:
             row_ids = list(self.bulk_sheet.selected_row_ids())
         write_debug("bulk_begin_edit", col_name=col_name, row_ids=",".join(row_ids), row_count=len(row_ids))
-        if col_name in BULK_EDITABLE_COLS and len(row_ids) > 1:
-            prompt = f"Enter a value for {col_name} across {len(row_ids)} selected row(s):"
+        if col_name in BULK_EDITABLE_COLS and len(row_ids) >= 1:
+            if len(row_ids) == 1:
+                prompt = f"Enter a value for {col_name}:"
+            else:
+                prompt = f"Enter a value for {col_name} across {len(row_ids)} selected row(s):"
             initial = self.bulk_sheet.current_cell_value()
             value = simpledialog.askstring("Bulk Edit Selection", prompt, parent=self.root, initialvalue=initial)
             write_debug("bulk_begin_edit.prompt_result", col_name=col_name, value="" if value is None else value, cancelled=value is None)

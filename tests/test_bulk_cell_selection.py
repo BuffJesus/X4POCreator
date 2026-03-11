@@ -143,6 +143,32 @@ class BulkSheetStatusTests(unittest.TestCase):
         self.assertEqual(result, "break")
         self.assertEqual(calls[:6], [("0", "pack_size", "750"), ("1", "pack_size", "750"), ("filter",), ("cleared",), ("summary",), ("status",)])
 
+    def test_bulk_begin_edit_single_row_uses_prompt_path(self):
+        calls = []
+        fake_app = SimpleNamespace(
+            bulk_sheet=SimpleNamespace(
+                selected_editable_column_name=lambda: "pack_size",
+                current_editable_column_name=lambda: "pack_size",
+                selected_target_row_ids=lambda col_name: ("8",),
+                selected_row_ids=lambda: ("8",),
+                current_cell_value=lambda: "2",
+                clear_selection=lambda: calls.append(("cleared",)),
+                sheet=SimpleNamespace(open_cell=lambda: calls.append(("open_cell",))),
+            ),
+            root=None,
+            _bulk_apply_editor_value=lambda row_id, col_name, value: calls.append((row_id, col_name, value)),
+            _apply_bulk_filter=lambda: calls.append(("filter",)),
+            _update_bulk_summary=lambda: calls.append(("summary",)),
+            _update_bulk_cell_status=lambda: calls.append(("status",)),
+        )
+
+        with patch("po_builder.simpledialog.askstring", return_value="3"):
+            result = po_builder.POBuilderApp._bulk_begin_edit(fake_app)
+
+        self.assertEqual(result, "break")
+        self.assertEqual(calls[:5], [("8", "pack_size", "3"), ("filter",), ("cleared",), ("summary",), ("status",)])
+        self.assertNotIn(("open_cell",), calls)
+
 
 class BulkSheetViewTests(unittest.TestCase):
     def test_handle_edit_applies_value_to_selected_target_rows(self):
