@@ -100,17 +100,24 @@ def build_individual_tab(app):
     app.combo_vendor.pack(anchor="w", pady=4)
     app.combo_vendor.bind("<Return>", lambda e: app._assign_current())
     app.combo_vendor.bind("<KeyRelease>", app._vendor_autocomplete)
-    ttk.Button(vendor_frame, text="Manage Vendors...", command=app._open_vendor_manager).pack(anchor="w", pady=(2, 0))
+    vendor_button_row = ttk.Frame(vendor_frame)
+    vendor_button_row.pack(anchor="w", pady=(2, 0))
+    ttk.Button(vendor_button_row, text="Manage Vendors...", command=app._open_vendor_manager).pack(side=tk.LEFT)
 
     btn_frame = ttk.Frame(frame)
     btn_frame.pack(fill=tk.X, pady=12)
 
-    ttk.Button(btn_frame, text="<- Back", command=app._assign_back).pack(side=tk.LEFT, padx=4)
-    ttk.Button(btn_frame, text="Skip Item", command=app._assign_skip).pack(side=tk.LEFT, padx=4)
-    ttk.Button(btn_frame, text="Assign & Next ->", style="Big.TButton", command=app._assign_current).pack(
+    nav_row = ttk.Frame(btn_frame)
+    nav_row.pack(anchor="w", fill=tk.X)
+    ttk.Button(nav_row, text="<- Back", command=app._assign_back).pack(side=tk.LEFT, padx=4)
+    ttk.Button(nav_row, text="Skip Item", command=app._assign_skip).pack(side=tk.LEFT, padx=4)
+    ttk.Button(nav_row, text="Assign & Next ->", style="Big.TButton", command=app._assign_current).pack(
         side=tk.LEFT, padx=8
     )
-    ttk.Button(btn_frame, text="Finish - Go to Review ->", style="Big.TButton", command=app._finish_assign).pack(
+
+    finish_row = ttk.Frame(btn_frame)
+    finish_row.pack(anchor="e", fill=tk.X, pady=(8, 0))
+    ttk.Button(finish_row, text="Finish - Go to Review ->", style="Big.TButton", command=app._finish_assign).pack(
         side=tk.RIGHT, padx=4
     )
 

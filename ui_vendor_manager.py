@@ -109,10 +109,15 @@ def open_vendor_manager(app):
 
     btn_frame = ttk.Frame(dlg)
     btn_frame.pack(fill=tk.X, padx=16, pady=12)
-    ttk.Button(btn_frame, text="Add", command=_add).pack(side=tk.LEFT, padx=4)
-    ttk.Button(btn_frame, text="Rename", command=_edit).pack(side=tk.LEFT, padx=4)
-    ttk.Button(btn_frame, text="Remove", command=_remove).pack(side=tk.LEFT, padx=4)
-    ttk.Button(btn_frame, text="Close", command=dlg.destroy).pack(side=tk.RIGHT, padx=4)
+    action_row = ttk.Frame(btn_frame)
+    action_row.pack(anchor="w", fill=tk.X)
+    ttk.Button(action_row, text="Add", command=_add).pack(side=tk.LEFT, padx=4)
+    ttk.Button(action_row, text="Rename", command=_edit).pack(side=tk.LEFT, padx=4)
+    ttk.Button(action_row, text="Remove", command=_remove).pack(side=tk.LEFT, padx=4)
+
+    close_row = ttk.Frame(btn_frame)
+    close_row.pack(anchor="e", fill=tk.X, pady=(8, 0))
+    ttk.Button(close_row, text="Close", command=dlg.destroy).pack(side=tk.RIGHT, padx=4)
 
     _refresh()
     app._autosize_dialog(dlg, min_w=520, min_h=420, max_w_ratio=0.75, max_h_ratio=0.8)

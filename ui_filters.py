@@ -35,11 +35,13 @@ def build_exclude_tab(app):
 
     toolbar = ttk.Frame(frame)
     toolbar.pack(fill=tk.X, pady=(0, 8))
-    ttk.Button(toolbar, text="Select All", command=lambda: app._toggle_all_lc(True)).pack(side=tk.LEFT, padx=4)
-    ttk.Button(toolbar, text="Deselect All", command=lambda: app._toggle_all_lc(False)).pack(side=tk.LEFT, padx=4)
+    button_row = ttk.Frame(toolbar)
+    button_row.pack(anchor="w")
+    ttk.Button(button_row, text="Select All", command=lambda: app._toggle_all_lc(True)).pack(side=tk.LEFT, padx=4)
+    ttk.Button(button_row, text="Deselect All", command=lambda: app._toggle_all_lc(False)).pack(side=tk.LEFT, padx=4)
 
     app.lbl_lc_count = ttk.Label(toolbar, text="", style="Info.TLabel")
-    app.lbl_lc_count.pack(side=tk.RIGHT, padx=8)
+    app.lbl_lc_count.pack(anchor="w", padx=8, pady=(6, 0))
 
     container = ttk.Frame(frame)
     container.pack(fill=tk.BOTH, expand=True)
@@ -110,11 +112,13 @@ def build_customer_tab(app):
 
     toolbar = ttk.Frame(frame)
     toolbar.pack(fill=tk.X, pady=(0, 8))
-    ttk.Button(toolbar, text="Select All", command=lambda: app._toggle_all_cust(True)).pack(side=tk.LEFT, padx=4)
-    ttk.Button(toolbar, text="Deselect All", command=lambda: app._toggle_all_cust(False)).pack(side=tk.LEFT, padx=4)
+    button_row = ttk.Frame(toolbar)
+    button_row.pack(anchor="w")
+    ttk.Button(button_row, text="Select All", command=lambda: app._toggle_all_cust(True)).pack(side=tk.LEFT, padx=4)
+    ttk.Button(button_row, text="Deselect All", command=lambda: app._toggle_all_cust(False)).pack(side=tk.LEFT, padx=4)
 
     app.lbl_cust_count = ttk.Label(toolbar, text="", style="Info.TLabel")
-    app.lbl_cust_count.pack(side=tk.RIGHT, padx=8)
+    app.lbl_cust_count.pack(anchor="w", padx=8, pady=(6, 0))
 
     container = ttk.Frame(frame)
     container.pack(fill=tk.BOTH, expand=True)

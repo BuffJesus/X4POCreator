@@ -37,11 +37,26 @@ def build_review_tab(app):
     cols = ("vendor", "line_code", "item_code", "description", "order_qty", "status", "why", "pack_size")
     app.tree = ttk.Treeview(tree_frame, columns=cols, show="headings", selectmode="extended")
 
-    col_widths = {"vendor": 90, "line_code": 60, "item_code": 110, "description": 200,
-                  "order_qty": 60, "status": 55, "why": 180, "pack_size": 45}
-    col_labels = {"vendor": "Vendor", "line_code": "LC", "item_code": "Item Code",
-                  "description": "Description", "order_qty": "Final Qty",
-                  "status": "Action", "why": "Why This Qty", "pack_size": "Pack"}
+    col_widths = {
+        "vendor": 90,
+        "line_code": 60,
+        "item_code": 110,
+        "description": 200,
+        "order_qty": 60,
+        "status": 55,
+        "why": 180,
+        "pack_size": 45,
+    }
+    col_labels = {
+        "vendor": "Vendor",
+        "line_code": "LC",
+        "item_code": "Item Code",
+        "description": "Description",
+        "order_qty": "Final Qty",
+        "status": "Action",
+        "why": "Why This Qty",
+        "pack_size": "Pack",
+    }
 
     for col in cols:
         app.tree.heading(col, text=col_labels[col], command=lambda c=col: app._sort_tree(c))
@@ -76,9 +91,14 @@ def build_review_tab(app):
     btn_frame = ttk.Frame(frame)
     btn_frame.pack(fill=tk.X, pady=8)
 
-    ttk.Button(btn_frame, text="Delete Selected", command=app._delete_selected).pack(side=tk.LEFT, padx=4)
-    ttk.Button(btn_frame, text="← Back to Assignment", command=app._back_to_assign).pack(side=tk.LEFT, padx=4)
-    ttk.Button(btn_frame, text="Export POs", style="Big.TButton", command=app._do_export).pack(
+    left_btn_row = ttk.Frame(btn_frame)
+    left_btn_row.pack(anchor="w", fill=tk.X)
+    ttk.Button(left_btn_row, text="Delete Selected", command=app._delete_selected).pack(side=tk.LEFT, padx=4)
+    ttk.Button(left_btn_row, text="Back to Assignment", command=app._back_to_assign).pack(side=tk.LEFT, padx=4)
+
+    right_btn_row = ttk.Frame(btn_frame)
+    right_btn_row.pack(anchor="e", fill=tk.X, pady=(8, 0))
+    ttk.Button(right_btn_row, text="Export POs", style="Big.TButton", command=app._do_export).pack(
         side=tk.RIGHT, padx=4
     )
 
@@ -155,7 +175,8 @@ def show_maintenance_report(app, output_dir, issues):
     ttk.Label(
         dlg,
         text=f"{len(issues)} item(s) to update in X4",
-        style="Header.TLabel", wraplength=1000,
+        style="Header.TLabel",
+        wraplength=1000,
     ).pack(anchor="w", padx=16, pady=(16, 4))
     ttk.Label(
         dlg,
@@ -163,7 +184,8 @@ def show_maintenance_report(app, output_dir, issues):
             "This report is a follow-up checklist for X4. It does not change X4 automatically. "
             "Use it to review supplier, pack, min/max, and QOH differences after export."
         ),
-        style="SubHeader.TLabel", wraplength=1000,
+        style="SubHeader.TLabel",
+        wraplength=1000,
     ).pack(anchor="w", padx=16, pady=(0, 10))
 
     summary_parts = []
@@ -178,14 +200,14 @@ def show_maintenance_report(app, output_dir, issues):
     ttk.Label(
         dlg,
         text="Issues found: " + ", ".join(summary_parts),
-        style="SubHeader.TLabel", wraplength=1000,
+        style="SubHeader.TLabel",
+        wraplength=1000,
     ).pack(anchor="w", padx=16, pady=(0, 12))
 
     tree_frame = ttk.Frame(dlg)
     tree_frame.pack(fill=tk.BOTH, expand=True, padx=16)
 
-    cols = ("line_code", "item_code", "vendor", "x4_supplier",
-            "x4_mm", "target_mm", "sug_mm", "qoh_adj", "issue")
+    cols = ("line_code", "item_code", "vendor", "x4_supplier", "x4_mm", "target_mm", "sug_mm", "qoh_adj", "issue")
     tree = ttk.Treeview(tree_frame, columns=cols, show="headings", selectmode="none")
 
     col_cfg = {
@@ -220,17 +242,22 @@ def show_maintenance_report(app, output_dir, issues):
         sug_mm = f"{row.sug_min}/{row.sug_max}" if row.sug_min != "" or row.sug_max != "" else ""
         qoh_adj = f"{row.qoh_old} -> {row.qoh_new}" if row.qoh_old else ""
 
-        tree.insert("", "end", iid=str(i), values=(
-            row.line_code,
-            row.item_code,
-            row.assigned_vendor,
-            row.x4_supplier,
-            x4_mm,
-            target_mm,
-            sug_mm,
-            qoh_adj,
-            row.issue,
-        ))
+        tree.insert(
+            "",
+            "end",
+            iid=str(i),
+            values=(
+                row.line_code,
+                row.item_code,
+                row.assigned_vendor,
+                row.x4_supplier,
+                x4_mm,
+                target_mm,
+                sug_mm,
+                qoh_adj,
+                row.issue,
+            ),
+        )
 
     btn_frame = ttk.Frame(dlg)
     btn_frame.pack(fill=tk.X, padx=16, pady=12)

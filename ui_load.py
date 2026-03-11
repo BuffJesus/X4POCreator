@@ -3,18 +3,43 @@ from tkinter import ttk
 
 
 def build_load_tab(app):
-    frame = ttk.Frame(app.notebook, padding=16)
+    frame = ttk.Frame(app.notebook, padding=0)
     app.notebook.add(frame, text="  1. Load Files  ")
 
-    ttk.Label(frame, text="Load Data Files", style="Header.TLabel").pack(anchor="w")
+    canvas = tk.Canvas(frame, highlightthickness=0, bg="#1e1e2e")
+    scrollbar = ttk.Scrollbar(frame, orient="vertical", command=canvas.yview)
+    content = ttk.Frame(canvas, padding=16)
+
+    def _sync_scrollregion(_event=None):
+        canvas.configure(scrollregion=canvas.bbox("all"))
+
+    def _resize_window(_event):
+        canvas.itemconfigure(content_window, width=_event.width)
+
+    content.bind("<Configure>", _sync_scrollregion)
+    content_window = canvas.create_window((0, 0), window=content, anchor="nw")
+    canvas.configure(yscrollcommand=scrollbar.set)
+    canvas.bind("<Configure>", _resize_window)
+
+    canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+    scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+
+    def _on_mousewheel(event):
+        if canvas.winfo_exists():
+            canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+
+    canvas.bind("<Enter>", lambda e: canvas.bind_all("<MouseWheel>", _on_mousewheel))
+    canvas.bind("<Leave>", lambda e: canvas.unbind_all("<MouseWheel>"))
+
+    ttk.Label(content, text="Load Data Files", style="Header.TLabel").pack(anchor="w")
     ttk.Label(
-        frame,
+        content,
         text="Point to a folder of X4 report CSVs to auto-detect, or select files individually below.",
         style="SubHeader.TLabel",
         wraplength=900,
     ).pack(anchor="w", pady=(2, 12))
 
-    data_frame = ttk.LabelFrame(frame, text="Shared Data Folder", padding=10)
+    data_frame = ttk.LabelFrame(content, text="Shared Data Folder", padding=10)
     data_frame.pack(fill=tk.X, pady=(0, 8))
 
     app.lbl_data_source = ttk.Label(data_frame, text="", style="Info.TLabel")
@@ -34,20 +59,23 @@ def build_load_tab(app):
     ).pack(anchor="w", pady=(8, 0))
     app._refresh_data_folder_labels()
 
-    scan_frame = ttk.LabelFrame(frame, text="Auto-Detect from Folder", padding=10)
+    scan_frame = ttk.LabelFrame(content, text="Auto-Detect from Folder", padding=10)
     scan_frame.pack(fill=tk.X, pady=(0, 8))
 
     scan_row = ttk.Frame(scan_frame)
     scan_row.pack(fill=tk.X)
     app.var_scan_dir = tk.StringVar()
-    ttk.Entry(scan_row, textvariable=app.var_scan_dir, width=65).pack(side=tk.LEFT, padx=(0, 8))
-    ttk.Button(scan_row, text="Browse Folder...", command=app._browse_folder).pack(side=tk.LEFT, padx=(0, 8))
-    ttk.Button(scan_row, text="Scan & Populate", style="Big.TButton", command=app._scan_folder).pack(side=tk.LEFT)
+    ttk.Entry(scan_row, textvariable=app.var_scan_dir, width=65).pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 8))
+
+    scan_button_row = ttk.Frame(scan_frame)
+    scan_button_row.pack(anchor="w", pady=(8, 0))
+    ttk.Button(scan_button_row, text="Browse Folder...", command=app._browse_folder).pack(side=tk.LEFT, padx=(0, 8))
+    ttk.Button(scan_button_row, text="Scan & Populate", style="Big.TButton", command=app._scan_folder).pack(side=tk.LEFT)
 
     app.lbl_scan_status = ttk.Label(scan_frame, text="", style="Info.TLabel")
     app.lbl_scan_status.pack(anchor="w", pady=(6, 0))
 
-    file_frame = ttk.LabelFrame(frame, text="Input Files", padding=12)
+    file_frame = ttk.LabelFrame(content, text="Input Files", padding=12)
     file_frame.pack(fill=tk.X, pady=4)
 
     _add_file_row(
@@ -107,25 +135,36 @@ def build_load_tab(app):
 
     file_frame.columnconfigure(1, weight=1)
 
-    app.lbl_load_status = ttk.Label(frame, text="", style="Info.TLabel")
+    app.lbl_load_status = ttk.Label(content, text="", style="Info.TLabel")
     app.lbl_load_status.pack(anchor="w", pady=(12, 0))
+
+    footer = ttk.Frame(content)
+    footer.pack(fill=tk.X, pady=(12, 0))
+
+    left_footer = ttk.Frame(footer)
+    left_footer.pack(anchor="w", fill=tk.X)
     app.btn_export_startup_warnings = ttk.Button(
-        frame,
+        left_footer,
         text="Export Startup Warnings CSV",
         command=app._export_startup_warnings_csv,
         state="disabled",
     )
-    app.btn_export_startup_warnings.pack(anchor="w", pady=(8, 0))
+    app.btn_export_startup_warnings.pack(side=tk.LEFT)
 
-    ttk.Button(frame, text="Load Files & Continue ->", style="Big.TButton", command=app._do_load).pack(
-        anchor="e", pady=16
+    right_footer = ttk.Frame(footer)
+    right_footer.pack(anchor="e", fill=tk.X, pady=(8, 0))
+    ttk.Button(right_footer, text="Load Files & Continue ->", style="Big.TButton", command=app._do_load).pack(
+        side=tk.RIGHT
     )
 
 
 def _add_file_row(app, parent, row, label, attr_name, browse_key, hint):
-    ttk.Label(parent, text=label).grid(row=row, column=0, sticky="w", padx=4, pady=4)
+    base_row = row * 2
+    ttk.Label(parent, text=label).grid(row=base_row, column=0, sticky="w", padx=4, pady=(4, 2))
     variable = tk.StringVar()
     setattr(app, attr_name, variable)
-    ttk.Entry(parent, textvariable=variable, width=60).grid(row=row, column=1, padx=4, pady=4)
-    ttk.Button(parent, text="Browse...", command=lambda: app._browse(browse_key)).grid(row=row, column=2, padx=4)
-    ttk.Label(parent, text=hint, style="Path.TLabel").grid(row=row, column=3, sticky="w", padx=4)
+    ttk.Entry(parent, textvariable=variable, width=60).grid(row=base_row, column=1, padx=4, pady=(4, 2), sticky="ew")
+    ttk.Button(parent, text="Browse...", command=lambda: app._browse(browse_key)).grid(row=base_row, column=2, padx=4, pady=(4, 2))
+    ttk.Label(parent, text=hint, style="Path.TLabel").grid(
+        row=base_row + 1, column=1, columnspan=2, sticky="w", padx=4, pady=(0, 4)
+    )

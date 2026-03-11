@@ -26,51 +26,62 @@ def build_bulk_tab(app, editable_cols):
     action_frame = ttk.LabelFrame(frame, text="Bulk Actions", padding=8)
     action_frame.pack(fill=tk.X, pady=(0, 8))
 
-    btn_row = ttk.Frame(action_frame)
-    btn_row.pack(fill=tk.X, pady=2)
-    ttk.Label(btn_row, text="Assign vendor to selected rows:").pack(side=tk.LEFT, padx=4)
+    vendor_row = ttk.Frame(action_frame)
+    vendor_row.pack(fill=tk.X, pady=2)
+    ttk.Label(vendor_row, text="Assign vendor to selected rows:").pack(side=tk.LEFT, padx=4)
     app.var_bulk_vendor = tk.StringVar()
-    app.combo_bulk_vendor = ttk.Combobox(btn_row, textvariable=app.var_bulk_vendor, width=20, font=("Segoe UI", 10))
+    app.combo_bulk_vendor = ttk.Combobox(vendor_row, textvariable=app.var_bulk_vendor, width=20, font=("Segoe UI", 10))
     app.combo_bulk_vendor.pack(side=tk.LEFT, padx=4)
     app.combo_bulk_vendor.bind("<KeyRelease>", app._bulk_vendor_autocomplete)
-    bulk_buttons = [
-        ttk.Button(btn_row, text="Undo", command=app._bulk_undo),
-        ttk.Button(btn_row, text="Redo", command=app._bulk_redo),
-        ttk.Button(btn_row, text="Apply to Selected", command=app._bulk_apply_selected),
-        ttk.Button(btn_row, text="Apply to All Visible", command=app._bulk_apply_visible),
-        ttk.Button(btn_row, text="Fill Selected Cells", command=app._bulk_fill_selected_cells),
-        ttk.Button(btn_row, text="Clear Selected Cells", command=app._bulk_clear_selected_cells),
-        ttk.Button(btn_row, text="Remove Not Needed (On Screen)", command=app._bulk_remove_not_needed_visible),
-        ttk.Button(btn_row, text="Remove Not Needed (Filtered)", command=app._bulk_remove_not_needed_filtered),
-        ttk.Button(btn_row, text="Undo Last Remove", command=app._undo_last_bulk_removal),
+    vendor_buttons = [
+        ttk.Button(vendor_row, text="Apply to Selected", command=app._bulk_apply_selected),
+        ttk.Button(vendor_row, text="Apply to All Visible", command=app._bulk_apply_visible),
+        ttk.Button(vendor_row, text="Manage Vendors...", command=app._open_vendor_manager),
     ]
-    bulk_buttons[0].pack(side=tk.LEFT, padx=4)
-    bulk_buttons[1].pack(side=tk.LEFT, padx=4)
-    bulk_buttons[2].pack(side=tk.LEFT, padx=8)
-    bulk_buttons[3].pack(side=tk.LEFT, padx=4)
-    bulk_buttons[4].pack(side=tk.LEFT, padx=8)
-    bulk_buttons[5].pack(side=tk.LEFT, padx=4)
-    bulk_buttons[6].pack(side=tk.LEFT, padx=8)
-    bulk_buttons[7].pack(side=tk.LEFT, padx=4)
-    bulk_buttons[8].pack(side=tk.LEFT, padx=4)
-    ttk.Button(btn_row, text="Manage Vendors...", command=app._open_vendor_manager).pack(side=tk.LEFT, padx=8)
-    ttk.Button(btn_row, text="Bulk Shortcuts...", command=app._show_bulk_shortcuts).pack(side=tk.LEFT, padx=4)
-    ttk.Button(btn_row, text="Fit Columns To Window", command=app._bulk_fit_columns).pack(side=tk.LEFT, padx=8)
+    vendor_buttons[0].pack(side=tk.LEFT, padx=8)
+    vendor_buttons[1].pack(side=tk.LEFT, padx=4)
+    vendor_buttons[2].pack(side=tk.LEFT, padx=8)
+
+    edit_row = ttk.Frame(action_frame)
+    edit_row.pack(fill=tk.X, pady=2)
+    bulk_buttons = [
+        ttk.Button(edit_row, text="Undo", command=app._bulk_undo),
+        ttk.Button(edit_row, text="Redo", command=app._bulk_redo),
+        ttk.Button(edit_row, text="Fill Selected Cells", command=app._bulk_fill_selected_cells),
+        ttk.Button(edit_row, text="Clear Selected Cells", command=app._bulk_clear_selected_cells),
+        ttk.Button(edit_row, text="Bulk Shortcuts...", command=app._show_bulk_shortcuts),
+        ttk.Button(edit_row, text="Fit Columns To Window", command=app._bulk_fit_columns),
+    ]
+    for idx, button in enumerate(bulk_buttons):
+        button.pack(side=tk.LEFT, padx=(8 if idx == 0 else 4, 0))
+
+    removal_row = ttk.Frame(action_frame)
+    removal_row.pack(fill=tk.X, pady=2)
+    removal_buttons = [
+        ttk.Button(removal_row, text="Remove Not Needed (On Screen)", command=app._bulk_remove_not_needed_visible),
+        ttk.Button(removal_row, text="Remove Not Needed (Filtered)", command=app._bulk_remove_not_needed_filtered),
+        ttk.Button(removal_row, text="Undo Last Remove", command=app._undo_last_bulk_removal),
+    ]
+    for idx, button in enumerate(removal_buttons):
+        button.pack(side=tk.LEFT, padx=(8 if idx == 0 else 4, 0))
 
     filter_frame = ttk.Frame(frame)
     filter_frame.pack(fill=tk.X, pady=(0, 4))
-    ttk.Label(filter_frame, text="Filter:").pack(side=tk.LEFT, padx=(0, 4))
 
-    ttk.Label(filter_frame, text="Line Code:").pack(side=tk.LEFT, padx=(8, 2))
+    filter_row_1 = ttk.Frame(filter_frame)
+    filter_row_1.pack(fill=tk.X, pady=(0, 2))
+    ttk.Label(filter_row_1, text="Filter:").pack(side=tk.LEFT, padx=(0, 4))
+
+    ttk.Label(filter_row_1, text="Line Code:").pack(side=tk.LEFT, padx=(8, 2))
     app.var_bulk_lc_filter = tk.StringVar(value="ALL")
-    app.combo_bulk_lc = ttk.Combobox(filter_frame, textvariable=app.var_bulk_lc_filter, state="readonly", width=10)
+    app.combo_bulk_lc = ttk.Combobox(filter_row_1, textvariable=app.var_bulk_lc_filter, state="readonly", width=10)
     app.combo_bulk_lc.pack(side=tk.LEFT, padx=2)
     app.combo_bulk_lc.bind("<<ComboboxSelected>>", lambda e: app._apply_bulk_filter())
 
-    ttk.Label(filter_frame, text="Status:").pack(side=tk.LEFT, padx=(12, 2))
+    ttk.Label(filter_row_1, text="Status:").pack(side=tk.LEFT, padx=(12, 2))
     app.var_bulk_status_filter = tk.StringVar(value="ALL")
     app.combo_bulk_status = ttk.Combobox(
-        filter_frame,
+        filter_row_1,
         textvariable=app.var_bulk_status_filter,
         state="readonly",
         width=14,
@@ -79,10 +90,10 @@ def build_bulk_tab(app, editable_cols):
     app.combo_bulk_status.pack(side=tk.LEFT, padx=2)
     app.combo_bulk_status.bind("<<ComboboxSelected>>", lambda e: app._apply_bulk_filter())
 
-    ttk.Label(filter_frame, text="Source:").pack(side=tk.LEFT, padx=(12, 2))
+    ttk.Label(filter_row_1, text="Source:").pack(side=tk.LEFT, padx=(12, 2))
     app.var_bulk_source_filter = tk.StringVar(value="ALL")
     app.combo_bulk_source = ttk.Combobox(
-        filter_frame,
+        filter_row_1,
         textvariable=app.var_bulk_source_filter,
         state="readonly",
         width=8,
@@ -91,10 +102,13 @@ def build_bulk_tab(app, editable_cols):
     app.combo_bulk_source.pack(side=tk.LEFT, padx=2)
     app.combo_bulk_source.bind("<<ComboboxSelected>>", lambda e: app._apply_bulk_filter())
 
-    ttk.Label(filter_frame, text="Item Status:").pack(side=tk.LEFT, padx=(12, 2))
+    filter_row_2 = ttk.Frame(filter_frame)
+    filter_row_2.pack(fill=tk.X)
+
+    ttk.Label(filter_row_2, text="Item Status:").pack(side=tk.LEFT, padx=(0, 2))
     app.var_bulk_item_status = tk.StringVar(value="ALL")
     app.combo_bulk_item_status = ttk.Combobox(
-        filter_frame,
+        filter_row_2,
         textvariable=app.var_bulk_item_status,
         state="readonly",
         width=11,
@@ -103,10 +117,10 @@ def build_bulk_tab(app, editable_cols):
     app.combo_bulk_item_status.pack(side=tk.LEFT, padx=2)
     app.combo_bulk_item_status.bind("<<ComboboxSelected>>", lambda e: app._apply_bulk_filter())
 
-    ttk.Label(filter_frame, text="Reorder Cycle:").pack(side=tk.LEFT, padx=(12, 2))
+    ttk.Label(filter_row_2, text="Reorder Cycle:").pack(side=tk.LEFT, padx=(12, 2))
     app.var_reorder_cycle = tk.StringVar(value="Biweekly")
     app.combo_cycle = ttk.Combobox(
-        filter_frame,
+        filter_row_2,
         textvariable=app.var_reorder_cycle,
         state="readonly",
         width=10,
@@ -115,9 +129,9 @@ def build_bulk_tab(app, editable_cols):
     app.combo_cycle.pack(side=tk.LEFT, padx=2)
     app.combo_cycle.bind("<<ComboboxSelected>>", lambda e: app._refresh_suggestions())
 
-    ttk.Label(filter_frame, text="History (days):").pack(side=tk.LEFT, padx=(12, 2))
+    ttk.Label(filter_row_2, text="History (days):").pack(side=tk.LEFT, padx=(12, 2))
     app.var_lookback_days = tk.IntVar(value=14)
-    lookback_spin = ttk.Spinbox(filter_frame, from_=1, to=90, textvariable=app.var_lookback_days, width=4)
+    lookback_spin = ttk.Spinbox(filter_row_2, from_=1, to=90, textvariable=app.var_lookback_days, width=4)
     lookback_spin.pack(side=tk.LEFT, padx=2)
     lookback_spin.bind("<Return>", lambda e: app._refresh_recent_orders())
     lookback_spin.bind("<FocusOut>", lambda e: app._refresh_recent_orders())
@@ -234,7 +248,7 @@ def build_bulk_tab(app, editable_cols):
             justify=tk.LEFT,
             wraplength=900,
         ).pack(anchor="w", padx=8, pady=8)
-        for button in bulk_buttons:
+        for button in (*vendor_buttons, *bulk_buttons, *removal_buttons):
             button.state(["disabled"])
 
     btn_frame = ttk.Frame(frame)
