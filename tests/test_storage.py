@@ -133,6 +133,33 @@ class StorageTests(unittest.TestCase):
                 with self.assertRaises(OSError):
                     storage.save_order_rules(str(path), {"AER-:GH781-4": {"pack_size": 500}})
 
+    def test_load_json_file_rejects_wrong_top_level_type_for_dict_default(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "order_rules.json"
+            path.write_text('["not", "a", "dict"]', encoding="utf-8")
+
+            payload = storage.load_json_file(str(path), {"fallback": True})
+
+            self.assertEqual(payload, {"fallback": True})
+
+    def test_load_json_file_rejects_wrong_top_level_type_for_list_default(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "order_history.json"
+            path.write_text('{"not": "a list"}', encoding="utf-8")
+
+            payload = storage.load_json_file(str(path), [])
+
+            self.assertEqual(payload, [])
+
+    def test_load_suspense_carry_ignores_non_dict_payload(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "suspense_carry.json"
+            path.write_text('["bad", "payload"]', encoding="utf-8")
+
+            loaded = storage.load_suspense_carry(str(path), now=datetime(2026, 3, 10, 12, 0, 0))
+
+            self.assertEqual(loaded, {})
+
 
 if __name__ == "__main__":
     unittest.main()

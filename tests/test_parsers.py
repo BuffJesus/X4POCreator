@@ -21,6 +21,33 @@ class ParserSmokeTests(unittest.TestCase):
             )
             self.assertEqual(parsers.identify_report_type(str(path)), "packsize")
 
+    def test_identify_report_type_skips_leading_blank_rows(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "sales.csv"
+            path.write_text(
+                "\n\nPart Sales & Receipts,From: 01-Mar-2026 thru 10-Mar-2026\n",
+                encoding="utf-8-sig",
+            )
+            self.assertEqual(parsers.identify_report_type(str(path)), "sales")
+
+    def test_scan_directory_for_reports_finds_files_with_blank_leading_rows(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            sales = Path(tmp) / "sales.csv"
+            onhand = Path(tmp) / "onhand.csv"
+            sales.write_text(
+                "\nPart Sales & Receipts,From: 01-Mar-2026 thru 10-Mar-2026\n",
+                encoding="utf-8-sig",
+            )
+            onhand.write_text(
+                "\nON HAND REPORT,09-Mar-2026\n",
+                encoding="utf-8-sig",
+            )
+
+            found = parsers.scan_directory_for_reports(tmp)
+
+            self.assertEqual(found["sales"], str(sales))
+            self.assertEqual(found["onhand"], str(onhand))
+
     def test_parse_pack_sizes_generic_csv(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "generic_pack.csv"

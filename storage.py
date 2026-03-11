@@ -86,6 +86,10 @@ def load_json_file(path, default, with_meta=False):
         try:
             with open(path, "r", encoding="utf-8") as f:
                 payload = json.load(f)
+                if isinstance(default, dict) and not isinstance(payload, dict):
+                    payload = default
+                elif isinstance(default, list) and not isinstance(payload, list):
+                    payload = default
                 if with_meta:
                     return payload, _get_meta(path)
                 return payload

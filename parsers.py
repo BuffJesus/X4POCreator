@@ -13,24 +13,26 @@ def identify_report_type(filepath):
     try:
         with open(filepath, "r", encoding="utf-8-sig") as f:
             reader = csv.reader(f)
-            row = next(reader, [])
-        first_cols = " ".join(str(c).upper() for c in row[:16])
-        if "PART SALES & RECEIPTS" in first_cols:
-            return "sales"
-        if "SUSPENSE REPORT" in first_cols:
-            return "susp"
-        if "PO PART LISTING BY PRODUCT GROUP" in first_cols:
-            return "po"
-        if "ON HAND REPORT" in first_cols:
-            return "onhand"
-        if "ITEMS WITH ORDER MULTIPLE" in first_cols:
-            return "packsize"
-        upper_cols = [str(c).strip().upper() for c in row]
-        if "PG" in upper_cols and "QOH" in upper_cols and "ITEM CODE" in upper_cols:
-            pg_idx = upper_cols.index("PG")
-            qoh_idx = upper_cols.index("QOH")
-            if qoh_idx > pg_idx:
-                return "minmax"
+            for row in reader:
+                if not any(str(c).strip() for c in row):
+                    continue
+                first_cols = " ".join(str(c).upper() for c in row[:16])
+                if "PART SALES & RECEIPTS" in first_cols:
+                    return "sales"
+                if "SUSPENSE REPORT" in first_cols:
+                    return "susp"
+                if "PO PART LISTING BY PRODUCT GROUP" in first_cols:
+                    return "po"
+                if "ON HAND REPORT" in first_cols:
+                    return "onhand"
+                if "ITEMS WITH ORDER MULTIPLE" in first_cols:
+                    return "packsize"
+                upper_cols = [str(c).strip().upper() for c in row]
+                if "PG" in upper_cols and "QOH" in upper_cols and "ITEM CODE" in upper_cols:
+                    pg_idx = upper_cols.index("PG")
+                    qoh_idx = upper_cols.index("QOH")
+                    if qoh_idx > pg_idx:
+                        return "minmax"
     except Exception:
         pass
     return None
