@@ -3,12 +3,14 @@ import unittest
 from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 import po_builder
+import ui_bulk_dialogs
 
 
 class POBuilderTests(unittest.TestCase):
@@ -373,6 +375,124 @@ class POBuilderTests(unittest.TestCase):
         self.assertEqual(item["suggested_qty"], 3)
         self.assertEqual(item["final_qty"], 3)
         self.assertEqual(fake_app.order_rules["GDY-:5VX560"]["pack_size"], 3)
+        self.assertNotIn("order_policy", fake_app.order_rules["GDY-:5VX560"])
+
+    def test_buy_rule_save_allow_below_pack_uses_soft_pack_without_locked_standard(self):
+        fake_app = self._make_calc_app()
+        fake_app.root = SimpleNamespace()
+        fake_app._autosize_dialog = lambda *args, **kwargs: None
+        fake_app._bulk_row_values = lambda item: ("",)
+        fake_app.bulk_sheet = SimpleNamespace(refresh_row=lambda row_id, values: None)
+        fake_app._apply_bulk_filter = lambda: None
+        fake_app._update_bulk_summary = lambda: None
+        key = ("GDY-", "5VX560")
+        fake_app.inventory_lookup[key] = {"qoh": 0, "max": 3}
+        fake_app.filtered_items = [{
+            "line_code": key[0],
+            "item_code": key[1],
+            "description": "BELT",
+            "qty_sold": 3,
+            "qty_suspended": 0,
+            "qty_on_po": 0,
+            "demand_signal": 3,
+            "pack_size": 12,
+            "final_qty": 12,
+            "order_qty": 12,
+            "order_policy": "standard",
+            "suggested_qty": 12,
+            "raw_need": 3,
+        }]
+        fake_app.order_rules = {}
+
+        created_buttons = {}
+
+        class FakeWidget:
+            def __init__(self, *args, **kwargs):
+                pass
+            def pack(self, *args, **kwargs):
+                return self
+            def grid(self, *args, **kwargs):
+                return self
+            def configure(self, *args, **kwargs):
+                return self
+            config = configure
+            def bind(self, *args, **kwargs):
+                return self
+            def insert(self, *args, **kwargs):
+                return self
+            def destroy(self):
+                return None
+            def wait_window(self):
+                return None
+            def transient(self, *args, **kwargs):
+                return self
+            def grab_set(self, *args, **kwargs):
+                return self
+            def title(self, *args, **kwargs):
+                return self
+
+        class FakeTopLevel(FakeWidget):
+            def configure(self, *args, **kwargs):
+                return self
+
+        class FakeStringVar:
+            queue = []
+            def __init__(self, value=""):
+                self.value = FakeStringVar.queue.pop(0) if FakeStringVar.queue else value
+            def get(self):
+                return self.value
+            def set(self, value):
+                self.value = value
+
+        class FakeBooleanVar:
+            queue = []
+            def __init__(self, value=False):
+                self.value = FakeBooleanVar.queue.pop(0) if FakeBooleanVar.queue else value
+            def get(self):
+                return self.value
+            def set(self, value):
+                self.value = value
+
+        class FakeEntry(FakeWidget):
+            values = []
+            def __init__(self, *args, **kwargs):
+                self.value = FakeEntry.values.pop(0) if FakeEntry.values else ""
+            def insert(self, index, text):
+                if not self.value:
+                    self.value = text
+            def get(self):
+                return self.value
+
+        class FakeButton(FakeWidget):
+            def __init__(self, *args, **kwargs):
+                self.command = kwargs.get("command")
+                text = kwargs.get("text", "")
+                created_buttons[text] = self
+
+        FakeStringVar.queue = ["standard", "2", "12"]
+        FakeBooleanVar.queue = [True]
+        FakeEntry.values = [""]
+
+        with patch("ui_bulk_dialogs.tk.Toplevel", FakeTopLevel), \
+             patch("ui_bulk_dialogs.ttk.Label", lambda *args, **kwargs: FakeWidget()), \
+             patch("ui_bulk_dialogs.ttk.LabelFrame", lambda *args, **kwargs: FakeWidget()), \
+             patch("ui_bulk_dialogs.ttk.Combobox", lambda *args, **kwargs: FakeWidget()), \
+             patch("ui_bulk_dialogs.ttk.Checkbutton", lambda *args, **kwargs: FakeWidget()), \
+             patch("ui_bulk_dialogs.ttk.Entry", FakeEntry), \
+             patch("ui_bulk_dialogs.ttk.Frame", lambda *args, **kwargs: FakeWidget()), \
+             patch("ui_bulk_dialogs.ttk.Button", FakeButton), \
+             patch("ui_bulk_dialogs.tk.StringVar", FakeStringVar), \
+             patch("ui_bulk_dialogs.tk.BooleanVar", FakeBooleanVar), \
+             patch("ui_bulk_dialogs.storage.save_order_rules", lambda *args, **kwargs: None):
+            ui_bulk_dialogs.open_buy_rule_editor(fake_app, 0, po_builder.ORDER_RULES_FILE)
+            created_buttons["Save Rule"].command()
+
+        item = fake_app.filtered_items[0]
+        self.assertEqual(item["order_policy"], "soft_pack")
+        self.assertEqual(item["suggested_qty"], 4)
+        self.assertEqual(item["final_qty"], 4)
+        self.assertTrue(fake_app.order_rules["GDY-:5VX560"]["allow_below_pack"])
+        self.assertEqual(fake_app.order_rules["GDY-:5VX560"]["min_order_qty"], 2)
         self.assertNotIn("order_policy", fake_app.order_rules["GDY-:5VX560"])
 
     def test_review_pack_size_edit_recalculates_order_qty(self):

@@ -275,6 +275,8 @@ def open_buy_rule_editor(app, idx, order_rules_file):
     rule_key = f"{item['line_code']}:{item['item_code']}"
     rule = app.order_rules.get(rule_key, {})
     inv = app.inventory_lookup.get(key, {})
+    initial_policy = rule.get("order_policy", item.get("order_policy", "standard"))
+    initial_policy_locked = bool(rule.get("policy_locked"))
 
     dlg = tk.Toplevel(app.root)
     dlg.title(f"Buy Rule - {item['line_code']}{item['item_code']}")
@@ -289,7 +291,7 @@ def open_buy_rule_editor(app, idx, order_rules_file):
     form.pack(fill=tk.X, padx=16, pady=4)
 
     ttk.Label(form, text="Order Policy:").grid(row=0, column=0, sticky="w", pady=4)
-    var_policy = tk.StringVar(value=rule.get("order_policy", item.get("order_policy", "standard")))
+    var_policy = tk.StringVar(value=initial_policy)
     combo_policy = ttk.Combobox(
         form, textvariable=var_policy, state="readonly", width=16,
         values=["standard", "soft_pack", "exact_qty", "reel_review", "manual_only"]
@@ -355,7 +357,12 @@ def open_buy_rule_editor(app, idx, order_rules_file):
             item.get("pack_size"),
             allow_below_pack=new_rule.get("allow_below_pack", False),
         )
-        if selected_policy != inferred_policy:
+        user_changed_policy = selected_policy != initial_policy
+        keep_existing_locked_policy = initial_policy_locked and not user_changed_policy
+        if keep_existing_locked_policy and selected_policy != inferred_policy:
+            new_rule["order_policy"] = selected_policy
+            new_rule["policy_locked"] = True
+        elif user_changed_policy and selected_policy != inferred_policy:
             new_rule["order_policy"] = selected_policy
             new_rule["policy_locked"] = True
         else:
