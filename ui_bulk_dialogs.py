@@ -4,6 +4,7 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 
 import storage
+from debug_log import write_debug
 from rules import enrich_item, evaluate_item_status, get_rule_pack_size, infer_default_order_policy
 from ui_scroll import attach_vertical_mousewheel
 
@@ -275,6 +276,15 @@ def open_buy_rule_editor(app, idx, order_rules_file):
     rule_key = f"{item['line_code']}:{item['item_code']}"
     rule = app.order_rules.get(rule_key, {})
     inv = app.inventory_lookup.get(key, {})
+    write_debug(
+        "buy_rule_editor.open",
+        idx=idx,
+        line_code=item["line_code"],
+        item_code=item["item_code"],
+        item_pack=item.get("pack_size"),
+        item_policy=item.get("order_policy", ""),
+        rule=repr(rule),
+    )
     initial_policy = rule.get("order_policy", item.get("order_policy", "standard"))
     initial_policy_locked = bool(rule.get("policy_locked"))
 
@@ -333,6 +343,18 @@ def open_buy_rule_editor(app, idx, order_rules_file):
             "allow_below_pack": var_allow.get(),
             "notes": notes_entry.get().strip(),
         }
+        write_debug(
+            "buy_rule_editor.save.begin",
+            idx=idx,
+            line_code=item["line_code"],
+            item_code=item["item_code"],
+            selected_policy=var_policy.get(),
+            allow_below_pack=var_allow.get(),
+            min_order_qty=var_min.get().strip(),
+            pack_qty=var_pack.get().strip(),
+            initial_policy=initial_policy,
+            initial_policy_locked=initial_policy_locked,
+        )
         min_val = var_min.get().strip()
         if min_val:
             try:
@@ -372,9 +394,31 @@ def open_buy_rule_editor(app, idx, order_rules_file):
         app.order_rules[rule_key] = new_rule
         storage.save_order_rules(order_rules_file, app.order_rules)
         enrich_item(item, inv, item.get("pack_size"), new_rule)
+        write_debug(
+            "buy_rule_editor.save.applied",
+            idx=idx,
+            line_code=item["line_code"],
+            item_code=item["item_code"],
+            inferred_policy=inferred_policy,
+            saved_rule=repr(new_rule),
+            result_policy=item.get("order_policy", ""),
+            raw_need=item.get("raw_need"),
+            suggested=item.get("suggested_qty"),
+            final=item.get("final_qty"),
+            why=item.get("why", ""),
+        )
         app._apply_bulk_filter()
         app._update_bulk_summary()
         if getattr(app, "bulk_sheet", None):
+            try:
+                rendered = app._bulk_row_values(item)
+                write_debug(
+                    "buy_rule_editor.save.rendered_row",
+                    idx=idx,
+                    row=" || ".join("" if cell is None else str(cell) for cell in rendered),
+                )
+            except Exception as exc:
+                write_debug("buy_rule_editor.save.rendered_row_error", idx=idx, error=str(exc))
             app.bulk_sheet.refresh_row(str(idx), app._bulk_row_values(item))
         else:
             for child in app.bulk_tree.get_children():
@@ -463,8 +507,16 @@ def view_item_details(app):
 
 
 def edit_buy_rule_from_bulk(app):
-    row_id = getattr(app, "_right_click_row_id", None) or (
+    right_click_context = getattr(app, "_right_click_bulk_context", None) or {}
+    row_id = right_click_context.get("row_id")
+    if row_id is None:
+        row_id = getattr(app, "_right_click_row_id", None) or (
         app.bulk_sheet.current_row_id() if getattr(app, "bulk_sheet", None) else None
+        )
+    write_debug(
+        "bulk_edit_buy_rule.command",
+        resolved_row_id="" if row_id is None else row_id,
+        right_click_context=repr(right_click_context),
     )
     if row_id is None:
         return

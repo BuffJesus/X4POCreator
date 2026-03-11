@@ -1725,6 +1725,14 @@ class POBuilderApp:
         write_debug("bulk_filter.applied", total=len(self.filtered_items), sample=sample)
 
     def _open_buy_rule_editor(self, idx):
+        item = self.filtered_items[idx] if 0 <= idx < len(self.filtered_items) else {}
+        write_debug(
+            "bulk_open_buy_rule_editor",
+            idx=idx,
+            line_code=item.get("line_code", ""),
+            item_code=item.get("item_code", ""),
+            right_click_context=repr(getattr(self, "_right_click_bulk_context", None)),
+        )
         ui_bulk_dialogs.open_buy_rule_editor(self, idx, ORDER_RULES_FILE)
 
     def _view_item_details(self):
