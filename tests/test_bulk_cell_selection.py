@@ -119,6 +119,30 @@ class BulkSheetStatusTests(unittest.TestCase):
         self.assertEqual(result, "break")
         self.assertEqual(calls[:6], [("0", "pack_size", "750"), ("1", "pack_size", "750"), ("filter",), ("cleared",), ("summary",), ("status",)])
 
+    def test_bulk_begin_edit_uses_selected_rows_when_column_is_active(self):
+        calls = []
+        fake_app = SimpleNamespace(
+            bulk_sheet=SimpleNamespace(
+                selected_editable_column_name=lambda: "",
+                current_editable_column_name=lambda: "pack_size",
+                selected_target_row_ids=lambda col_name: (),
+                selected_row_ids=lambda: ("0", "1"),
+                current_cell_value=lambda: "500",
+                clear_selection=lambda: calls.append(("cleared",)),
+            ),
+            root=None,
+            _bulk_apply_editor_value=lambda row_id, col_name, value: calls.append((row_id, col_name, value)),
+            _apply_bulk_filter=lambda: calls.append(("filter",)),
+            _update_bulk_summary=lambda: calls.append(("summary",)),
+            _update_bulk_cell_status=lambda: calls.append(("status",)),
+        )
+
+        with patch("po_builder.simpledialog.askstring", return_value="750"):
+            result = po_builder.POBuilderApp._bulk_begin_edit(fake_app)
+
+        self.assertEqual(result, "break")
+        self.assertEqual(calls[:6], [("0", "pack_size", "750"), ("1", "pack_size", "750"), ("filter",), ("cleared",), ("summary",), ("status",)])
+
 
 class BulkSheetViewTests(unittest.TestCase):
     def test_handle_edit_applies_value_to_selected_target_rows(self):
@@ -179,8 +203,10 @@ class BulkSheetViewTests(unittest.TestCase):
     def test_selected_editable_column_name_returns_single_selected_column(self):
         view = BulkSheetView.__new__(BulkSheetView)
         view.columns = ("vendor", "pack_size", "why")
+        view.editable_cols = {"vendor", "pack_size"}
         view.sheet = SimpleNamespace(get_selected_cells=lambda: [(0, 1), (2, 1)])
         view.current_column_name = lambda: ""
+        view.current_editable_column_name = lambda: ""
 
         self.assertEqual(view.selected_editable_column_name(), "pack_size")
 
@@ -189,8 +215,19 @@ class BulkSheetViewTests(unittest.TestCase):
         view.columns = ("vendor", "pack_size", "why")
         view.sheet = SimpleNamespace(get_selected_cells=lambda: [(0, 1), (2, 2)])
         view.current_column_name = lambda: ""
+        view.current_editable_column_name = lambda: ""
+        view.editable_cols = {"vendor", "pack_size"}
 
         self.assertEqual(view.selected_editable_column_name(), "")
+
+    def test_selected_editable_column_name_uses_explicit_selected_column(self):
+        view = BulkSheetView.__new__(BulkSheetView)
+        view.columns = ("vendor", "pack_size", "why")
+        view.editable_cols = {"vendor", "pack_size"}
+        view.sheet = SimpleNamespace(get_selected_cells=lambda: [], get_selected_columns=lambda: {1})
+        view.current_editable_column_name = lambda: ""
+
+        self.assertEqual(view.selected_editable_column_name(), "pack_size")
 
     def test_selected_target_row_ids_prefers_cells_in_active_column(self):
         view = BulkSheetView.__new__(BulkSheetView)

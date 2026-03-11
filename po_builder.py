@@ -1426,7 +1426,11 @@ class POBuilderApp:
             self.bulk_sheet.selected_editable_column_name()
             or self.bulk_sheet.current_editable_column_name()
         )
-        row_ids = list(self.bulk_sheet.selected_target_row_ids(col_name)) if col_name else []
+        row_ids = []
+        if col_name:
+            row_ids = list(self.bulk_sheet.selected_target_row_ids(col_name))
+        if not row_ids and self.bulk_sheet:
+            row_ids = list(self.bulk_sheet.selected_row_ids())
         if col_name in BULK_EDITABLE_COLS and len(row_ids) > 1:
             prompt = f"Enter a value for {col_name} across {len(row_ids)} selected row(s):"
             initial = self.bulk_sheet.current_cell_value()

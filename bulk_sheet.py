@@ -264,14 +264,24 @@ class BulkSheetView:
         return self.selected_row_ids()
 
     def selected_editable_column_name(self):
+        get_selected_columns = getattr(self.sheet, "get_selected_columns", None)
+        explicit_cols = tuple(
+            self.columns[c]
+            for c in sorted(get_selected_columns() if get_selected_columns else ())
+            if 0 <= c < len(self.columns) and self.columns[c] in self.editable_cols
+        )
+        if len(explicit_cols) == 1:
+            return explicit_cols[0]
+        if len(explicit_cols) > 1:
+            return ""
         selected_cells = self.selected_cells()
         if not selected_cells:
-            return self.current_column_name()
+            return self.current_editable_column_name()
         columns = {c for _, c in selected_cells}
         if len(columns) != 1:
             return ""
         col_idx = next(iter(columns))
-        if 0 <= col_idx < len(self.columns):
+        if 0 <= col_idx < len(self.columns) and self.columns[col_idx] in self.editable_cols:
             return self.columns[col_idx]
         return ""
 
