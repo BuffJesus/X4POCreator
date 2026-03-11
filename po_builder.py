@@ -26,6 +26,7 @@ import assignment_flow
 import export_flow
 import item_workflow
 import load_flow
+import maintenance_flow
 import parsers
 import storage
 from debug_log import DEBUG_LOG_FILE, write_debug
@@ -2027,80 +2028,11 @@ class POBuilderApp:
         """
         Build a list of X4 data maintenance items from source/session/suggested state.
         """
-        seen_keys = set()
-        items_by_key = {}
-        for item in self.filtered_items:
-            items_by_key[(item["line_code"], item["item_code"])] = dict(item)
-        for item in self.assigned_items:
-            key = (item["line_code"], item["item_code"])
-            merged = dict(items_by_key.get(key, {}))
-            merged.update(item)
-            items_by_key[key] = merged
-        items = list(items_by_key.values()) if items_by_key else list(self.assigned_items)
-        candidates = []
-
-        for item in items:
-            key = (item["line_code"], item["item_code"])
-            seen_keys.add(key)
-            x4_inv = self.inventory_source_lookup.get(key, {})
-            live_inv = self.inventory_lookup.get(key, {})
-            other_lcs = self.duplicate_ic_lookup.get(item["item_code"], set())
-            others = tuple(sorted(lc for lc in other_lcs if lc != item["line_code"]))
-            sug_min, sug_max = self._suggest_min_max(key)
-            qoh_adj = self.qoh_adjustments.get(key)
-            candidates.append(
-                MaintenanceCandidate(
-                    key=ItemKey(item["line_code"], item["item_code"]),
-                    source=SourceItemState(
-                        supplier=x4_inv.get("supplier", ""),
-                        order_multiple=self._get_x4_pack_size(key),
-                        min_qty=x4_inv.get("min"),
-                        max_qty=x4_inv.get("max"),
-                    ),
-                    session=SessionItemState(
-                        description=item.get("description", ""),
-                        vendor=item.get("vendor", ""),
-                        pack_size=item.get("pack_size"),
-                        target_min=live_inv.get("min"),
-                        target_max=live_inv.get("max"),
-                        qoh_old=qoh_adj["old"] if qoh_adj else None,
-                        qoh_new=qoh_adj["new"] if qoh_adj else None,
-                        data_flags=tuple(item.get("data_flags", [])),
-                        order_policy=item.get("order_policy", ""),
-                        duplicate_line_codes=others,
-                    ),
-                    suggested=SuggestedItemState(
-                        min_qty=sug_min,
-                        max_qty=sug_max,
-                    ),
-                )
-            )
-
-        for key, adj in self.qoh_adjustments.items():
-            if key in seen_keys:
-                continue
-            x4_inv = self.inventory_source_lookup.get(key, {})
-            live_inv = self.inventory_lookup.get(key, {})
-            candidates.append(
-                MaintenanceCandidate(
-                    key=ItemKey(key[0], key[1]),
-                    source=SourceItemState(
-                        supplier=x4_inv.get("supplier", ""),
-                        order_multiple=self._get_x4_pack_size(key),
-                        min_qty=x4_inv.get("min"),
-                        max_qty=x4_inv.get("max"),
-                    ),
-                    session=SessionItemState(
-                        description="",
-                        target_min=live_inv.get("min"),
-                        target_max=live_inv.get("max"),
-                        qoh_old=adj["old"],
-                        qoh_new=adj["new"],
-                    ),
-                    suggested=SuggestedItemState(),
-                )
-            )
-
+        candidates = maintenance_flow.build_maintenance_candidates(
+            self.session,
+            suggest_min_max=self._suggest_min_max,
+            get_x4_pack_size=self._get_x4_pack_size,
+        )
         return build_maintenance_report(candidates)
 
     def _build_session_snapshot(self, output_dir, created_files, maintenance_issues):
