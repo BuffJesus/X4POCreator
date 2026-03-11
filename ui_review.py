@@ -3,6 +3,7 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 
 from ui_grid_edit import TreeGridEditor
+from ui_scroll import attach_vertical_mousewheel
 
 
 def build_review_tab(app):
@@ -53,6 +54,7 @@ def build_review_tab(app):
     app.tree.configure(yscrollcommand=vsb.set)
     app.tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
     vsb.pack(side=tk.RIGHT, fill=tk.Y)
+    attach_vertical_mousewheel(app.tree)
 
     app.tree.bind("<Double-1>", app._on_tree_double_click)
     app.tree.bind("<Button-1>", app._on_review_tree_click)
@@ -208,6 +210,7 @@ def show_maintenance_report(app, output_dir, issues):
     tree.grid(row=0, column=0, sticky="nsew")
     vsb.grid(row=0, column=1, sticky="ns")
     hsb.grid(row=1, column=0, sticky="ew")
+    attach_vertical_mousewheel(tree)
     tree_frame.grid_rowconfigure(0, weight=1)
     tree_frame.grid_columnconfigure(0, weight=1)
 

@@ -5,6 +5,7 @@ from tkinter import ttk, messagebox
 
 import storage
 from rules import enrich_item, evaluate_item_status, get_rule_pack_size
+from ui_scroll import attach_vertical_mousewheel
 
 
 def not_needed_reason(app, item, max_exceed_abs_buffer):
@@ -258,6 +259,7 @@ def bulk_remove_not_needed(app, scope, max_exceed_abs_buffer):
     ttk.Button(btn_frame, text="Cancel", command=dlg.destroy).pack(side=tk.LEFT, padx=4)
     ttk.Button(btn_frame, text="Remove Checked", style="Big.TButton", command=_confirm).pack(side=tk.RIGHT, padx=4)
 
+    attach_vertical_mousewheel(canvas, canvas, inner)
     app._autosize_dialog(dlg, min_w=1120, min_h=560, max_w_ratio=0.98, max_h_ratio=0.92)
     dlg.wait_window()
 
@@ -533,7 +535,7 @@ def check_stock_warnings(app):
         ttk.Label(inner, text=item["item_code"], width=13).grid(row=r, column=2, sticky="w", padx=2)
         ttk.Label(inner, text=item["description"][:80], width=22, wraplength=260, justify="left").grid(row=r, column=3, sticky="w", padx=2)
         ttk.Label(inner, text=f"{qoh:g}", width=6).grid(row=r, column=4, sticky="w", padx=2)
-        ttk.Label(inner, text=str(item["order_qty"]), width=6).grid(row=r, column=5, sticky="w", padx=2)
+        ttk.Label(inner, text=str(max(0, int(item["order_qty"]))), width=6).grid(row=r, column=5, sticky="w", padx=2)
         ttk.Label(inner, text=str(ps) if ps else "", width=5).grid(row=r, column=6, sticky="w", padx=2)
         ttk.Label(inner, text=str(mn) if mn is not None else "", width=5).grid(row=r, column=7, sticky="w", padx=2)
         ttk.Label(inner, text=str(mx) if mx is not None else "", width=5).grid(row=r, column=8, sticky="w", padx=2)
@@ -555,6 +557,7 @@ def check_stock_warnings(app):
     ttk.Button(btn_frame, text="<- Go Back", command=dlg.destroy).pack(side=tk.LEFT, padx=4)
     ttk.Button(btn_frame, text=f"Confirm ({len(flagged)} item(s) flagged)", style="Big.TButton", command=_confirm).pack(side=tk.RIGHT, padx=4)
 
+    attach_vertical_mousewheel(canvas, canvas, inner)
     app._autosize_dialog(dlg, min_w=900, min_h=520, max_w_ratio=0.95, max_h_ratio=0.92)
     dlg.wait_window()
     return result["proceed"]
@@ -581,7 +584,7 @@ def finish_bulk_final(app):
             "line_code": item["line_code"],
             "item_code": item["item_code"],
             "description": item["description"],
-            "order_qty": item.get("final_qty", item.get("order_qty", 0)),
+            "order_qty": max(0, int(item.get("final_qty", item.get("order_qty", 0)))),
             "qty_sold": item["qty_sold"],
             "qty_suspended": item.get("qty_suspended", 0),
             "qty_received": item.get("qty_received", 0),

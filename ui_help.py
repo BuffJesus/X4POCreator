@@ -1,5 +1,6 @@
 import tkinter as tk
 from tkinter import ttk
+from ui_scroll import attach_vertical_mousewheel
 
 
 HELP_SECTIONS = [
@@ -276,6 +277,7 @@ def _build_help_page(parent, intro, body_text):
     scroll = ttk.Scrollbar(body_frame, orient="vertical", command=body.yview)
     scroll.pack(side=tk.RIGHT, fill=tk.Y)
     body.configure(yscrollcommand=scroll.set)
+    attach_vertical_mousewheel(body)
 
     body.insert("1.0", body_text)
     body.configure(state="disabled")

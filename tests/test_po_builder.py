@@ -92,6 +92,16 @@ class POBuilderTests(unittest.TestCase):
         self.assertEqual(item["order_qty"], 3)
         self.assertTrue(item["manual_override"])
 
+    def test_quantity_helper_clamps_negative_qty_to_zero(self):
+        fake_app = self._make_calc_app()
+        item = {"order_qty": 7}
+
+        po_builder.POBuilderApp._set_effective_order_qty(fake_app, item, -12, manual_override=True)
+
+        self.assertEqual(item["final_qty"], 0)
+        self.assertEqual(item["order_qty"], 0)
+        self.assertTrue(item["manual_override"])
+
     def test_remember_vendor_code_normalizes_and_sorts(self):
         fake_app = self._make_calc_app()
         fake_app.vendor_codes_used = ["MOTION"]
@@ -208,6 +218,45 @@ class POBuilderTests(unittest.TestCase):
         self.assertEqual(assigned["status"], "warning")
         self.assertIn("zero_final", assigned["data_flags"])
 
+    def test_review_negative_qty_edit_is_clamped_to_zero(self):
+        fake_app = self._make_calc_app()
+        key = ("AER-", "GH781-4")
+        filtered_item = {
+            "line_code": key[0],
+            "item_code": key[1],
+            "description": "HOSE",
+            "qty_sold": 9,
+            "qty_suspended": 0,
+            "qty_on_po": 0,
+            "demand_signal": 9,
+            "vendor": "MOTION",
+            "pack_size": 6,
+            "final_qty": 12,
+            "order_qty": 12,
+        }
+        fake_app.inventory_lookup[key] = {"qoh": 0, "max": 10}
+        fake_app.filtered_items = [filtered_item]
+        po_builder.POBuilderApp._recalculate_item(fake_app, filtered_item)
+        fake_app.assigned_items = [{
+            "line_code": key[0],
+            "item_code": key[1],
+            "description": "HOSE",
+            "vendor": "MOTION",
+            "pack_size": filtered_item["pack_size"],
+            "order_qty": filtered_item["order_qty"],
+            "status": filtered_item["status"],
+            "why": filtered_item["why"],
+            "order_policy": filtered_item["order_policy"],
+            "data_flags": list(filtered_item["data_flags"]),
+        }]
+
+        po_builder.POBuilderApp._review_apply_editor_value(fake_app, "0", "order_qty", "-12")
+
+        assigned = fake_app.assigned_items[0]
+        self.assertEqual(filtered_item["final_qty"], 0)
+        self.assertEqual(assigned["final_qty"], 0)
+        self.assertEqual(assigned["order_qty"], 0)
+
     def test_bulk_cur_max_edit_recalculates_raw_need(self):
         fake_app = self._make_calc_app()
         key = ("AER-", "GH781-4")
@@ -298,6 +347,41 @@ class POBuilderTests(unittest.TestCase):
         self.assertEqual(title, "Sales Window Warning")
         self.assertIn("You can continue", message)
         self.assertIn("wider sales date range is recommended", message)
+
+    def test_parse_all_files_warns_when_inventory_has_negative_qoh(self):
+        original_parse_sales = po_builder.parsers.parse_part_sales_csv
+        original_parse_range = po_builder.parsers.parse_sales_date_range
+        original_parse_onhand = po_builder.parsers.parse_on_hand_report
+        try:
+            po_builder.parsers.parse_part_sales_csv = lambda path: [{
+                "line_code": "AMS-",
+                "item_code": "XLF-1G",
+                "description": "5W-30 XL OIL",
+                "qty_received": 0,
+                "qty_sold": 2,
+            }]
+            po_builder.parsers.parse_sales_date_range = lambda path: (None, None)
+            po_builder.parsers.parse_on_hand_report = lambda path: {
+                ("AMS-", "XLF-1G"): {"qoh": -12.0, "repl_cost": 45.75}
+            }
+
+            result = po_builder.POBuilderApp._parse_all_files({
+                "sales": "sales.csv",
+                "po": "",
+                "susp": "",
+                "onhand": "onhand.csv",
+                "minmax": "",
+                "packsize": "",
+            })
+        finally:
+            po_builder.parsers.parse_part_sales_csv = original_parse_sales
+            po_builder.parsers.parse_sales_date_range = original_parse_range
+            po_builder.parsers.parse_on_hand_report = original_parse_onhand
+
+        warning_titles = [title for title, _message in result["warnings"]]
+        self.assertIn("Negative QOH Warning", warning_titles)
+        self.assertEqual(result["startup_warning_rows"][0]["warning_type"], "Negative QOH Warning")
+        self.assertEqual(result["startup_warning_rows"][0]["qty"], "-12")
 
 
 if __name__ == "__main__":

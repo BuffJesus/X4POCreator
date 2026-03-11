@@ -823,6 +823,38 @@ class POBuilderApp:
         result["inventory_lookup"] = inventory_lookup
 
         if inventory_lookup:
+            negative_qoh = [
+                ((line_code, item_code), info)
+                for (line_code, item_code), info in inventory_lookup.items()
+                if isinstance(info.get("qoh"), (int, float)) and info.get("qoh", 0) < 0
+            ]
+            if negative_qoh:
+                negative_qoh.sort(key=lambda entry: (entry[0][0], entry[0][1]))
+                sample = "\n".join(
+                    f"  {line_code}/{item_code}: QOH {info.get('qoh', 0):g}"
+                    for (line_code, item_code), info in negative_qoh[:8]
+                )
+                warnings.append((
+                    "Negative QOH Warning",
+                    (
+                        f"{len(negative_qoh)} item(s) have negative QOH in the inventory source data.\n"
+                        "You can continue, but these items should be checked in X4 because suggestions may be distorted until the quantity is corrected.\n\n"
+                        f"Examples:\n{sample}"
+                    ),
+                ))
+                for (line_code, item_code), info in negative_qoh:
+                    startup_warning_rows.append({
+                        "warning_type": "Negative QOH Warning",
+                        "severity": "warning",
+                        "line_code": line_code,
+                        "item_code": item_code,
+                        "description": desc_lookup.get((line_code, item_code), ""),
+                        "reference_date": "",
+                        "qty": f"{info.get('qoh', 0):g}",
+                        "po_reference": "",
+                        "details": "Inventory source data shows negative QOH; verify the on-hand balance in X4.",
+                    })
+
             missing = [s for s in result["sales_items"] if (s["line_code"], s["item_code"]) not in inventory_lookup]
             if missing:
                 missing_qty = sum(s.get("qty_sold", 0) for s in missing)
@@ -1231,6 +1263,7 @@ class POBuilderApp:
 
     def _set_effective_order_qty(self, item, qty, *, manual_override=False):
         """Keep quantity fields aligned while optionally marking a user override."""
+        qty = max(0, int(qty))
         item["final_qty"] = qty
         item["order_qty"] = qty
         if manual_override:
