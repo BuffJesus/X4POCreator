@@ -66,7 +66,11 @@ def build_exclude_tab(app):
 
     app.lc_vars = {}
 
-    ttk.Button(frame, text="Continue ->", style="Big.TButton", command=app._do_exclude).pack(anchor="e", pady=12)
+    footer = ttk.Frame(frame)
+    footer.pack(fill=tk.X, pady=12)
+    right_footer = ttk.Frame(footer)
+    right_footer.pack(anchor="e", fill=tk.X)
+    ttk.Button(right_footer, text="Continue ->", style="Big.TButton", command=app._do_exclude).pack(side=tk.RIGHT)
 
 
 def populate_exclude_tab(app):
@@ -143,9 +147,16 @@ def build_customer_tab(app):
 
     app.cust_vars = {}
 
+    footer = ttk.Frame(frame)
+    footer.pack(fill=tk.X, pady=12)
+    right_footer = ttk.Frame(footer)
+    right_footer.pack(anchor="e", fill=tk.X)
     ttk.Button(
-        frame, text="Continue to Vendor Assignment ->", style="Big.TButton", command=app._do_customer_exclude
-    ).pack(anchor="e", pady=12)
+        right_footer,
+        text="Continue to Vendor Assignment ->",
+        style="Big.TButton",
+        command=app._do_customer_exclude,
+    ).pack(side=tk.RIGHT)
 
 
 def populate_customer_tab(app):

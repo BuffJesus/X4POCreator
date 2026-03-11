@@ -140,21 +140,16 @@ def build_load_tab(app):
 
     footer = ttk.Frame(content)
     footer.pack(fill=tk.X, pady=(12, 0))
-
-    left_footer = ttk.Frame(footer)
-    left_footer.pack(anchor="w", fill=tk.X)
+    footer.columnconfigure(1, weight=1)
     app.btn_export_startup_warnings = ttk.Button(
-        left_footer,
+        footer,
         text="Export Startup Warnings CSV",
         command=app._export_startup_warnings_csv,
         state="disabled",
     )
-    app.btn_export_startup_warnings.pack(side=tk.LEFT)
-
-    right_footer = ttk.Frame(footer)
-    right_footer.pack(anchor="e", fill=tk.X, pady=(8, 0))
-    ttk.Button(right_footer, text="Load Files & Continue ->", style="Big.TButton", command=app._do_load).pack(
-        side=tk.RIGHT
+    app.btn_export_startup_warnings.grid(row=0, column=0, sticky="w")
+    ttk.Button(footer, text="Load Files & Continue ->", style="Big.TButton", command=app._do_load).grid(
+        row=0, column=2, sticky="e"
     )
 
 

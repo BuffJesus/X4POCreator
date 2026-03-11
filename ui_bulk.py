@@ -253,12 +253,21 @@ def build_bulk_tab(app, editable_cols):
 
     btn_frame = ttk.Frame(frame)
     btn_frame.pack(fill=tk.X, pady=8)
-    ttk.Button(btn_frame, text="Assign Remaining Individually ->", command=app._go_to_individual).pack(
+
+    left_btn_row = ttk.Frame(btn_frame)
+    left_btn_row.pack(anchor="w", fill=tk.X)
+    ttk.Button(left_btn_row, text="Assign Remaining Individually ->", command=app._go_to_individual).pack(
         side=tk.LEFT, padx=4
     )
-    ttk.Button(btn_frame, text="Remove Unassigned & Go to Review ->", style="Big.TButton", command=app._finish_bulk).pack(
-        side=tk.RIGHT, padx=4
-    )
+
+    right_btn_row = ttk.Frame(btn_frame)
+    right_btn_row.pack(anchor="e", fill=tk.X, pady=(8, 0))
+    ttk.Button(
+        right_btn_row,
+        text="Remove Unassigned & Go to Review ->",
+        style="Big.TButton",
+        command=app._finish_bulk,
+    ).pack(side=tk.RIGHT, padx=4)
 
 
 def populate_bulk_tree(app):
