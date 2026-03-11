@@ -10,6 +10,7 @@ def prepare_assignment_session(
     excluded_line_codes,
     excluded_customers,
     dup_whitelist,
+    ignored_keys,
     lookback_days,
     order_history_path,
     vendor_codes_path,
@@ -54,6 +55,8 @@ def prepare_assignment_session(
         if item["line_code"] in excluded_line_codes:
             continue
         key = (item["line_code"], item["item_code"])
+        if f"{key[0]}:{key[1]}" in ignored_keys:
+            continue
         sq = suspended_qty.get(key, 0)
         carry_qty = get_suspense_carry_qty(key)
         effective_sales = max(0, int(item.get("qty_sold", 0)) - carry_qty)
@@ -84,6 +87,8 @@ def prepare_assignment_session(
 
     for key, susp_list in session.suspended_lookup.items():
         if key in seen_keys or key[0] in excluded_line_codes:
+            continue
+        if f"{key[0]}:{key[1]}" in ignored_keys:
             continue
         sq = suspended_qty.get(key, 0)
         if sq <= 0:

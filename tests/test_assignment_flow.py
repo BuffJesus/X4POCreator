@@ -36,6 +36,7 @@ class AssignmentFlowTests(unittest.TestCase):
                 excluded_line_codes=set(),
                 excluded_customers=set(),
                 dup_whitelist=set(),
+                ignored_keys=set(),
                 lookback_days=14,
                 order_history_path=str(ROOT / "test_order_history.json"),
                 vendor_codes_path=str(ROOT / "test_vendor_codes.txt"),
@@ -74,6 +75,44 @@ class AssignmentFlowTests(unittest.TestCase):
                 excluded_line_codes={"AER-"},
                 excluded_customers=set(),
                 dup_whitelist=set(),
+                ignored_keys=set(),
+                lookback_days=14,
+                order_history_path=str(ROOT / "test_order_history.json"),
+                vendor_codes_path=str(ROOT / "test_vendor_codes.txt"),
+                known_vendors=[],
+                get_suspense_carry_qty=lambda key: 0,
+                default_vendor_for_key=lambda key: "",
+                resolve_pack_size=lambda key: None,
+                suggest_min_max=lambda key: (None, None),
+                get_rule_key=lambda lc, ic: f"{lc}:{ic}",
+            )
+
+        self.assertFalse(result)
+        self.assertEqual(session.filtered_items, [])
+
+    def test_prepare_assignment_session_skips_persistently_ignored_items(self):
+        session = AppSessionState(
+            sales_items=[{
+                "line_code": "AER-",
+                "item_code": "GH781-4",
+                "description": "HOSE",
+                "qty_received": 0,
+                "qty_sold": 9,
+            }],
+            inventory_lookup={
+                ("AER-", "GH781-4"): {"qoh": 0, "max": 10},
+            },
+            order_rules={},
+        )
+
+        with patch("assignment_flow.storage.get_recent_orders", return_value={}), \
+             patch("assignment_flow.storage.load_vendor_codes", return_value=[]):
+            result = assignment_flow.prepare_assignment_session(
+                session,
+                excluded_line_codes=set(),
+                excluded_customers=set(),
+                dup_whitelist=set(),
+                ignored_keys={"AER-:GH781-4"},
                 lookback_days=14,
                 order_history_path=str(ROOT / "test_order_history.json"),
                 vendor_codes_path=str(ROOT / "test_vendor_codes.txt"),

@@ -15,6 +15,8 @@ def not_needed_reason(app, item, max_exceed_abs_buffer):
     key = (item["line_code"], item["item_code"])
     inv = app.inventory_lookup.get(key, {})
     qoh = inv.get("qoh", 0)
+    if qoh is None:
+        qoh = 0
     mx = inv.get("max")
     ps = item.get("pack_size")
     po_qty = item.get("qty_on_po", app.on_po_qty.get(key, 0))
@@ -200,6 +202,7 @@ def bulk_remove_not_needed(app, scope, max_exceed_abs_buffer):
         key = (item["line_code"], item["item_code"])
         inv = app.inventory_lookup.get(key, {})
         qoh = inv.get("qoh", 0)
+        qoh_display = "" if qoh is None else f"{qoh:g}"
         cur_max = inv.get("max")
         _, sug_max = app._suggest_min_max(key)
         final_qty = item.get("final_qty", item.get("order_qty", 0))
@@ -217,7 +220,7 @@ def bulk_remove_not_needed(app, scope, max_exceed_abs_buffer):
             justify="left",
         ).grid(row=r, column=3, sticky="w", padx=2)
         ttk.Label(inner, text=str(final_qty), width=7).grid(row=r, column=4, sticky="w", padx=2)
-        ttk.Label(inner, text=f"{qoh:g}", width=7).grid(row=r, column=5, sticky="w", padx=2)
+        ttk.Label(inner, text=qoh_display, width=7).grid(row=r, column=5, sticky="w", padx=2)
         ttk.Label(inner, text=str(cur_max) if cur_max is not None else "", width=6).grid(row=r, column=6, sticky="w", padx=2)
         ttk.Label(inner, text=str(sug_max) if sug_max is not None else "", width=8).grid(row=r, column=7, sticky="w", padx=2)
         ttk.Label(inner, text=reason, foreground="#f0c060", wraplength=560, justify="left").grid(

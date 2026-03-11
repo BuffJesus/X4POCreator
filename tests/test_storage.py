@@ -93,6 +93,13 @@ class StorageTests(unittest.TestCase):
             storage.save_duplicate_whitelist(str(path), values)
             self.assertEqual(storage.load_duplicate_whitelist(str(path)), values)
 
+    def test_ignored_items_round_trip(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "ignored_items.txt"
+            values = {"AER-:GH781-4", "MOT-:ABC123"}
+            storage.save_ignored_items(str(path), values)
+            self.assertEqual(storage.load_ignored_items(str(path)), values)
+
     def test_vendor_codes_round_trip(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "vendor_codes.txt"

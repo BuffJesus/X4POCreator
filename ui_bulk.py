@@ -24,7 +24,7 @@ def build_bulk_tab(app, editable_cols):
     app.lbl_bulk_summary.pack(side=tk.LEFT)
 
     action_frame = ttk.LabelFrame(frame, text="Bulk Actions", padding=8)
-    action_frame.pack(fill=tk.X, pady=(0, 8))
+    action_frame.pack(anchor="w", pady=(0, 8))
 
     vendor_row = ttk.Frame(action_frame)
     vendor_row.pack(fill=tk.X, pady=2)
@@ -233,6 +233,7 @@ def build_bulk_tab(app, editable_cols):
         app.bulk_sheet.sheet.popup_menu_add_command("Select Current Column", app._bulk_select_current_column)
         app.bulk_sheet.sheet.popup_menu_add_command("View Item Details", app._view_item_details)
         app.bulk_sheet.sheet.popup_menu_add_command("Edit Buy Rule", app._edit_buy_rule_from_bulk)
+        app.bulk_sheet.sheet.popup_menu_add_command("Ignore Item", app._ignore_from_bulk)
         app.bulk_sheet.sheet.popup_menu_add_command("Mark Review Resolved", app._resolve_review_from_bulk)
         app.bulk_sheet.sheet.popup_menu_add_command("Dismiss duplicate warning", app._dismiss_duplicate_from_bulk)
     else:
@@ -291,8 +292,10 @@ def bulk_row_values(app, item):
     inventory = app.inventory_lookup.get(key, {})
     supplier = inventory.get("supplier", "")
     qoh = inventory.get("qoh", "")
-    if qoh != "":
+    if qoh not in ("", None):
         qoh = f"{qoh:g}"
+    else:
+        qoh = ""
     cur_min = inventory.get("min")
     cur_max = inventory.get("max")
     sug_min, sug_max = app._suggest_min_max(key)

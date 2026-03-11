@@ -142,6 +142,64 @@ class POBuilderTests(unittest.TestCase):
 
         self.assertEqual(result, (1, 2))
 
+    def test_proceed_to_assign_surfaces_assignment_errors_and_hides_loading(self):
+        events = []
+        fake_app = SimpleNamespace(
+            session=SimpleNamespace(),
+            excluded_line_codes=set(),
+            excluded_customers=set(),
+            dup_whitelist=set(),
+            var_lookback_days=SimpleNamespace(get=lambda: 14),
+            _data_path=lambda key: str(ROOT / f"test_{key}"),
+            _get_suspense_carry_qty=lambda key: 0,
+            _default_vendor_for_key=lambda key: "",
+            _resolve_pack_size=lambda key: None,
+            _suggest_min_max=lambda key: (None, None),
+            _show_loading=lambda message: events.append(("show", message)),
+            _hide_loading=lambda: events.append(("hide", None)),
+            _refresh_vendor_inputs=lambda: events.append(("refresh", None)),
+            _populate_bulk_tree=lambda: events.append(("populate", None)),
+            notebook=SimpleNamespace(
+                tab=lambda *args, **kwargs: events.append(("tab", args, kwargs)),
+                select=lambda *args, **kwargs: events.append(("select", args, kwargs)),
+            ),
+            root=SimpleNamespace(update=lambda: events.append(("update", None))),
+        )
+
+        with patch("po_builder.assignment_flow.prepare_assignment_session", side_effect=RuntimeError("boom")), \
+             patch("po_builder.messagebox.showerror") as mocked_error:
+            po_builder.POBuilderApp._proceed_to_assign(fake_app)
+
+        mocked_error.assert_called_once()
+        self.assertIn(("show", "Crunching numbers..."), events)
+        self.assertIn(("hide", None), events)
+        self.assertNotIn(("refresh", None), events)
+        self.assertNotIn(("populate", None), events)
+
+    def test_ignore_items_by_keys_persists_and_removes_from_active_collections(self):
+        fake_app = SimpleNamespace(
+            ignored_item_keys=set(),
+            _loaded_ignored_item_keys=set(),
+            filtered_items=[
+                {"line_code": "AER-", "item_code": "GH781-4"},
+                {"line_code": "MOT-", "item_code": "ABC123"},
+            ],
+            assigned_items=[{"line_code": "AER-", "item_code": "GH781-4"}],
+            individual_items=[{"line_code": "AER-", "item_code": "GH781-4"}],
+            _save_ignored_item_keys=lambda: None,
+            _apply_bulk_filter=lambda: None,
+            _update_bulk_summary=lambda: None,
+        )
+        fake_app._ignore_key = lambda lc, ic: po_builder.POBuilderApp._ignore_key(lc, ic)
+
+        removed = po_builder.POBuilderApp._ignore_items_by_keys(fake_app, {"AER-:GH781-4"})
+
+        self.assertEqual(removed, 1)
+        self.assertIn("AER-:GH781-4", fake_app.ignored_item_keys)
+        self.assertEqual(fake_app.filtered_items, [{"line_code": "MOT-", "item_code": "ABC123"}])
+        self.assertEqual(fake_app.assigned_items, [])
+        self.assertEqual(fake_app.individual_items, [])
+
     def test_refresh_suggestions_recalculates_filtered_and_assigned_items(self):
         fake_app = self._make_calc_app()
         key = ("AER-", "GH781-4")

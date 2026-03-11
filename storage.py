@@ -278,6 +278,16 @@ def save_duplicate_whitelist(path, whitelist, base_whitelist=None):
         _release_lock(lock_path)
 
 
+def load_ignored_items(path, with_meta=False):
+    """Load the set of ignored item keys."""
+    return load_duplicate_whitelist(path, with_meta=with_meta)
+
+
+def save_ignored_items(path, ignored_items, base_ignored_items=None):
+    """Save the ignored item key set to disk."""
+    return save_duplicate_whitelist(path, ignored_items, base_whitelist=base_ignored_items)
+
+
 def load_vendor_codes(path, default=None, with_meta=False):
     """Load persisted vendor codes from disk, one code per line."""
     codes = []

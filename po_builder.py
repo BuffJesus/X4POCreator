@@ -81,6 +81,7 @@ ORDER_RULES_FILE = os.path.join(LOCAL_DATA_DIR, "order_rules.json")
 SUSPENSE_CARRY_FILE = os.path.join(LOCAL_DATA_DIR, "suspense_carry.json")
 SESSIONS_DIR = os.path.join(LOCAL_DATA_DIR, "sessions")
 VENDOR_CODES_FILE = os.path.join(LOCAL_DATA_DIR, "vendor_codes.txt")
+IGNORED_ITEMS_FILE = os.path.join(LOCAL_DATA_DIR, "ignored_items.txt")
 GITHUB_REPO = "BuffJesus/X4POCreator"
 GITHUB_RELEASES_API_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 GITHUB_RELEASES_PAGE_URL = f"https://github.com/{GITHUB_REPO}/releases/latest"
@@ -348,12 +349,14 @@ class POBuilderApp:
         self.all_customers = []         # (code, name, count) from suspended items
         self.excluded_customers = set() # customer codes to exclude
         self.dup_whitelist = set()      # persistent whitelist
+        self.ignored_item_keys = set()  # persistent ignore list keyed by LC:Item
         self.last_removed_bulk_items = []  # [(index, item_dict)] for one-step undo
         self.bulk_undo_stack = []
         self.bulk_redo_stack = []
         self.bulk_sheet = None
         self.review_grid_editor = None
         self._loaded_dup_whitelist = set()
+        self._loaded_ignored_item_keys = set()
         self._loaded_order_rules = {}
         self._loaded_suspense_carry = {}
         self._loaded_vendor_codes = []
@@ -397,6 +400,7 @@ class POBuilderApp:
             "suspense_carry": os.path.join(data_dir, "suspense_carry.json"),
             "sessions": os.path.join(data_dir, "sessions"),
             "vendor_codes": os.path.join(data_dir, "vendor_codes.txt"),
+            "ignored_items": os.path.join(data_dir, "ignored_items.txt"),
         }
 
     def _data_path(self, key):
@@ -432,14 +436,17 @@ class POBuilderApp:
 
     def _load_persistent_state(self):
         dup_whitelist, _ = storage.load_duplicate_whitelist(self._data_path("duplicate_whitelist"), with_meta=True)
+        ignored_item_keys, _ = storage.load_ignored_items(self._data_path("ignored_items"), with_meta=True)
         order_rules, _ = storage.load_order_rules_with_meta(self._data_path("order_rules"))
         suspense_carry, _ = storage.load_suspense_carry_with_meta(self._data_path("suspense_carry"))
         vendor_codes, _ = storage.load_vendor_codes(self._data_path("vendor_codes"), KNOWN_VENDORS, with_meta=True)
         self.dup_whitelist = set(dup_whitelist)
+        self.ignored_item_keys = set(ignored_item_keys)
         self.order_rules = dict(order_rules)
         self.suspense_carry = dict(suspense_carry)
         self.vendor_codes_used = list(vendor_codes)
         self._loaded_dup_whitelist = set(self.dup_whitelist)
+        self._loaded_ignored_item_keys = set(self.ignored_item_keys)
         self._loaded_order_rules = copy.deepcopy(self.order_rules)
         self._loaded_suspense_carry = copy.deepcopy(self.suspense_carry)
         self._loaded_vendor_codes = list(self.vendor_codes_used)
@@ -1024,21 +1031,27 @@ class POBuilderApp:
         except Exception:
             days = 14
 
-        has_items = assignment_flow.prepare_assignment_session(
-            self.session,
-            excluded_line_codes=self.excluded_line_codes,
-            excluded_customers=self.excluded_customers,
-            dup_whitelist=self.dup_whitelist,
-            lookback_days=days,
-            order_history_path=self._data_path("order_history"),
-            vendor_codes_path=self._data_path("vendor_codes"),
-            known_vendors=KNOWN_VENDORS,
-            get_suspense_carry_qty=self._get_suspense_carry_qty,
-            default_vendor_for_key=self._default_vendor_for_key,
-            resolve_pack_size=self._resolve_pack_size,
-            suggest_min_max=self._suggest_min_max,
-            get_rule_key=get_rule_key,
-        )
+        try:
+            has_items = assignment_flow.prepare_assignment_session(
+                self.session,
+                excluded_line_codes=self.excluded_line_codes,
+                excluded_customers=self.excluded_customers,
+                dup_whitelist=self.dup_whitelist,
+                ignored_keys=self.ignored_item_keys,
+                lookback_days=days,
+                order_history_path=self._data_path("order_history"),
+                vendor_codes_path=self._data_path("vendor_codes"),
+                known_vendors=KNOWN_VENDORS,
+                get_suspense_carry_qty=self._get_suspense_carry_qty,
+                default_vendor_for_key=self._default_vendor_for_key,
+                resolve_pack_size=self._resolve_pack_size,
+                suggest_min_max=self._suggest_min_max,
+                get_rule_key=get_rule_key,
+            )
+        except Exception as exc:
+            self._hide_loading()
+            messagebox.showerror("Vendor Assignment Error", f"Could not prepare vendor assignment:\n{exc}")
+            return
 
         if not has_items:
             self._hide_loading()
@@ -1052,13 +1065,18 @@ class POBuilderApp:
         # ── Enrich items with ordering logic ──
         self._loaded_vendor_codes = list(self.vendor_codes_used)
         self.last_removed_bulk_items = []
-        self._refresh_vendor_inputs()
+        try:
+            self._refresh_vendor_inputs()
+            self._populate_bulk_tree()
+            self.notebook.tab(3, state="normal")
+            self.notebook.select(3)
+        except Exception as exc:
+            self._hide_loading()
+            messagebox.showerror("Vendor Assignment Error", f"Could not open vendor assignment:\n{exc}")
+            return
 
         # Populate and go to bulk assign
         self._hide_loading()
-        self._populate_bulk_tree()
-        self.notebook.tab(3, state="normal")
-        self.notebook.select(3)
 
     # ── Tab 3: Customer Exclusion ─────────────────────────────────────────
 
@@ -1145,6 +1163,15 @@ class POBuilderApp:
         )
         self.dup_whitelist = set(result["payload"])
         self._loaded_dup_whitelist = set(self.dup_whitelist)
+
+    def _save_ignored_item_keys(self):
+        result = storage.save_ignored_items(
+            self._data_path("ignored_items"),
+            self.ignored_item_keys,
+            base_ignored_items=self._loaded_ignored_item_keys,
+        )
+        self.ignored_item_keys = set(result["payload"])
+        self._loaded_ignored_item_keys = set(self.ignored_item_keys)
 
     def _refresh_vendor_inputs(self):
         if hasattr(self, "combo_bulk_vendor"):
@@ -1847,6 +1874,66 @@ class POBuilderApp:
         self.duplicate_ic_lookup.pop(item_code, None)
         # Refresh the tree to clear the Also Under column
         self._apply_bulk_filter()
+
+    @staticmethod
+    def _ignore_key(line_code, item_code):
+        return f"{str(line_code).strip()}:{str(item_code).strip()}"
+
+    def _ignore_items_by_keys(self, ignore_keys):
+        normalized = {str(key).strip() for key in ignore_keys if str(key).strip()}
+        if not normalized:
+            return 0
+        self.ignored_item_keys.update(normalized)
+        self._save_ignored_item_keys()
+        self.filtered_items = [
+            item for item in self.filtered_items
+            if self._ignore_key(item.get("line_code", ""), item.get("item_code", "")) not in normalized
+        ]
+        self.assigned_items = [
+            item for item in self.assigned_items
+            if self._ignore_key(item.get("line_code", ""), item.get("item_code", "")) not in normalized
+        ]
+        self.individual_items = [
+            item for item in self.individual_items
+            if self._ignore_key(item.get("line_code", ""), item.get("item_code", "")) not in normalized
+        ]
+        self._apply_bulk_filter()
+        self._update_bulk_summary()
+        if hasattr(self, "tree"):
+            self._populate_review_tab()
+        return len(normalized)
+
+    def _ignore_from_bulk(self):
+        right_click_context = getattr(self, "_right_click_bulk_context", None) or {}
+        row_id = right_click_context.get("row_id")
+        if row_id is not None:
+            row_ids = [row_id]
+        elif self.bulk_sheet and self.bulk_sheet.explicit_selected_row_ids():
+            row_ids = list(self.bulk_sheet.explicit_selected_row_ids())
+        elif self.bulk_sheet and self.bulk_sheet.selected_row_ids():
+            row_ids = list(self.bulk_sheet.selected_row_ids())
+        elif self.bulk_sheet and self.bulk_sheet.current_row_id() is not None:
+            row_ids = [self.bulk_sheet.current_row_id()]
+        else:
+            row_ids = []
+        if not row_ids:
+            messagebox.showinfo("No Selection", "Select a row to ignore first.")
+            return
+        ignore_keys = set()
+        for row_id in row_ids:
+            idx = int(row_id)
+            if 0 <= idx < len(self.filtered_items):
+                item = self.filtered_items[idx]
+                ignore_keys.add(self._ignore_key(item["line_code"], item["item_code"]))
+        if not ignore_keys:
+            return
+        if not messagebox.askyesno(
+            "Ignore Item",
+            f"Ignore {len(ignore_keys)} item(s) for future ordering and remove them from this session?",
+        ):
+            return
+        removed = self._ignore_items_by_keys(ignore_keys)
+        messagebox.showinfo("Ignored", f"Ignored {removed} item(s).")
 
     def _go_to_individual(self):
         ui_assignment_actions.go_to_individual(self)
