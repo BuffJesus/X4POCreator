@@ -39,7 +39,7 @@ import ui_load
 import ui_review
 import ui_vendor_manager
 from maintenance import build_maintenance_report
-from models import ItemKey, MaintenanceCandidate, SessionItemState, SourceItemState, SuggestedItemState
+from models import AppSessionState, ItemKey, MaintenanceCandidate, SessionItemState, SourceItemState, SuggestedItemState
 from rules import (
     enrich_item,
     evaluate_item_status,
@@ -119,6 +119,16 @@ Planned next
 - Page Up / Page Down: stronger spreadsheet navigation
 """
 MAX_BULK_HISTORY = 25
+
+
+def _session_field(name):
+    def _get(self):
+        return getattr(self.session, name)
+
+    def _set(self, value):
+        setattr(self.session, name, value)
+
+    return property(_get, _set)
 
 
 # ─── Order Rules (persistent per-item buy rules) ────────────────────────────
@@ -293,6 +303,26 @@ def export_vendor_po(vendor_code, items, output_dir):
 # ─── GUI Application ─────────────────────────────────────────────────────────
 
 class POBuilderApp:
+    sales_items = _session_field("sales_items")
+    po_items = _session_field("po_items")
+    suspended_items = _session_field("suspended_items")
+    suspended_set = _session_field("suspended_set")
+    suspended_lookup = _session_field("suspended_lookup")
+    open_po_lookup = _session_field("open_po_lookup")
+    all_line_codes = _session_field("all_line_codes")
+    inventory_lookup = _session_field("inventory_lookup")
+    inventory_source_lookup = _session_field("inventory_source_lookup")
+    pack_size_lookup = _session_field("pack_size_lookup")
+    pack_size_source_lookup = _session_field("pack_size_source_lookup")
+    pack_size_by_item = _session_field("pack_size_by_item")
+    pack_size_conflicts = _session_field("pack_size_conflicts")
+    qoh_adjustments = _session_field("qoh_adjustments")
+    recent_orders = _session_field("recent_orders")
+    order_rules = _session_field("order_rules")
+    vendor_codes_used = _session_field("vendor_codes_used")
+    filtered_items = _session_field("filtered_items")
+    assigned_items = _session_field("assigned_items")
+    startup_warning_rows = _session_field("startup_warning_rows")
     def __init__(self, root):
         self.root = root
         self.app_settings = self._load_app_settings()
@@ -301,43 +331,24 @@ class POBuilderApp:
         self.data_dir = LOCAL_DATA_DIR
         self.data_paths = {}
         self.update_check_enabled = False
+        self.session = AppSessionState()
         self._configure_initial_data_dir()
         self.root.title("PO Builder — X4 Import Tool")
         self.root.geometry("1100x720")
         self.root.minsize(900, 600)
 
         # State
-        self.sales_items = []           # parsed part sales data
-        self.po_items = []              # parsed open PO data
-        self.suspended_items = []       # parsed suspended item details
-        self.suspended_set = set()      # (line_code, item_code)
-        self.suspended_lookup = {}      # (line_code, item_code) -> list of susp info
-        self.open_po_lookup = {}        # (line_code, item_code) -> list of PO info
-        self.all_line_codes = set()
         self.excluded_line_codes = set()
         self.all_customers = []         # (code, name, count) from suspended items
         self.excluded_customers = set() # customer codes to exclude
-        self.inventory_lookup = {}      # (line_code, item_code) -> {qoh, min, max, ...}
-        self.inventory_source_lookup = {}  # immutable X4 baseline copy of inventory_lookup
-        self.pack_size_lookup = {}      # (line_code, item_code) -> pack size (int)
-        self.pack_size_source_lookup = {}  # immutable X4 baseline copy of pack_size_lookup
-        self.pack_size_by_item = {}     # item_code -> pack size (unambiguous fallback)
-        self.pack_size_conflicts = set()  # item_codes with conflicting pack sizes
         self.on_po_qty = {}             # (line_code, item_code) -> total qty on PO
-        self.qoh_adjustments = {}       # (line_code, item_code) -> {old, new}
         self.duplicate_ic_lookup = {}   # item_code -> set of line_codes (only dupes)
         self.dup_whitelist = set()      # persistent whitelist
-        self.recent_orders = {}         # (lc, ic) -> [{qty, vendor, date}]
-        self.order_rules = {}           # persistent per-item buy rules
         self.suspense_carry = {}
-        self.vendor_codes_used = []
-        self.filtered_items = []
         self.individual_items = []
-        self.assigned_items = []        # final list of {item data + vendor + order_qty}
         self.last_removed_bulk_items = []  # [(index, item_dict)] for one-step undo
         self.bulk_undo_stack = []
         self.bulk_redo_stack = []
-        self.startup_warning_rows = []  # structured rows for startup warning CSV export
         self.bulk_sheet = None
         self.review_grid_editor = None
         self._loaded_dup_whitelist = set()

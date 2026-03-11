@@ -75,3 +75,27 @@ class SessionSnapshot:
     startup_warning_rows: Tuple[dict, ...]
     qoh_adjustments: Tuple[dict, ...]
     order_rules: Dict[str, dict]
+
+
+@dataclass
+class AppSessionState:
+    sales_items: list = field(default_factory=list)
+    po_items: list = field(default_factory=list)
+    suspended_items: list = field(default_factory=list)
+    suspended_set: set = field(default_factory=set)
+    suspended_lookup: dict = field(default_factory=dict)
+    open_po_lookup: dict = field(default_factory=dict)
+    all_line_codes: list = field(default_factory=list)
+    inventory_lookup: dict = field(default_factory=dict)
+    inventory_source_lookup: dict = field(default_factory=dict)
+    pack_size_lookup: dict = field(default_factory=dict)
+    pack_size_source_lookup: dict = field(default_factory=dict)
+    pack_size_by_item: dict = field(default_factory=dict)
+    pack_size_conflicts: set = field(default_factory=set)
+    qoh_adjustments: dict = field(default_factory=dict)
+    recent_orders: dict = field(default_factory=dict)
+    order_rules: dict = field(default_factory=dict)
+    vendor_codes_used: list = field(default_factory=list)
+    filtered_items: list = field(default_factory=list)
+    assigned_items: list = field(default_factory=list)
+    startup_warning_rows: list = field(default_factory=list)
