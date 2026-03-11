@@ -1,0 +1,46 @@
+import csv
+import sys
+import tempfile
+import unittest
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+import parsers
+
+
+class ParserSmokeTests(unittest.TestCase):
+    def test_identify_packsize_report(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "pack.csv"
+            path.write_text(
+                "Items WITH Order Multiple,09-Mar-2026,Product_Group,Item_Code,Description,Order_Multiple,Pkg\n",
+                encoding="utf-8-sig",
+            )
+            self.assertEqual(parsers.identify_report_type(str(path)), "packsize")
+
+    def test_parse_pack_sizes_generic_csv(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "generic_pack.csv"
+            with open(path, "w", newline="", encoding="utf-8-sig") as f:
+                writer = csv.writer(f)
+                writer.writerow(["line code", "item code", "pack size"])
+                writer.writerow(["AER-", "GH781-4", "500"])
+            lookup = parsers.parse_pack_sizes_csv(str(path))
+            self.assertEqual(lookup[("AER-", "GH781-4")], 500)
+
+    def test_build_pack_size_fallbacks_detects_conflicts(self):
+        lookup = {
+            ("AER-", "GH781-4"): 500,
+            ("AER-", "GH781-5"): 100,
+            ("BCA-", "GH781-4"): 250,
+        }
+        fallback, conflicts = parsers.build_pack_size_fallbacks(lookup)
+        self.assertEqual(fallback["GH781-5"], 100)
+        self.assertIn("GH781-4", conflicts)
+
+
+if __name__ == "__main__":
+    unittest.main()
