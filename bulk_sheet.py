@@ -93,7 +93,7 @@ class BulkSheetView:
                 "col_name": col_name,
                 "editable": False,
                 "target_row_ids": (),
-                "fallback_value": event_data.get("value", ""),
+                "committed_value": event_data.get("value", ""),
             }
             write_debug("bulk_sheet.handle_edit.readonly", row_id=row_id, col_name=col_name)
             self._queue_post_edit_refresh()
@@ -109,7 +109,7 @@ class BulkSheetView:
             "col_name": col_name,
             "editable": True,
             "target_row_ids": tuple(target_row_ids),
-            "fallback_value": event_data.get("value", ""),
+            "committed_value": event_data.get("value", ""),
         }
         self._queue_post_edit_refresh()
 
@@ -122,13 +122,17 @@ class BulkSheetView:
             col = pending.get("col")
             row_id = pending.get("row_id")
             col_name = pending.get("col_name")
+            value = pending.get("committed_value", "")
             try:
-                value = self.sheet.get_cell_data(row, col)
+                sheet_value = self.sheet.get_cell_data(row, col)
             except Exception:
-                value = pending.get("fallback_value", "")
+                sheet_value = ""
             if value is None:
-                value = pending.get("fallback_value", "")
+                value = ""
+            if sheet_value is None:
+                sheet_value = ""
             value = str(value)
+            sheet_value = str(sheet_value)
             write_debug(
                 "bulk_sheet.post_edit.commit",
                 row=pending.get("row"),
@@ -137,6 +141,7 @@ class BulkSheetView:
                 col_name=col_name,
                 editable=pending.get("editable"),
                 committed_value=value,
+                sheet_value=sheet_value,
             )
             if pending.get("editable"):
                 for target_row_id in pending.get("target_row_ids", ()):
