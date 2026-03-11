@@ -38,6 +38,7 @@ from rules import (
     enrich_item,
     evaluate_item_status,
     get_rule_pack_size,
+    infer_default_order_policy,
 )
 
 try:
@@ -1278,12 +1279,29 @@ class POBuilderApp:
         """Refresh derived ordering fields for a single item after edits."""
         key = (item["line_code"], item["item_code"])
         rule_key = get_rule_key(item["line_code"], item["item_code"])
-        rule = self.order_rules.get(rule_key)
+        rule = self._effective_order_rule(item, self.order_rules.get(rule_key))
         sug_min, sug_max = self._suggest_min_max(key)
         item["suggested_min"] = sug_min
         item["suggested_max"] = sug_max
         enrich_item(item, self.inventory_lookup.get(key, {}), item.get("pack_size"), rule)
         return item
+
+    def _effective_order_rule(self, item, rule):
+        """Ignore stale default policies so the current pack data can drive the default behavior."""
+        if not rule:
+            return rule
+        effective = dict(rule)
+        if not effective.get("policy_locked"):
+            inferred_policy = infer_default_order_policy(
+                item,
+                self.inventory_lookup.get((item["line_code"], item["item_code"]), {}),
+                item.get("pack_size"),
+                allow_below_pack=effective.get("allow_below_pack", False),
+            )
+            saved_policy = effective.get("order_policy")
+            if saved_policy == inferred_policy or saved_policy in ("exact_qty", "standard"):
+                effective.pop("order_policy", None)
+        return effective
 
     def _sync_review_item_to_filtered(self, item):
         """Mirror review edits back to the filtered item so both views stay consistent."""
@@ -1598,6 +1616,8 @@ class POBuilderApp:
                     rule.pop("pack_size", None)
                 else:
                     rule["pack_size"] = item["pack_size"]
+                if not rule.get("policy_locked") and rule.get("order_policy") in ("exact_qty", "standard"):
+                    rule.pop("order_policy", None)
                 self.order_rules[rule_key] = rule
                 storage.save_order_rules(ORDER_RULES_FILE, self.order_rules)
                 self._clear_manual_override(item)

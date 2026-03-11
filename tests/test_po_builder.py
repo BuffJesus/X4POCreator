@@ -34,6 +34,7 @@ class POBuilderTests(unittest.TestCase):
             lambda old_vendor, new_vendor: po_builder.POBuilderApp._rename_vendor_code(fake_app, old_vendor, new_vendor)
         )
         fake_app._clear_manual_override = lambda item: po_builder.POBuilderApp._clear_manual_override(item)
+        fake_app._effective_order_rule = lambda item, rule: po_builder.POBuilderApp._effective_order_rule(fake_app, item, rule)
         fake_app._recalculate_item = lambda item: po_builder.POBuilderApp._recalculate_item(fake_app, item)
         fake_app._sync_review_item_to_filtered = (
             lambda item: po_builder.POBuilderApp._sync_review_item_to_filtered(fake_app, item)
@@ -346,6 +347,33 @@ class POBuilderTests(unittest.TestCase):
         self.assertEqual(item["suggested_qty"], 3)
         self.assertEqual(item["final_qty"], 3)
         self.assertEqual(item["order_qty"], 3)
+
+    def test_bulk_pack_size_edit_clears_stale_exact_policy_rule(self):
+        fake_app = self._make_calc_app()
+        key = ("GDY-", "5VX560")
+        fake_app.inventory_lookup[key] = {"qoh": 1, "max": 3}
+        fake_app.order_rules = {"GDY-:5VX560": {"order_policy": "exact_qty"}}
+        fake_app.filtered_items = [{
+            "line_code": key[0],
+            "item_code": key[1],
+            "description": "BELT",
+            "qty_sold": 2,
+            "qty_suspended": 0,
+            "qty_on_po": 0,
+            "demand_signal": 2,
+            "pack_size": None,
+            "final_qty": 2,
+            "order_qty": 2,
+        }]
+
+        po_builder.POBuilderApp._bulk_apply_editor_value(fake_app, "0", "pack_size", "3")
+
+        item = fake_app.filtered_items[0]
+        self.assertEqual(item["order_policy"], "standard")
+        self.assertEqual(item["suggested_qty"], 3)
+        self.assertEqual(item["final_qty"], 3)
+        self.assertEqual(fake_app.order_rules["GDY-:5VX560"]["pack_size"], 3)
+        self.assertNotIn("order_policy", fake_app.order_rules["GDY-:5VX560"])
 
     def test_review_pack_size_edit_recalculates_order_qty(self):
         fake_app = self._make_calc_app()

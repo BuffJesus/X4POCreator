@@ -315,6 +315,12 @@ def enrich_item(item, inv, pack_qty, rule):
     item["order_qty"] = item["final_qty"]
 
 
+def infer_default_order_policy(item, inv, pack_qty, *, allow_below_pack=False):
+    """Return the policy implied by the current data when no explicit policy override exists."""
+    inferred_rule = {"allow_below_pack": True} if allow_below_pack else None
+    return determine_order_policy(item, inv, pack_qty, inferred_rule)
+
+
 def get_buy_rule_summary(item, rule):
     """Build a compact summary string for the buy rule column."""
     parts = []

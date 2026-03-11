@@ -4,7 +4,7 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 
 import storage
-from rules import enrich_item, evaluate_item_status, get_rule_pack_size
+from rules import enrich_item, evaluate_item_status, get_rule_pack_size, infer_default_order_policy
 from ui_scroll import attach_vertical_mousewheel
 
 
@@ -328,7 +328,6 @@ def open_buy_rule_editor(app, idx, order_rules_file):
 
     def _save_rule():
         new_rule = {
-            "order_policy": var_policy.get(),
             "allow_below_pack": var_allow.get(),
             "notes": notes_entry.get().strip(),
         }
@@ -348,6 +347,20 @@ def open_buy_rule_editor(app, idx, order_rules_file):
         elif pack_val == "":
             item["pack_size"] = None
             new_rule.pop("pack_size", None)
+
+        selected_policy = var_policy.get()
+        inferred_policy = infer_default_order_policy(
+            item,
+            inv,
+            item.get("pack_size"),
+            allow_below_pack=new_rule.get("allow_below_pack", False),
+        )
+        if selected_policy != inferred_policy:
+            new_rule["order_policy"] = selected_policy
+            new_rule["policy_locked"] = True
+        else:
+            new_rule.pop("order_policy", None)
+            new_rule.pop("policy_locked", None)
 
         app.order_rules[rule_key] = new_rule
         storage.save_order_rules(order_rules_file, app.order_rules)
