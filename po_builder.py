@@ -1453,7 +1453,8 @@ class POBuilderApp:
             row_ids = list(self.bulk_sheet.selected_target_row_ids(col_name))
         clicked_row_id = right_click_context.get("row_id")
         if clicked_row_id:
-            row_ids = [clicked_row_id]
+            if not row_ids or clicked_row_id not in row_ids:
+                row_ids = [clicked_row_id]
         if not row_ids and self.bulk_sheet:
             row_ids = list(self.bulk_sheet.selected_row_ids())
         write_debug(

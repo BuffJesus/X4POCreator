@@ -1,3 +1,5 @@
+import tkinter as tk
+
 try:
     from tksheet import Sheet
     HAS_TKSHEET = True
@@ -26,6 +28,7 @@ class BulkSheetView:
         self._resize_after_id = None
         self._edit_refresh_after_id = None
         self._pending_edit = None
+        self.context_menu = tk.Menu(parent, tearoff=0)
 
         headers = [self.labels[col] for col in self.columns]
         self.sheet = Sheet(
@@ -61,6 +64,8 @@ class BulkSheetView:
         ):
             self.sheet.extra_bindings(binding, self._handle_select)
         self.sheet.extra_bindings("end_edit_table", self._handle_edit)
+        self.sheet.disable_bindings("rc_popup_menu")
+        self._build_context_menu()
 
     @staticmethod
     def _split_clipboard_matrix(text):
@@ -105,7 +110,27 @@ class BulkSheetView:
         )
         self._remember_selection()
         self.app._update_bulk_sheet_status()
-        return None
+        try:
+            self.context_menu.tk_popup(event.x_root, event.y_root)
+        finally:
+            try:
+                self.context_menu.grab_release()
+            except Exception:
+                pass
+        return "break"
+
+    def _build_context_menu(self):
+        self.context_menu.delete(0, "end")
+        self.context_menu.add_command(label="Bulk Edit Selection", command=self.app._bulk_begin_edit_from_menu)
+        self.context_menu.add_command(label="Remove Selected Rows", command=self.app._bulk_remove_selected_rows)
+        self.context_menu.add_separator()
+        self.context_menu.add_command(label="Edit Buy Rule", command=self.app._edit_buy_rule_from_bulk)
+        self.context_menu.add_command(label="View Item Details", command=self.app._view_item_details)
+        self.context_menu.add_command(label="Mark Review Resolved", command=self.app._resolve_review_from_bulk)
+        self.context_menu.add_command(label="Dismiss duplicate warning", command=self.app._dismiss_duplicate_from_bulk)
+        self.context_menu.add_separator()
+        self.context_menu.add_command(label="Select Current Row", command=self.app._bulk_select_current_row)
+        self.context_menu.add_command(label="Select Current Column", command=self.app._bulk_select_current_column)
 
     def _handle_edit(self, event_data):
         row = event_data.get("row")
