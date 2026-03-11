@@ -82,10 +82,10 @@ def build_load_tab(app):
         app,
         file_frame,
         row=0,
-        label="Part Sales & Receipts CSV *",
-        attr_name="var_sales_path",
-        browse_key="sales",
-        hint="Standard -> Sales -> Part Sales & Receipts",
+        label="Order Multiples / Pack Sizes CSV",
+        attr_name="var_packsize_path",
+        browse_key="packsize",
+        hint="Standard -> Inventory -> Items With Order Multiple",
     )
     _add_file_row(
         app,
@@ -118,19 +118,19 @@ def build_load_tab(app):
         app,
         file_frame,
         row=4,
-        label="Suspended Items CSV",
-        attr_name="var_susp_path",
-        browse_key="susp",
-        hint="Standard -> Sales -> Suspended Items",
+        label="Part Sales & Receipts CSV *",
+        attr_name="var_sales_path",
+        browse_key="sales",
+        hint="Standard -> Sales -> Part Sales & Receipts",
     )
     _add_file_row(
         app,
         file_frame,
         row=5,
-        label="Order Multiples / Pack Sizes CSV",
-        attr_name="var_packsize_path",
-        browse_key="packsize",
-        hint="Standard -> Inventory -> Items With Order Multiple",
+        label="Suspended Items CSV",
+        attr_name="var_susp_path",
+        browse_key="susp",
+        hint="Standard -> Sales -> Suspended Items",
     )
 
     file_frame.columnconfigure(1, weight=1)
