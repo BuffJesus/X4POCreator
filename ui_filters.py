@@ -3,6 +3,8 @@ import math
 import tkinter as tk
 from tkinter import ttk
 
+from ui_scroll import attach_vertical_mousewheel, sync_canvas_window
+
 
 def _column_count(item_count, max_rows, min_cols=1, max_cols=None):
     if item_count <= 0:
@@ -50,19 +52,14 @@ def build_exclude_tab(app):
     scrollbar = ttk.Scrollbar(container, orient="vertical", command=canvas.yview)
     app.lc_inner_frame = ttk.Frame(canvas)
 
-    app.lc_inner_frame.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
-    canvas.create_window((0, 0), window=app.lc_inner_frame, anchor="nw")
+    app.lc_inner_frame.bind("<Configure>", lambda e: sync_canvas_window(canvas, content_window))
+    content_window = canvas.create_window((0, 0), window=app.lc_inner_frame, anchor="nw")
     canvas.configure(yscrollcommand=scrollbar.set)
+    canvas.bind("<Configure>", lambda e: sync_canvas_window(canvas, content_window, width=e.width))
 
     canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
     scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-
-    def _on_mousewheel(event):
-        if canvas.winfo_exists():
-            canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
-
-    canvas.bind("<Enter>", lambda e: canvas.bind_all("<MouseWheel>", _on_mousewheel))
-    canvas.bind("<Leave>", lambda e: canvas.unbind_all("<MouseWheel>"))
+    attach_vertical_mousewheel(canvas, canvas, app.lc_inner_frame)
 
     app.lc_vars = {}
 
@@ -131,19 +128,14 @@ def build_customer_tab(app):
     scrollbar = ttk.Scrollbar(container, orient="vertical", command=canvas.yview)
     app.cust_inner_frame = ttk.Frame(canvas)
 
-    app.cust_inner_frame.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
-    canvas.create_window((0, 0), window=app.cust_inner_frame, anchor="nw")
+    app.cust_inner_frame.bind("<Configure>", lambda e: sync_canvas_window(canvas, content_window))
+    content_window = canvas.create_window((0, 0), window=app.cust_inner_frame, anchor="nw")
     canvas.configure(yscrollcommand=scrollbar.set)
+    canvas.bind("<Configure>", lambda e: sync_canvas_window(canvas, content_window, width=e.width))
 
     canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
     scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-
-    def _on_mousewheel(event):
-        if canvas.winfo_exists():
-            canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
-
-    canvas.bind("<Enter>", lambda e: canvas.bind_all("<MouseWheel>", _on_mousewheel))
-    canvas.bind("<Leave>", lambda e: canvas.unbind_all("<MouseWheel>"))
+    attach_vertical_mousewheel(canvas, canvas, app.cust_inner_frame)
 
     app.cust_vars = {}
 

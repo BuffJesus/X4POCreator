@@ -6,7 +6,7 @@ from tkinter import ttk, messagebox
 import storage
 from debug_log import write_debug
 from rules import enrich_item, evaluate_item_status, get_rule_pack_size, infer_default_order_policy
-from ui_scroll import attach_vertical_mousewheel
+from ui_scroll import attach_vertical_mousewheel, sync_canvas_window
 
 
 def not_needed_reason(app, item, max_exceed_abs_buffer):
@@ -180,9 +180,10 @@ def bulk_remove_not_needed(app, scope, max_exceed_abs_buffer):
     canvas = tk.Canvas(container, highlightthickness=0, bg="#1e1e2e")
     scrollbar = ttk.Scrollbar(container, orient="vertical", command=canvas.yview)
     inner = ttk.Frame(canvas)
-    inner.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
-    canvas.create_window((0, 0), window=inner, anchor="nw")
+    inner.bind("<Configure>", lambda e: sync_canvas_window(canvas, content_window))
+    content_window = canvas.create_window((0, 0), window=inner, anchor="nw")
     canvas.configure(yscrollcommand=scrollbar.set)
+    canvas.bind("<Configure>", lambda e: sync_canvas_window(canvas, content_window, width=e.width))
     canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
     scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
 
@@ -589,9 +590,10 @@ def check_stock_warnings(app):
     canvas = tk.Canvas(container, highlightthickness=0, bg="#1e1e2e")
     scrollbar = ttk.Scrollbar(container, orient="vertical", command=canvas.yview)
     inner = ttk.Frame(canvas)
-    inner.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
-    canvas.create_window((0, 0), window=inner, anchor="nw")
+    inner.bind("<Configure>", lambda e: sync_canvas_window(canvas, content_window))
+    content_window = canvas.create_window((0, 0), window=inner, anchor="nw")
     canvas.configure(yscrollcommand=scrollbar.set)
+    canvas.bind("<Configure>", lambda e: sync_canvas_window(canvas, content_window, width=e.width))
     canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
     scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
 

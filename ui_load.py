@@ -1,6 +1,8 @@
 import tkinter as tk
 from tkinter import ttk
 
+from ui_scroll import attach_vertical_mousewheel, sync_canvas_window
+
 
 def build_load_tab(app):
     frame = ttk.Frame(app.notebook, padding=0)
@@ -11,10 +13,10 @@ def build_load_tab(app):
     content = ttk.Frame(canvas, padding=16)
 
     def _sync_scrollregion(_event=None):
-        canvas.configure(scrollregion=canvas.bbox("all"))
+        sync_canvas_window(canvas, content_window)
 
     def _resize_window(_event):
-        canvas.itemconfigure(content_window, width=_event.width)
+        sync_canvas_window(canvas, content_window, width=_event.width)
 
     content.bind("<Configure>", _sync_scrollregion)
     content_window = canvas.create_window((0, 0), window=content, anchor="nw")
@@ -23,13 +25,7 @@ def build_load_tab(app):
 
     canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
     scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-
-    def _on_mousewheel(event):
-        if canvas.winfo_exists():
-            canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
-
-    canvas.bind("<Enter>", lambda e: canvas.bind_all("<MouseWheel>", _on_mousewheel))
-    canvas.bind("<Leave>", lambda e: canvas.unbind_all("<MouseWheel>"))
+    attach_vertical_mousewheel(canvas, canvas, content)
 
     ttk.Label(content, text="Load Data Files", style="Header.TLabel").pack(anchor="w")
     ttk.Label(
