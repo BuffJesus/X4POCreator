@@ -1427,6 +1427,8 @@ class POBuilderApp:
             for row_id in row_ids:
                 self._bulk_apply_editor_value(row_id, col_name, value.strip())
             self._apply_bulk_filter()
+            if self.bulk_sheet:
+                self.bulk_sheet.clear_selection()
             self._update_bulk_summary()
             self._update_bulk_cell_status()
             return "break"
@@ -1482,6 +1484,7 @@ class POBuilderApp:
             for row_id in row_ids:
                 self._bulk_apply_editor_value(row_id, col_name, value.strip())
             self._apply_bulk_filter()
+            self.bulk_sheet.clear_selection()
         else:
             for row_id in row_ids:
                 self._bulk_apply_editor_value(row_id, col_name, value.strip())
@@ -1505,6 +1508,7 @@ class POBuilderApp:
             for row_id in row_ids:
                 self._bulk_apply_editor_value(row_id, col_name, "")
             self._apply_bulk_filter()
+            self.bulk_sheet.clear_selection()
         else:
             for row_id in row_ids:
                 self._bulk_apply_editor_value(row_id, col_name, "")

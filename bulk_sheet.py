@@ -88,6 +88,7 @@ class BulkSheetView:
         for target_row_id in target_row_ids:
             self.app._bulk_apply_editor_value(target_row_id, col_name, str(value))
         self.app._apply_bulk_filter()
+        self.clear_selection()
         self.app._update_bulk_summary()
         self.app._update_bulk_sheet_status()
 
@@ -101,7 +102,10 @@ class BulkSheetView:
         self.app._update_bulk_sheet_status()
 
     def clear_selection(self):
-        self.sheet.deselect("all", redraw=True)
+        try:
+            self.sheet.deselect("all", redraw=True)
+        except Exception:
+            pass
         self._selection_snapshot = {"cells": (), "rows": (), "columns": (), "current": (None, None)}
         self.app._update_bulk_sheet_status()
 
@@ -427,6 +431,7 @@ class BulkSheetView:
             for row_id, value in zip(row_ids, values):
                 self.app._bulk_apply_editor_value(row_id, target_col, value)
             self.app._apply_bulk_filter()
+            self.clear_selection()
             self.app._update_bulk_summary()
             self.app._update_bulk_sheet_status()
             return True
@@ -447,6 +452,7 @@ class BulkSheetView:
                     continue
                 self.app._bulk_apply_editor_value(row_id, col_name, value)
         self.app._apply_bulk_filter()
+        self.clear_selection()
         self.app._update_bulk_summary()
         self.app._update_bulk_sheet_status()
         return True

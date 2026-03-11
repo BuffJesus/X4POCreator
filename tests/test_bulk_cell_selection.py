@@ -104,6 +104,7 @@ class BulkSheetStatusTests(unittest.TestCase):
                 current_editable_column_name=lambda: "pack_size",
                 selected_target_row_ids=lambda col_name: ("0", "1"),
                 current_cell_value=lambda: "500",
+                clear_selection=lambda: calls.append(("cleared",)),
             ),
             root=None,
             _bulk_apply_editor_value=lambda row_id, col_name, value: calls.append((row_id, col_name, value)),
@@ -116,7 +117,7 @@ class BulkSheetStatusTests(unittest.TestCase):
             result = po_builder.POBuilderApp._bulk_begin_edit(fake_app)
 
         self.assertEqual(result, "break")
-        self.assertEqual(calls[:5], [("0", "pack_size", "750"), ("1", "pack_size", "750"), ("filter",), ("summary",), ("status",)])
+        self.assertEqual(calls[:6], [("0", "pack_size", "750"), ("1", "pack_size", "750"), ("filter",), ("cleared",), ("summary",), ("status",)])
 
 
 class BulkSheetViewTests(unittest.TestCase):
@@ -135,15 +136,17 @@ class BulkSheetViewTests(unittest.TestCase):
             _update_bulk_summary=lambda: calls.append(("summary",)),
             _update_bulk_sheet_status=lambda: calls.append(("status",)),
         )
+        view.clear_selection = lambda: calls.append(("cleared",))
 
         view._handle_edit({"row": 0, "column": 1, "value": "500"})
 
         self.assertEqual(
-            calls[:5],
+            calls[:6],
             [
                 ("4", "pack_size", "500"),
                 ("8", "pack_size", "500"),
                 ("filter",),
+                ("cleared",),
                 ("summary",),
                 ("status",),
             ],
