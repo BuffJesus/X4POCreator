@@ -89,6 +89,17 @@ class RulesTests(unittest.TestCase):
         }
         self.assertEqual(calculate_raw_need(item), 0)
 
+    def test_calculate_raw_need_treats_negative_qoh_as_zero(self):
+        item = {
+            "inventory": {"qoh": -2, "max": 3},
+            "qty_on_po": 0,
+            "demand_signal": 1,
+            "suggested_max": None,
+        }
+        self.assertEqual(calculate_raw_need(item), 3)
+        self.assertEqual(item["inventory_position"], 0)
+        self.assertEqual(item["target_stock"], 3)
+
     def test_calculate_raw_need_falls_back_to_demand_when_no_max_exists(self):
         item = {
             "inventory": {"qoh": 5, "min": None, "max": None},

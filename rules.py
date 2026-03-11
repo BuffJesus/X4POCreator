@@ -96,7 +96,7 @@ def get_rule_pack_size(rule):
 def calculate_raw_need(item):
     """Calculate the unconstrained order need from inventory position."""
     inv = item.get("inventory", {}) or {}
-    qoh = inv.get("qoh", 0) or 0
+    qoh = max(0, inv.get("qoh", 0) or 0)
     on_po = item.get("qty_on_po", 0) or 0
     inventory_position = qoh + on_po
     item["inventory_position"] = inventory_position
