@@ -156,6 +156,7 @@ class BulkSheetStatusTests(unittest.TestCase):
                 sheet=SimpleNamespace(open_cell=lambda: calls.append(("open_cell",))),
             ),
             root=None,
+            _right_click_bulk_context=None,
             _bulk_apply_editor_value=lambda row_id, col_name, value: calls.append((row_id, col_name, value)),
             _apply_bulk_filter=lambda: calls.append(("filter",)),
             _update_bulk_summary=lambda: calls.append(("summary",)),
@@ -168,6 +169,32 @@ class BulkSheetStatusTests(unittest.TestCase):
         self.assertEqual(result, "break")
         self.assertEqual(calls[:5], [("8", "pack_size", "3"), ("filter",), ("cleared",), ("summary",), ("status",)])
         self.assertNotIn(("open_cell",), calls)
+
+    def test_bulk_begin_edit_prefers_right_click_context(self):
+        calls = []
+        fake_app = SimpleNamespace(
+            bulk_sheet=SimpleNamespace(
+                selected_editable_column_name=lambda: "",
+                current_editable_column_name=lambda: "",
+                selected_target_row_ids=lambda col_name: (),
+                selected_row_ids=lambda: (),
+                current_cell_value=lambda: "2",
+                clear_selection=lambda: calls.append(("cleared",)),
+                sheet=SimpleNamespace(open_cell=lambda: calls.append(("open_cell",))),
+            ),
+            root=None,
+            _right_click_bulk_context={"row_id": "8", "col_name": "pack_size"},
+            _bulk_apply_editor_value=lambda row_id, col_name, value: calls.append((row_id, col_name, value)),
+            _apply_bulk_filter=lambda: calls.append(("filter",)),
+            _update_bulk_summary=lambda: calls.append(("summary",)),
+            _update_bulk_cell_status=lambda: calls.append(("status",)),
+        )
+
+        with patch("po_builder.simpledialog.askstring", return_value="3"):
+            result = po_builder.POBuilderApp._bulk_begin_edit(fake_app)
+
+        self.assertEqual(result, "break")
+        self.assertEqual(calls[:5], [("8", "pack_size", "3"), ("filter",), ("cleared",), ("summary",), ("status",)])
 
 
 class BulkSheetViewTests(unittest.TestCase):

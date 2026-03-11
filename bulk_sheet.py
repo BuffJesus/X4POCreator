@@ -75,6 +75,38 @@ class BulkSheetView:
         self._remember_selection()
         self.app._update_bulk_sheet_status()
 
+    def handle_right_click(self, event):
+        row = None
+        col = None
+        try:
+            row = self.sheet.identify_row(event, exclude_index=True, allow_end=False)
+            col = self.sheet.identify_column(event, exclude_header=True, allow_end=False)
+        except Exception:
+            row = None
+            col = None
+        if row is None or col is None:
+            return None
+        if row < 0 or row >= len(self.row_ids) or col < 0 or col >= len(self.columns):
+            return None
+        try:
+            self.sheet.set_currently_selected(row=row, column=col)
+        except Exception:
+            pass
+        self.app._right_click_bulk_context = {
+            "row_id": str(self.row_ids[row]),
+            "col_name": self.columns[col],
+        }
+        write_debug(
+            "bulk_sheet.right_click",
+            row=row,
+            col=col,
+            row_id=str(self.row_ids[row]),
+            col_name=self.columns[col],
+        )
+        self._remember_selection()
+        self.app._update_bulk_sheet_status()
+        return None
+
     def _handle_edit(self, event_data):
         row = event_data.get("row")
         col = event_data.get("column")

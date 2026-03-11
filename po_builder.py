@@ -1441,16 +1441,31 @@ class POBuilderApp:
     def _bulk_begin_edit(self, event=None):
         if not self.bulk_sheet:
             return None
+        right_click_context = getattr(self, "_right_click_bulk_context", None) or {}
         col_name = (
+            right_click_context.get("col_name", "")
+            or
             self.bulk_sheet.selected_editable_column_name()
             or self.bulk_sheet.current_editable_column_name()
         )
         row_ids = []
         if col_name:
             row_ids = list(self.bulk_sheet.selected_target_row_ids(col_name))
+        clicked_row_id = right_click_context.get("row_id")
+        if clicked_row_id and clicked_row_id not in row_ids:
+            if row_ids:
+                row_ids = [clicked_row_id]
+            else:
+                row_ids = [clicked_row_id]
         if not row_ids and self.bulk_sheet:
             row_ids = list(self.bulk_sheet.selected_row_ids())
-        write_debug("bulk_begin_edit", col_name=col_name, row_ids=",".join(row_ids), row_count=len(row_ids))
+        write_debug(
+            "bulk_begin_edit",
+            col_name=col_name,
+            row_ids=",".join(row_ids),
+            row_count=len(row_ids),
+            right_click_row_id=clicked_row_id or "",
+        )
         if col_name in BULK_EDITABLE_COLS and len(row_ids) >= 1:
             if len(row_ids) == 1:
                 prompt = f"Enter a value for {col_name}:"
@@ -1477,11 +1492,13 @@ class POBuilderApp:
                     write_debug("bulk_begin_edit.rendered_row_error", row_id=row_id, col_name=col_name, error=str(exc))
             if self.bulk_sheet:
                 self.bulk_sheet.clear_selection()
+            self._right_click_bulk_context = None
             self._update_bulk_summary()
             self._update_bulk_cell_status()
             return "break"
         self.bulk_sheet.sheet.open_cell()
         write_debug("bulk_begin_edit.open_cell", col_name=col_name, row_count=len(row_ids))
+        self._right_click_bulk_context = None
         return "break"
 
     def _bulk_fit_columns(self):
