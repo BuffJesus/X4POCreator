@@ -23,6 +23,7 @@ from datetime import datetime
 import json
 import webbrowser
 import export_flow
+import item_workflow
 import load_flow
 import parsers
 import storage
@@ -43,7 +44,6 @@ from rules import (
     enrich_item,
     evaluate_item_status,
     get_rule_pack_size,
-    infer_default_order_policy,
 )
 
 try:
@@ -1230,11 +1230,7 @@ class POBuilderApp:
         return sug_min, sug_max
 
     def _find_filtered_item(self, key):
-        """Return the live filtered item matching the given (line_code, item_code)."""
-        for item in self.filtered_items:
-            if (item["line_code"], item["item_code"]) == key:
-                return item
-        return None
+        return item_workflow.find_filtered_item(self.filtered_items, key)
 
     @staticmethod
     def _normalize_vendor_code(value):
@@ -1321,78 +1317,37 @@ class POBuilderApp:
         ui_vendor_manager.open_vendor_manager(self)
 
     def _get_effective_order_qty(self, item):
-        """Return the current working quantity regardless of storage field."""
-        return item.get("final_qty", item.get("order_qty", 0))
+        return item_workflow.get_effective_order_qty(item)
 
     def _set_effective_order_qty(self, item, qty, *, manual_override=False):
-        """Keep quantity fields aligned while optionally marking a user override."""
-        qty = max(0, int(qty))
-        item["final_qty"] = qty
-        item["order_qty"] = qty
-        if manual_override:
-            item["manual_override"] = True
+        item_workflow.set_effective_order_qty(item, qty, manual_override=manual_override)
 
     @staticmethod
     def _clear_manual_override(item):
-        """Allow recalculation-driven edits to restore the suggested quantity."""
-        item["manual_override"] = False
+        item_workflow.clear_manual_override(item)
 
     def _recalculate_item(self, item):
-        """Refresh derived ordering fields for a single item after edits."""
-        key = (item["line_code"], item["item_code"])
-        rule_key = get_rule_key(item["line_code"], item["item_code"])
-        rule = self._effective_order_rule(item, self.order_rules.get(rule_key))
-        sug_min, sug_max = self._suggest_min_max(key)
-        item["suggested_min"] = sug_min
-        item["suggested_max"] = sug_max
-        enrich_item(item, self.inventory_lookup.get(key, {}), item.get("pack_size"), rule)
+        item_workflow.recalculate_item(
+            item,
+            self.inventory_lookup,
+            self.order_rules,
+            self._suggest_min_max,
+            get_rule_key,
+        )
         return item
 
     def _effective_order_rule(self, item, rule):
-        """Ignore stale default policies so the current pack data can drive the default behavior."""
-        if not rule:
-            return rule
-        effective = dict(rule)
-        if not effective.get("policy_locked"):
-            inferred_policy = infer_default_order_policy(
-                item,
-                self.inventory_lookup.get((item["line_code"], item["item_code"]), {}),
-                item.get("pack_size"),
-                allow_below_pack=effective.get("allow_below_pack", False),
-            )
-            saved_policy = effective.get("order_policy")
-            if saved_policy == inferred_policy or saved_policy in ("exact_qty", "standard"):
-                effective.pop("order_policy", None)
-        return effective
+        return item_workflow.effective_order_rule(item, rule, self.inventory_lookup)
 
     def _sync_review_item_to_filtered(self, item):
-        """Mirror review edits back to the filtered item so both views stay consistent."""
-        key = (item["line_code"], item["item_code"])
-        filtered = self._find_filtered_item(key)
-        if filtered is None:
-            return None
-        filtered["vendor"] = item.get("vendor", filtered.get("vendor", ""))
-        filtered["pack_size"] = item.get("pack_size")
-        if not item.get("manual_override", False):
-            self._clear_manual_override(filtered)
-        self._set_effective_order_qty(
-            filtered,
-            item.get("order_qty", self._get_effective_order_qty(filtered)),
-            manual_override=item.get("manual_override", False),
+        return item_workflow.sync_review_item_to_filtered(
+            item,
+            self.filtered_items,
+            self.inventory_lookup,
+            self.order_rules,
+            self._suggest_min_max,
+            get_rule_key,
         )
-        self._recalculate_item(filtered)
-        item["status"] = filtered.get("status", item.get("status", "ok"))
-        item["why"] = filtered.get("why", item.get("why", ""))
-        item["data_flags"] = list(filtered.get("data_flags", item.get("data_flags", [])))
-        item["order_policy"] = filtered.get("order_policy", item.get("order_policy", ""))
-        item["suggested_min"] = filtered.get("suggested_min")
-        item["suggested_max"] = filtered.get("suggested_max")
-        item["suggested_qty"] = filtered.get("suggested_qty")
-        item["raw_need"] = filtered.get("raw_need")
-        item["final_qty"] = self._get_effective_order_qty(filtered)
-        item["order_qty"] = self._get_effective_order_qty(filtered)
-        item["manual_override"] = filtered.get("manual_override", item.get("manual_override", False))
-        return filtered
 
     def _bulk_row_values(self, item):
         return ui_bulk.bulk_row_values(self, item)
@@ -1952,15 +1907,7 @@ class POBuilderApp:
                 old_policy = item.get("order_policy", "")
                 old_suggested = item.get("suggested_qty")
                 old_final = item.get("final_qty")
-                item["pack_size"] = None if raw == "" else int(float(raw))
-                rule = dict(rule or {})
-                if item["pack_size"] is None:
-                    rule.pop("pack_size", None)
-                else:
-                    rule["pack_size"] = item["pack_size"]
-                if not rule.get("policy_locked") and rule.get("order_policy") in ("exact_qty", "standard"):
-                    rule.pop("order_policy", None)
-                self.order_rules[rule_key] = rule
+                rule_key, rule = item_workflow.apply_pack_size_edit(item, raw, self.order_rules, get_rule_key)
                 self._save_order_rules()
                 self._clear_manual_override(item)
                 self._recalculate_item(item)
@@ -2119,16 +2066,7 @@ class POBuilderApp:
                 self._update_review_summary()
         elif col_name == "pack_size":
             try:
-                item["pack_size"] = None if raw == "" else int(float(raw))
-                rule_key = get_rule_key(item["line_code"], item["item_code"])
-                rule = dict(self.order_rules.get(rule_key) or {})
-                if item["pack_size"] is None:
-                    rule.pop("pack_size", None)
-                else:
-                    rule["pack_size"] = item["pack_size"]
-                if not rule.get("policy_locked") and rule.get("order_policy") in ("exact_qty", "standard"):
-                    rule.pop("order_policy", None)
-                self.order_rules[rule_key] = rule
+                item_workflow.apply_pack_size_edit(item, raw, self.order_rules, get_rule_key)
                 self._save_order_rules()
                 self._clear_manual_override(item)
                 self._sync_review_item_to_filtered(item)
