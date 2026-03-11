@@ -23,6 +23,7 @@ class BulkSheetView:
         self._selection_snapshot = {"cells": (), "rows": (), "columns": (), "current": (None, None)}
         self._resize_after_id = None
         self._edit_refresh_after_id = None
+        self._pending_edit = None
 
         headers = [self.labels[col] for col in self.columns]
         self.sheet = Sheet(
@@ -75,23 +76,57 @@ class BulkSheetView:
     def _handle_edit(self, event_data):
         row = event_data.get("row")
         col = event_data.get("column")
-        value = event_data.get("value", "")
         if row is None or col is None or row >= len(self.row_ids) or col >= len(self.columns):
             return
         row_id = str(self.row_ids[row])
         col_name = self.columns[col]
         if col_name not in self.editable_cols:
-            self.refresh_row(row_id, self.app._bulk_row_values(self.app.filtered_items[int(row_id)]))
+            self._pending_edit = {
+                "row": row,
+                "col": col,
+                "row_id": row_id,
+                "col_name": col_name,
+                "editable": False,
+                "target_row_ids": (),
+                "fallback_value": event_data.get("value", ""),
+            }
+            self._queue_post_edit_refresh()
             return
         target_row_ids = list(self._snapshot_target_row_ids(col_name))
         if row_id not in target_row_ids:
             target_row_ids = [row_id]
-        for target_row_id in target_row_ids:
-            self.app._bulk_apply_editor_value(target_row_id, col_name, str(value))
+        self._pending_edit = {
+            "row": row,
+            "col": col,
+            "row_id": row_id,
+            "col_name": col_name,
+            "editable": True,
+            "target_row_ids": tuple(target_row_ids),
+            "fallback_value": event_data.get("value", ""),
+        }
         self._queue_post_edit_refresh()
 
     def _run_post_edit_refresh(self):
         self._edit_refresh_after_id = None
+        pending = self._pending_edit
+        self._pending_edit = None
+        if pending:
+            row = pending.get("row")
+            col = pending.get("col")
+            row_id = pending.get("row_id")
+            col_name = pending.get("col_name")
+            try:
+                value = self.sheet.get_cell_data(row, col)
+            except Exception:
+                value = pending.get("fallback_value", "")
+            if value is None:
+                value = pending.get("fallback_value", "")
+            value = str(value)
+            if pending.get("editable"):
+                for target_row_id in pending.get("target_row_ids", ()):
+                    self.app._bulk_apply_editor_value(target_row_id, col_name, value)
+            elif row_id is not None:
+                self.refresh_row(row_id, self.app._bulk_row_values(self.app.filtered_items[int(row_id)]))
         self.app._apply_bulk_filter()
         self.clear_selection()
         self.app._update_bulk_summary()

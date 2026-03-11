@@ -130,6 +130,7 @@ class BulkSheetViewTests(unittest.TestCase):
         view._selection_snapshot = {"cells": ((0, 1), (1, 1)), "rows": (), "columns": (), "current": (0, 1)}
         view.col_index = {"vendor": 0, "pack_size": 1, "why": 2}
         view._edit_refresh_after_id = None
+        view._pending_edit = None
         view.selected_target_row_ids = lambda col_name: ("4",)
         view.app = SimpleNamespace(
             _bulk_apply_editor_value=lambda row_id, col_name, value: calls.append((row_id, col_name, value)),
@@ -139,6 +140,7 @@ class BulkSheetViewTests(unittest.TestCase):
         )
         view.clear_selection = lambda: calls.append(("cleared",))
         view.sheet = SimpleNamespace(
+            get_cell_data=lambda row, col: "500",
             after=lambda delay, callback: (calls.append(("after", delay)), callback(), "after-id")[2],
             after_cancel=lambda after_id: calls.append(("cancel", after_id)),
         )
@@ -148,9 +150,9 @@ class BulkSheetViewTests(unittest.TestCase):
         self.assertEqual(
             calls[:7],
             [
+                ("after", 1),
                 ("4", "pack_size", "500"),
                 ("8", "pack_size", "500"),
-                ("after", 1),
                 ("filter",),
                 ("cleared",),
                 ("summary",),
