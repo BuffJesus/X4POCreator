@@ -80,9 +80,14 @@ def _clean_item_description(text):
 
 def parse_part_sales_csv(filepath):
     agg = {}
+    seen_rows = set()
     with open(filepath, "r", encoding="utf-8-sig") as f:
         reader = csv.reader(f)
         for row in reader:
+            normalized_row = tuple(str(cell).strip() for cell in row)
+            if normalized_row in seen_rows:
+                continue
+            seen_rows.add(normalized_row)
             lc = _find_lc_column(row)
             if lc is None or lc + 5 >= len(row):
                 continue

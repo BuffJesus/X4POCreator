@@ -31,13 +31,14 @@ class ParserSmokeTests(unittest.TestCase):
             lookup = parsers.parse_pack_sizes_csv(str(path))
             self.assertEqual(lookup[("AER-", "GH781-4")], 500)
 
-    def test_parse_part_sales_csv_aggregates_repeated_rows(self):
+    def test_parse_part_sales_csv_drops_only_identical_duplicate_rows(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "sales.csv"
             with open(path, "w", newline="", encoding="utf-8-sig") as f:
                 writer = csv.writer(f)
                 writer.writerow(["hdr", "AER-", "GH781-4", "HOSE", "5", "skip", "7"])
                 writer.writerow(["hdr", "AER-", "GH781-4", "HOSE", "5", "skip", "7"])
+                writer.writerow(["hdr2", "AER-", "GH781-4", "HOSE", "5", "skip", "7"])
 
             rows = parsers.parse_part_sales_csv(str(path))
 
