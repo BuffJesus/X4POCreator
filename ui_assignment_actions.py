@@ -30,7 +30,9 @@ def bulk_apply_selected(app):
             app.bulk_sheet.set_cell(item_id, "vendor", vendor)
         else:
             app.bulk_tree.set(item_id, "vendor", vendor)
-    if vendor not in app.vendor_codes_used:
+    if hasattr(app, "_remember_vendor_code"):
+        app._remember_vendor_code(vendor)
+    elif vendor not in app.vendor_codes_used:
         app.vendor_codes_used.append(vendor)
     app._update_bulk_summary()
 
@@ -51,7 +53,9 @@ def bulk_apply_visible(app):
             app.bulk_sheet.set_cell(item_id, "vendor", vendor)
         else:
             app.bulk_tree.set(item_id, "vendor", vendor)
-    if vendor not in app.vendor_codes_used:
+    if hasattr(app, "_remember_vendor_code"):
+        app._remember_vendor_code(vendor)
+    elif vendor not in app.vendor_codes_used:
         app.vendor_codes_used.append(vendor)
     app._update_bulk_summary()
 
@@ -134,7 +138,9 @@ def assign_current(app):
     item = app.individual_items[app.assign_index]
     item["vendor"] = vendor
 
-    if vendor not in app.vendor_codes_used:
+    if hasattr(app, "_remember_vendor_code"):
+        app._remember_vendor_code(vendor)
+    elif vendor not in app.vendor_codes_used:
         app.vendor_codes_used.append(vendor)
 
     app.assign_index += 1

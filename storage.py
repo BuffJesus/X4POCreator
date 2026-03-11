@@ -129,6 +129,35 @@ def save_duplicate_whitelist(path, whitelist):
         pass
 
 
+def load_vendor_codes(path, default=None):
+    """Load persisted vendor codes from disk, one code per line."""
+    codes = []
+    if os.path.exists(path):
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                for line in f:
+                    code = line.strip().upper()
+                    if code and code not in codes:
+                        codes.append(code)
+        except Exception:
+            pass
+    if codes:
+        return codes
+    return list(default or [])
+
+
+def save_vendor_codes(path, vendor_codes):
+    """Persist vendor codes to disk, one code per line."""
+    try:
+        with open(path, "w", encoding="utf-8") as f:
+            for code in vendor_codes:
+                normalized = str(code).strip().upper()
+                if normalized:
+                    f.write(normalized + "\n")
+    except Exception:
+        pass
+
+
 def load_suspense_carry(path, now=None, max_age_days=14):
     """Load persisted suspense carry keyed by (line_code, item_code)."""
     payload = load_json_file(path, {})

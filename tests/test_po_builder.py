@@ -22,17 +22,25 @@ class POBuilderTests(unittest.TestCase):
             _suggest_min_max=lambda key: (None, None),
         )
         fake_app._find_filtered_item = lambda key: po_builder.POBuilderApp._find_filtered_item(fake_app, key)
+        fake_app._normalize_vendor_code = lambda value: po_builder.POBuilderApp._normalize_vendor_code(value)
         fake_app._get_effective_order_qty = lambda item: po_builder.POBuilderApp._get_effective_order_qty(fake_app, item)
         fake_app._set_effective_order_qty = (
             lambda item, qty, manual_override=False: po_builder.POBuilderApp._set_effective_order_qty(
                 fake_app, item, qty, manual_override=manual_override
             )
         )
+        fake_app._remember_vendor_code = lambda vendor: po_builder.POBuilderApp._remember_vendor_code(fake_app, vendor)
+        fake_app._rename_vendor_code = (
+            lambda old_vendor, new_vendor: po_builder.POBuilderApp._rename_vendor_code(fake_app, old_vendor, new_vendor)
+        )
         fake_app._recalculate_item = lambda item: po_builder.POBuilderApp._recalculate_item(fake_app, item)
         fake_app._sync_review_item_to_filtered = (
             lambda item: po_builder.POBuilderApp._sync_review_item_to_filtered(fake_app, item)
         )
         fake_app._update_review_summary = lambda: None
+        fake_app._update_bulk_summary = lambda: None
+        fake_app._refresh_vendor_inputs = lambda: None
+        fake_app._save_vendor_codes = lambda: None
         return fake_app
 
     def test_default_vendor_for_key_uses_supplier(self):
@@ -83,6 +91,30 @@ class POBuilderTests(unittest.TestCase):
         self.assertEqual(item["final_qty"], 3)
         self.assertEqual(item["order_qty"], 3)
         self.assertTrue(item["manual_override"])
+
+    def test_remember_vendor_code_normalizes_and_sorts(self):
+        fake_app = self._make_calc_app()
+        fake_app.vendor_codes_used = ["MOTION"]
+
+        result = po_builder.POBuilderApp._remember_vendor_code(fake_app, "gregdist")
+
+        self.assertEqual(result, "GREGDIST")
+        self.assertEqual(fake_app.vendor_codes_used, ["GREGDIST", "MOTION"])
+
+    def test_rename_vendor_code_updates_current_session_items(self):
+        fake_app = self._make_calc_app()
+        fake_app.vendor_codes_used = ["GREGDIST", "MOTION"]
+        fake_app.filtered_items = [{"vendor": "GREGDIST"}]
+        fake_app.individual_items = [{"vendor": "GREGDIST"}]
+        fake_app.assigned_items = [{"vendor": "GREGDIST"}]
+
+        result = po_builder.POBuilderApp._rename_vendor_code(fake_app, "gregdist", "source")
+
+        self.assertEqual(result, "SOURCE")
+        self.assertEqual(fake_app.vendor_codes_used, ["MOTION", "SOURCE"])
+        self.assertEqual(fake_app.filtered_items[0]["vendor"], "SOURCE")
+        self.assertEqual(fake_app.individual_items[0]["vendor"], "SOURCE")
+        self.assertEqual(fake_app.assigned_items[0]["vendor"], "SOURCE")
 
     def test_bulk_qoh_edit_recalculates_item_fields(self):
         fake_app = self._make_calc_app()

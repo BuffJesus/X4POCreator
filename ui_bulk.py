@@ -49,6 +49,7 @@ def build_bulk_tab(app, editable_cols):
     bulk_buttons[4].pack(side=tk.LEFT, padx=8)
     bulk_buttons[5].pack(side=tk.LEFT, padx=4)
     bulk_buttons[6].pack(side=tk.LEFT, padx=4)
+    ttk.Button(btn_row, text="Manage Vendors...", command=app._open_vendor_manager).pack(side=tk.LEFT, padx=8)
     ttk.Button(btn_row, text="Fit Columns To Window", command=app._bulk_fit_columns).pack(side=tk.LEFT, padx=8)
 
     filter_frame = ttk.Frame(frame)

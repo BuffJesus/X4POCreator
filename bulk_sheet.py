@@ -279,15 +279,17 @@ class BulkSheetView:
         minimums = []
         maximums = []
         for col in self.columns:
-            base = self.base_widths.get(col, 100)
-            if col in ("description", "why"):
-                minimums.append(max(120, min(180, base)))
+            if col == "why":
+                minimums.append(260)
+                maximums.append(560)
+            elif col == "description":
+                minimums.append(80)
                 maximums.append(560)
             elif col in ("vendor", "item_code", "supplier", "buy_rule"):
-                minimums.append(max(72, min(100, base)))
+                minimums.append(52)
                 maximums.append(220)
             else:
-                minimums.append(max(52, min(72, base)))
+                minimums.append(40)
                 maximums.append(160)
 
         for idx, col in enumerate(self.columns):
@@ -297,7 +299,8 @@ class BulkSheetView:
                 text_width = self.base_widths.get(col, 100)
             if text_width <= 0:
                 text_width = self.base_widths.get(col, 100)
-            target_width = max(minimums[idx], min(maximums[idx], text_width + 12))
+            extra_padding = 24 if col == "why" else 8
+            target_width = max(minimums[idx], min(maximums[idx], text_width + extra_padding))
             fitted.append(target_width)
 
         total_width = sum(fitted)
@@ -315,20 +318,6 @@ class BulkSheetView:
                         overflow -= 1
                         progress = True
                 if not progress:
-                    break
-        elif total_width < usable_width:
-            spare = usable_width - total_width
-            grow_order = [self.col_index[col] for col in ("description", "why", "vendor", "item_code") if col in self.col_index]
-            if not grow_order:
-                grow_order = list(range(len(fitted)))
-            idx = 0
-            while spare > 0:
-                col_idx = grow_order[idx % len(grow_order)]
-                if fitted[col_idx] < maximums[col_idx]:
-                    fitted[col_idx] += 1
-                    spare -= 1
-                idx += 1
-                if idx > len(grow_order) * max(1, usable_width):
                     break
 
         self.sheet.set_column_widths(fitted)

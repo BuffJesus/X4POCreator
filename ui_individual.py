@@ -100,6 +100,7 @@ def build_individual_tab(app):
     app.combo_vendor.pack(anchor="w", pady=4)
     app.combo_vendor.bind("<Return>", lambda e: app._assign_current())
     app.combo_vendor.bind("<KeyRelease>", app._vendor_autocomplete)
+    ttk.Button(vendor_frame, text="Manage Vendors...", command=app._open_vendor_manager).pack(anchor="w", pady=(2, 0))
 
     btn_frame = ttk.Frame(frame)
     btn_frame.pack(fill=tk.X, pady=12)

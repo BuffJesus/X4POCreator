@@ -242,6 +242,42 @@ class BulkSheetViewTests(unittest.TestCase):
         self.assertLessEqual(sum(recorded["widths"]), 500)
         self.assertGreaterEqual(recorded["widths"][1], recorded["widths"][0])
 
+    def test_fit_columns_to_window_does_not_expand_columns_just_to_fill_space(self):
+        recorded = {}
+        view = BulkSheetView.__new__(BulkSheetView)
+        view.columns = ("vendor", "description", "why")
+        view.col_index = {"vendor": 0, "description": 1, "why": 2}
+        view.base_widths = {"vendor": 80, "description": 150, "why": 180}
+        view.sheet = SimpleNamespace(
+            get_column_text_width=lambda idx, visible_only=True: [40, 90, 70][idx],
+            set_column_widths=lambda widths: recorded.setdefault("widths", list(widths)),
+            refresh=lambda: recorded.setdefault("refresh", True),
+            redraw=lambda: recorded.setdefault("redraw", True),
+        )
+
+        result = view.fit_columns_to_window(available_width=700)
+
+        self.assertTrue(result)
+        self.assertEqual(recorded["widths"], [52, 98, 260])
+
+    def test_fit_columns_to_window_uses_compact_numeric_widths_and_wider_why(self):
+        recorded = {}
+        view = BulkSheetView.__new__(BulkSheetView)
+        view.columns = ("raw_need", "suggested_qty", "final_qty", "why")
+        view.col_index = {"raw_need": 0, "suggested_qty": 1, "final_qty": 2, "why": 3}
+        view.base_widths = {"raw_need": 44, "suggested_qty": 54, "final_qty": 64, "why": 180}
+        view.sheet = SimpleNamespace(
+            get_column_text_width=lambda idx, visible_only=True: [90, 96, 88, 120][idx],
+            set_column_widths=lambda widths: recorded.setdefault("widths", list(widths)),
+            refresh=lambda: recorded.setdefault("refresh", True),
+            redraw=lambda: recorded.setdefault("redraw", True),
+        )
+
+        result = view.fit_columns_to_window(available_width=900)
+
+        self.assertTrue(result)
+        self.assertEqual(recorded["widths"], [98, 104, 96, 260])
+
     def test_split_clipboard_matrix_handles_windows_newlines(self):
         self.assertEqual(
             BulkSheetView._split_clipboard_matrix("A\tB\r\n1\t2\r\n"),

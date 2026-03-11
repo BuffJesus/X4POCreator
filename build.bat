@@ -20,34 +20,39 @@ if errorlevel 1 (
 
 echo.
 echo Building executable...
-set "ASSET_GIF="
-set "ASSET_WAV="
-set "ASSET_ICON_DATA="
-set "ASSET_ICON_ARG="
-
 if exist "loading.gif" (
     echo   Found loading.gif - bundling loading animation...
-    set "ASSET_GIF=--add-data ""loading.gif;."""
 ) else (
     echo   loading.gif not found - continuing without loading animation asset.
 )
 
-if exist "Nyan Cat! [Official].wav" (
-    echo   Found Nyan Cat! [Official].wav - bundling loading audio...
-    set "ASSET_WAV=--add-data ""Nyan Cat! [Official].wav;."""
+if exist "loading.wav" (
+    echo   Found loading.wav - bundling loading audio...
 ) else (
-    echo   Nyan Cat! [Official].wav not found - continuing without loading audio asset.
+    echo   loading.wav not found - continuing without loading audio asset.
 )
 
 if exist "icon.ico" (
     echo   Found icon.ico - building with custom icon...
-    set "ASSET_ICON_DATA=--add-data ""icon.ico;."""
-    set "ASSET_ICON_ARG=--icon ""icon.ico"""
 ) else (
     echo   icon.ico not found - building without custom icon...
 )
 
-pyinstaller --onefile --windowed %ASSET_GIF% %ASSET_WAV% %ASSET_ICON_DATA% %ASSET_ICON_ARG% --name "PO Builder" po_builder.py
+powershell -NoProfile -Command ^
+  "$args = @('-y', '--onefile', '--windowed', '--name', 'PO Builder');" ^
+  "if (Test-Path 'loading.gif') { $args += @('--add-data', 'loading.gif;.') };" ^
+  "if (Test-Path 'loading.wav') { $args += @('--add-data', 'loading.wav;.') };" ^
+  "if (Test-Path 'icon.ico') { $args += @('--add-data', 'icon.ico;.', '--icon', 'icon.ico') };" ^
+  "$args += 'po_builder.py';" ^
+  "& pyinstaller @args;" ^
+  "exit $LASTEXITCODE"
+if errorlevel 1 (
+    echo.
+    echo   BUILD FAILED - check errors above
+    echo ========================================
+    pause
+    exit /b 1
+)
 
 echo.
 echo ========================================

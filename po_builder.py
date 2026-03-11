@@ -31,6 +31,7 @@ import ui_help
 import ui_individual
 import ui_load
 import ui_review
+import ui_vendor_manager
 from maintenance import build_maintenance_report
 from models import ItemKey, MaintenanceCandidate, SessionItemState, SourceItemState, SuggestedItemState
 from rules import (
@@ -68,8 +69,9 @@ ORDER_HISTORY_FILE = os.path.join(_DATA_DIR, "order_history.json")
 ORDER_RULES_FILE = os.path.join(_DATA_DIR, "order_rules.json")
 SUSPENSE_CARRY_FILE = os.path.join(_DATA_DIR, "suspense_carry.json")
 SESSIONS_DIR = os.path.join(_DATA_DIR, "sessions")
+VENDOR_CODES_FILE = os.path.join(_DATA_DIR, "vendor_codes.txt")
 LOADING_GIF_FILE = os.path.join(_BUNDLE_DIR, "loading.gif")
-LOADING_WAV_FILE = os.path.join(_BUNDLE_DIR, "Nyan Cat! [Official].wav")
+LOADING_WAV_FILE = os.path.join(_BUNDLE_DIR, "loading.wav")
 ICON_FILE = os.path.join(_BUNDLE_DIR, "icon.ico")
 OLD_PO_WARNING_DAYS = 90
 SHORT_SALES_WINDOW_DAYS = 7
@@ -233,7 +235,7 @@ class POBuilderApp:
         self.recent_orders = {}         # (lc, ic) -> [{qty, vendor, date}]
         self.order_rules = storage.load_order_rules(ORDER_RULES_FILE)  # persistent per-item buy rules
         self.suspense_carry = storage.load_suspense_carry(SUSPENSE_CARRY_FILE)
-        self.vendor_codes_used = list(KNOWN_VENDORS)  # start with known vendors
+        self.vendor_codes_used = storage.load_vendor_codes(VENDOR_CODES_FILE, KNOWN_VENDORS)
         self.assigned_items = []        # final list of {item data + vendor + order_qty}
         self.last_removed_bulk_items = []  # [(index, item_dict)] for one-step undo
         self.startup_warning_rows = []  # structured rows for startup warning CSV export
@@ -1089,12 +1091,14 @@ class POBuilderApp:
         # Reset assignment state
         self.assigned_items = []
         self.qoh_adjustments = {}
-        self.vendor_codes_used = list(KNOWN_VENDORS)
+        self.vendor_codes_used = storage.load_vendor_codes(VENDOR_CODES_FILE, KNOWN_VENDORS)
         for item in self.filtered_items:
             vendor = item.get("vendor", "").strip().upper()
             if vendor and vendor not in self.vendor_codes_used:
                 self.vendor_codes_used.append(vendor)
+        self.vendor_codes_used.sort()
         self.last_removed_bulk_items = []
+        self._refresh_vendor_inputs()
 
         # Populate and go to bulk assign
         self._hide_loading()
@@ -1160,6 +1164,66 @@ class POBuilderApp:
             if (item["line_code"], item["item_code"]) == key:
                 return item
         return None
+
+    @staticmethod
+    def _normalize_vendor_code(value):
+        return str(value or "").strip().upper()
+
+    def _save_vendor_codes(self):
+        storage.save_vendor_codes(VENDOR_CODES_FILE, self.vendor_codes_used)
+
+    def _refresh_vendor_inputs(self):
+        if hasattr(self, "combo_bulk_vendor"):
+            self.combo_bulk_vendor["values"] = self.vendor_codes_used
+        if hasattr(self, "combo_vendor"):
+            self.combo_vendor["values"] = self.vendor_codes_used
+        if hasattr(self, "combo_vendor_filter"):
+            vendors = sorted(set(item["vendor"] for item in self.assigned_items if item.get("vendor")))
+            self.combo_vendor_filter["values"] = ["ALL"] + vendors
+
+    def _remember_vendor_code(self, vendor):
+        normalized = self._normalize_vendor_code(vendor)
+        if not normalized:
+            return ""
+        if normalized not in self.vendor_codes_used:
+            self.vendor_codes_used.append(normalized)
+            self.vendor_codes_used.sort()
+            self._save_vendor_codes()
+            self._refresh_vendor_inputs()
+        return normalized
+
+    def _rename_vendor_code(self, old_vendor, new_vendor):
+        old_normalized = self._normalize_vendor_code(old_vendor)
+        new_normalized = self._normalize_vendor_code(new_vendor)
+        if not old_normalized or not new_normalized:
+            return ""
+
+        for collection_name in ("filtered_items", "individual_items", "assigned_items"):
+            collection = getattr(self, collection_name, [])
+            for item in collection:
+                if self._normalize_vendor_code(item.get("vendor", "")) == old_normalized:
+                    item["vendor"] = new_normalized
+
+        self.vendor_codes_used = [code for code in self.vendor_codes_used if code != old_normalized]
+        if new_normalized not in self.vendor_codes_used:
+            self.vendor_codes_used.append(new_normalized)
+        self.vendor_codes_used.sort()
+        self._save_vendor_codes()
+        self._refresh_vendor_inputs()
+        self._update_bulk_summary()
+        self._update_review_summary()
+        return new_normalized
+
+    def _remove_vendor_code(self, vendor):
+        normalized = self._normalize_vendor_code(vendor)
+        if not normalized:
+            return
+        self.vendor_codes_used = [code for code in self.vendor_codes_used if code != normalized]
+        self._save_vendor_codes()
+        self._refresh_vendor_inputs()
+
+    def _open_vendor_manager(self):
+        ui_vendor_manager.open_vendor_manager(self)
 
     def _get_effective_order_qty(self, item):
         """Return the current working quantity regardless of storage field."""
@@ -1440,8 +1504,7 @@ class POBuilderApp:
             new_val = raw.upper()
             if new_val:
                 item["vendor"] = new_val
-                if new_val not in self.vendor_codes_used:
-                    self.vendor_codes_used.append(new_val)
+                self._remember_vendor_code(new_val)
                 self._update_bulk_summary()
         elif col_name == "final_qty":
             try:
@@ -1605,8 +1668,7 @@ class POBuilderApp:
             new_val = raw.upper()
             if new_val:
                 item["vendor"] = new_val
-                if new_val not in self.vendor_codes_used:
-                    self.vendor_codes_used.append(new_val)
+                self._remember_vendor_code(new_val)
                 self._sync_review_item_to_filtered(item)
                 self._update_review_summary()
         elif col_name == "pack_size":

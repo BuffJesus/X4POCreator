@@ -39,6 +39,12 @@ class StorageTests(unittest.TestCase):
             storage.save_duplicate_whitelist(str(path), values)
             self.assertEqual(storage.load_duplicate_whitelist(str(path)), values)
 
+    def test_vendor_codes_round_trip(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "vendor_codes.txt"
+            storage.save_vendor_codes(str(path), ["gregdist", "motion", "GREGDIST"])
+            self.assertEqual(storage.load_vendor_codes(str(path)), ["GREGDIST", "MOTION"])
+
     def test_save_session_snapshot_persists_json_artifact(self):
         with tempfile.TemporaryDirectory() as tmp:
             directory = Path(tmp) / "sessions"
