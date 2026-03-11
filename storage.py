@@ -321,6 +321,25 @@ def load_suspense_carry_with_meta(path, now=None, max_age_days=14):
     return load_suspense_carry(path, now=now, max_age_days=max_age_days), _get_meta(path)
 
 
+def _prune_suspense_payload(payload, now=None, max_age_days=14):
+    current = now or datetime.now()
+    pruned = {}
+    for raw_key, entry in payload.items():
+        try:
+            qty = max(0, int(float(entry.get("qty", 0))))
+            if qty <= 0:
+                continue
+            updated_at = entry.get("updated_at", "")
+            if updated_at:
+                age_days = (current - datetime.fromisoformat(updated_at)).total_seconds() / 86400
+                if age_days > max_age_days:
+                    continue
+            pruned[raw_key] = {"qty": qty, "updated_at": updated_at}
+        except Exception:
+            continue
+    return pruned
+
+
 def save_suspense_carry(path, carry, now=None, base_carry=None):
     """Persist suspense carry keyed by (line_code, item_code)."""
     current = now or datetime.now()
@@ -345,7 +364,11 @@ def save_suspense_carry(path, carry, now=None, base_carry=None):
         }
     lock_path = _acquire_lock(path)
     try:
-        disk_payload = load_json_file(path, {})
+        disk_payload = _prune_suspense_payload(
+            load_json_file(path, {}),
+            now=current,
+            max_age_days=max_age_days,
+        )
         merged_payload, conflict = _merge_dict_by_key(normalized_base, disk_payload, desired_payload)
         save_json_file(path, merged_payload)
         merged_lookup = load_suspense_carry(path, now=current, max_age_days=max_age_days)

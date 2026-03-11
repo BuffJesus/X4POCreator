@@ -126,6 +126,30 @@ class StorageTests(unittest.TestCase):
             self.assertEqual(loaded[("AER-", "GH781-4")]["qty"], 5)
             self.assertNotIn(("OLD-", "STALE"), loaded)
 
+    def test_save_suspense_carry_prunes_stale_disk_entries(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "suspense_carry.json"
+            now = datetime(2026, 3, 10, 12, 0, 0)
+            path.write_text(
+                json.dumps({
+                    "AER-:GH781-4": {"qty": 5, "updated_at": now.isoformat()},
+                    "OLD-:STALE": {"qty": 3, "updated_at": "2026-02-01T12:00:00"},
+                }),
+                encoding="utf-8",
+            )
+
+            result = storage.save_suspense_carry(
+                str(path),
+                {("AER-", "GH781-4"): {"qty": 5, "updated_at": now.isoformat()}},
+                now=now,
+                base_carry={("AER-", "GH781-4"): {"qty": 5, "updated_at": now.isoformat()}},
+            )
+
+            raw_payload = json.loads(path.read_text(encoding="utf-8"))
+            self.assertEqual(result["payload"], {("AER-", "GH781-4"): {"qty": 5, "updated_at": now.isoformat()}})
+            self.assertIn("AER-:GH781-4", raw_payload)
+            self.assertNotIn("OLD-:STALE", raw_payload)
+
     def test_save_order_rules_raises_when_write_fails(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "order_rules.json"
