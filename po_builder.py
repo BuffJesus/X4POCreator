@@ -407,7 +407,10 @@ class POBuilderApp:
         return settings if isinstance(settings, dict) else {}
 
     def _save_app_settings(self):
-        storage.save_json_file(APP_SETTINGS_FILE, self.app_settings)
+        try:
+            storage.save_json_file(APP_SETTINGS_FILE, self.app_settings)
+        except Exception as exc:
+            write_debug("app_settings.save_failed", error=str(exc), path=APP_SETTINGS_FILE)
 
     def _configure_initial_data_dir(self):
         requested = str(self.app_settings.get("shared_data_dir", "") or "").strip()

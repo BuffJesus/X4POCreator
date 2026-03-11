@@ -97,10 +97,7 @@ def load_json_file(path, default, with_meta=False):
 
 
 def save_json_file(path, payload):
-    try:
-        _atomic_write_text(path, json.dumps(payload, indent=2), encoding="utf-8")
-    except Exception:
-        pass
+    _atomic_write_text(path, json.dumps(payload, indent=2), encoding="utf-8")
 
 
 def _to_jsonable(value):

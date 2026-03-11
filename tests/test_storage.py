@@ -4,6 +4,7 @@ import tempfile
 import unittest
 from datetime import datetime
 from pathlib import Path
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -124,6 +125,13 @@ class StorageTests(unittest.TestCase):
             self.assertIn(("AER-", "GH781-4"), loaded)
             self.assertEqual(loaded[("AER-", "GH781-4")]["qty"], 5)
             self.assertNotIn(("OLD-", "STALE"), loaded)
+
+    def test_save_order_rules_raises_when_write_fails(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "order_rules.json"
+            with patch("storage._atomic_write_text", side_effect=OSError("disk full")):
+                with self.assertRaises(OSError):
+                    storage.save_order_rules(str(path), {"AER-:GH781-4": {"pack_size": 500}})
 
 
 if __name__ == "__main__":
