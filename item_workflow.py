@@ -73,6 +73,10 @@ def recalculate_item(item, inventory_lookup, order_rules, suggest_min_max, get_r
     return item
 
 
+def recalculate_item_from_session(item, session, suggest_min_max, get_rule_key):
+    return recalculate_item(item, session.inventory_lookup, session.order_rules, suggest_min_max, get_rule_key)
+
+
 def sync_review_item_to_filtered(
     review_item,
     filtered_items,
@@ -110,3 +114,14 @@ def sync_review_item_to_filtered(
     review_item["order_qty"] = get_effective_order_qty(filtered)
     review_item["manual_override"] = filtered.get("manual_override", review_item.get("manual_override", False))
     return filtered
+
+
+def sync_review_item_to_filtered_from_session(review_item, session, suggest_min_max, get_rule_key):
+    return sync_review_item_to_filtered(
+        review_item,
+        session.filtered_items,
+        session.inventory_lookup,
+        session.order_rules,
+        suggest_min_max,
+        get_rule_key,
+    )

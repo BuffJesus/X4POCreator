@@ -22,6 +22,7 @@ from collections import defaultdict
 from datetime import datetime
 import json
 import webbrowser
+import assignment_flow
 import export_flow
 import item_workflow
 import load_flow
@@ -789,20 +790,7 @@ class POBuilderApp:
         if result is None:
             return
 
-        # Apply parsed results to state
-        self.sales_items = result["sales_items"]
-        self.all_line_codes = result["all_line_codes"]
-        self.po_items = result.get("po_items", [])
-        self.open_po_lookup = result.get("open_po_lookup", {})
-        self.suspended_items = result.get("suspended_items", [])
-        self.suspended_set = result.get("suspended_set", set())
-        self.suspended_lookup = result.get("suspended_lookup", {})
-        self.inventory_lookup = result.get("inventory_lookup", {})
-        self.inventory_source_lookup = copy.deepcopy(self.inventory_lookup)
-        self.pack_size_lookup = result.get("pack_size_lookup", {})
-        self.pack_size_source_lookup = copy.deepcopy(self.pack_size_lookup)
-        self.startup_warning_rows = result.get("startup_warning_rows", [])
-        self.pack_size_by_item, self.pack_size_conflicts = parsers.build_pack_size_fallbacks(self.pack_size_lookup)
+        load_flow.apply_load_result(self.session, result)
 
         if not self.sales_items:
             messagebox.showwarning("No Data", "No items found in the Part Sales CSV. Check the file format.")
@@ -1027,106 +1015,28 @@ class POBuilderApp:
         """Apply all filters, merge suspended items, and move to bulk vendor assignment."""
         self._show_loading("Crunching numbers...")
         self.root.update()
+        try:
+            days = self.var_lookback_days.get()
+        except Exception:
+            days = 14
 
-        # Rebuild suspended lookup excluding filtered-out customers
-        self.suspended_lookup = defaultdict(list)
-        self.suspended_set = set()
-        for si in self.suspended_items:
-            if si["line_code"] in self.excluded_line_codes:
-                continue
-            cust_code = si.get("customer_code", "")
-            if cust_code in self.excluded_customers:
-                continue
-            key = (si["line_code"], si["item_code"])
-            self.suspended_lookup[key].append(si)
-            self.suspended_set.add(key)
+        has_items = assignment_flow.prepare_assignment_session(
+            self.session,
+            excluded_line_codes=self.excluded_line_codes,
+            excluded_customers=self.excluded_customers,
+            dup_whitelist=self.dup_whitelist,
+            lookback_days=days,
+            order_history_path=self._data_path("order_history"),
+            vendor_codes_path=self._data_path("vendor_codes"),
+            known_vendors=KNOWN_VENDORS,
+            get_suspense_carry_qty=self._get_suspense_carry_qty,
+            default_vendor_for_key=self._default_vendor_for_key,
+            resolve_pack_size=self._resolve_pack_size,
+            suggest_min_max=self._suggest_min_max,
+            get_rule_key=get_rule_key,
+        )
 
-        # Compute suspended qty per (line_code, item_code)
-        suspended_qty = defaultdict(int)
-        for si in self.suspended_items:
-            if si["line_code"] in self.excluded_line_codes:
-                continue
-            cust_code = si.get("customer_code", "")
-            if cust_code in self.excluded_customers:
-                continue
-            key = (si["line_code"], si["item_code"])
-            suspended_qty[key] += si.get("qty_ordered", 0)
-
-        # Build on-PO quantity lookup (needed for order qty calculation)
-        self.on_po_qty = defaultdict(float)
-        for po in self.po_items:
-            key = (po["line_code"], po["item_code"])
-            self.on_po_qty[key] += po["qty"]
-
-        # Start with sales items, using inventory position and suspense carry to avoid double counting.
-        self.filtered_items = []
-        seen_keys = set()
-        for item in self.sales_items:
-            if item["line_code"] in self.excluded_line_codes:
-                continue
-            key = (item["line_code"], item["item_code"])
-            sq = suspended_qty.get(key, 0)
-            carry_qty = self._get_suspense_carry_qty(key)
-            effective_sales = max(0, int(item.get("qty_sold", 0)) - carry_qty)
-            effective_susp = max(0, sq - carry_qty)
-            demand_signal = effective_sales + effective_susp
-            inv = self.inventory_lookup.get(key, {})
-            inventory_position = (inv.get("qoh", 0) or 0) + self.on_po_qty.get(key, 0)
-            current_min = inv.get("min")
-            if demand_signal <= 0 and not (
-                isinstance(current_min, (int, float)) and inventory_position < current_min
-            ):
-                continue
-            po_qty = self.on_po_qty.get(key, 0)
-            self.filtered_items.append({
-                **item,
-                "qty_suspended": sq,
-                "effective_qty_sold": effective_sales,
-                "effective_qty_suspended": effective_susp,
-                "suspense_carry_qty": carry_qty,
-                "demand_signal": demand_signal,
-                "qty_on_po": po_qty,
-                "gross_need": demand_signal,
-                "order_qty": 0,
-                "vendor": self._default_vendor_for_key(key),
-                "pack_size": self._resolve_pack_size(key),
-            })
-            seen_keys.add(key)
-
-        # Add suspended-only items not in the sales report
-        for key, susp_list in self.suspended_lookup.items():
-            if key in seen_keys:
-                continue
-            if key[0] in self.excluded_line_codes:
-                continue
-            sq = suspended_qty.get(key, 0)
-            if sq <= 0:
-                continue
-            carry_qty = self._get_suspense_carry_qty(key)
-            effective_susp = max(0, sq - carry_qty)
-            if effective_susp <= 0:
-                continue
-            po_qty = self.on_po_qty.get(key, 0)
-            first = susp_list[0]
-            self.filtered_items.append({
-                "line_code": key[0],
-                "item_code": key[1],
-                "description": first.get("description", ""),
-                "qty_sold": 0,
-                "effective_qty_sold": 0,
-                "qty_received": 0,
-                "qty_suspended": sq,
-                "effective_qty_suspended": effective_susp,
-                "suspense_carry_qty": carry_qty,
-                "demand_signal": effective_susp,
-                "qty_on_po": po_qty,
-                "gross_need": effective_susp,
-                "order_qty": 0,
-                "vendor": self._default_vendor_for_key(key),
-                "pack_size": self._resolve_pack_size(key),
-            })
-
-        if not self.filtered_items:
+        if not has_items:
             self._hide_loading()
             messagebox.showwarning(
                 "No Items",
@@ -1134,50 +1044,8 @@ class POBuilderApp:
             )
             return
 
-        # Sort by line code then item code
-        self.filtered_items.sort(key=lambda x: (x["line_code"], x["item_code"]))
 
         # ── Enrich items with ordering logic ──
-        for item in self.filtered_items:
-            key = (item["line_code"], item["item_code"])
-            inv = self.inventory_lookup.get(key, {})
-            sug_min, sug_max = self._suggest_min_max(key)
-            item["suggested_min"] = sug_min
-            item["suggested_max"] = sug_max
-            rule_key = get_rule_key(item["line_code"], item["item_code"])
-            rule = self.order_rules.get(rule_key)
-            rule_pack = get_rule_pack_size(rule)
-            if rule_pack is not None:
-                item["pack_size"] = rule_pack
-            pack_qty = item.get("pack_size")
-            enrich_item(item, inv, pack_qty, rule)
-
-        # Build duplicate item code lookup (item_code -> set of line_codes)
-        self.duplicate_ic_lookup = defaultdict(set)
-        for (lc, ic) in self.inventory_lookup:
-            self.duplicate_ic_lookup[ic].add(lc)
-        # Only keep entries with 2+ line codes, excluding whitelisted items
-        self.duplicate_ic_lookup = {
-            ic: lcs for ic, lcs in self.duplicate_ic_lookup.items()
-            if len(lcs) > 1 and ic not in self.dup_whitelist
-        }
-
-        # Load recent order history
-        try:
-            days = self.var_lookback_days.get()
-        except Exception:
-            days = 14
-        self.recent_orders = storage.get_recent_orders(self._data_path("order_history"), days)
-
-        # Reset assignment state
-        self.assigned_items = []
-        self.qoh_adjustments = {}
-        self.vendor_codes_used = storage.load_vendor_codes(self._data_path("vendor_codes"), KNOWN_VENDORS)
-        for item in self.filtered_items:
-            vendor = item.get("vendor", "").strip().upper()
-            if vendor and vendor not in self.vendor_codes_used:
-                self.vendor_codes_used.append(vendor)
-        self.vendor_codes_used.sort()
         self._loaded_vendor_codes = list(self.vendor_codes_used)
         self.last_removed_bulk_items = []
         self._refresh_vendor_inputs()
@@ -1338,24 +1206,18 @@ class POBuilderApp:
         item_workflow.clear_manual_override(item)
 
     def _recalculate_item(self, item):
-        item_workflow.recalculate_item(
-            item,
-            self.inventory_lookup,
-            self.order_rules,
-            self._suggest_min_max,
-            get_rule_key,
-        )
+        session = getattr(self, "session", self)
+        item_workflow.recalculate_item_from_session(item, session, self._suggest_min_max, get_rule_key)
         return item
 
     def _effective_order_rule(self, item, rule):
         return item_workflow.effective_order_rule(item, rule, self.inventory_lookup)
 
     def _sync_review_item_to_filtered(self, item):
-        return item_workflow.sync_review_item_to_filtered(
+        session = getattr(self, "session", self)
+        return item_workflow.sync_review_item_to_filtered_from_session(
             item,
-            self.filtered_items,
-            self.inventory_lookup,
-            self.order_rules,
+            session,
             self._suggest_min_max,
             get_rule_key,
         )

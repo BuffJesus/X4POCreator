@@ -9,6 +9,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 import load_flow
+from models import AppSessionState
 
 
 class LoadFlowTests(unittest.TestCase):
@@ -72,6 +73,27 @@ class LoadFlowTests(unittest.TestCase):
         self.assertIn("Negative QOH Warning", warning_titles)
         self.assertEqual(result["startup_warning_rows"][0]["warning_type"], "Negative QOH Warning")
         self.assertEqual(result["startup_warning_rows"][0]["qty"], "-12")
+
+    def test_apply_load_result_populates_session_fields(self):
+        session = AppSessionState()
+        result = {
+            "sales_items": [{"line_code": "AER-", "item_code": "GH781-4"}],
+            "all_line_codes": ["AER-"],
+            "po_items": [{"line_code": "AER-", "item_code": "GH781-4", "qty": 2}],
+            "open_po_lookup": {("AER-", "GH781-4"): [{"qty": 2}]},
+            "inventory_lookup": {("AER-", "GH781-4"): {"qoh": 5}},
+            "pack_size_lookup": {("AER-", "GH781-4"): 6},
+            "startup_warning_rows": [{"warning_type": "Example"}],
+        }
+
+        load_flow.apply_load_result(session, result, parsers_module=type("P", (), {
+            "build_pack_size_fallbacks": staticmethod(lambda lookup: ({"GH781-4": 6}, {"DUP-1"})),
+        }))
+
+        self.assertEqual(session.sales_items, result["sales_items"])
+        self.assertEqual(session.inventory_source_lookup, result["inventory_lookup"])
+        self.assertEqual(session.pack_size_by_item, {"GH781-4": 6})
+        self.assertEqual(session.pack_size_conflicts, {"DUP-1"})
 
 
 if __name__ == "__main__":

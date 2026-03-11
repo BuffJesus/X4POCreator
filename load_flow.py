@@ -1,3 +1,4 @@
+import copy
 from collections import defaultdict
 from datetime import datetime
 
@@ -234,3 +235,21 @@ def parse_all_files(paths, *, old_po_warning_days, short_sales_window_days, now=
 
     result["all_line_codes"] = all_line_codes
     return result
+
+
+def apply_load_result(session, result, *, parsers_module=parsers):
+    """Apply a parsed load result onto the current session state."""
+    session.sales_items = result["sales_items"]
+    session.all_line_codes = result["all_line_codes"]
+    session.po_items = result.get("po_items", [])
+    session.open_po_lookup = result.get("open_po_lookup", {})
+    session.suspended_items = result.get("suspended_items", [])
+    session.suspended_set = result.get("suspended_set", set())
+    session.suspended_lookup = result.get("suspended_lookup", {})
+    session.inventory_lookup = result.get("inventory_lookup", {})
+    session.inventory_source_lookup = copy.deepcopy(session.inventory_lookup)
+    session.pack_size_lookup = result.get("pack_size_lookup", {})
+    session.pack_size_source_lookup = copy.deepcopy(session.pack_size_lookup)
+    session.startup_warning_rows = result.get("startup_warning_rows", [])
+    session.pack_size_by_item, session.pack_size_conflicts = parsers_module.build_pack_size_fallbacks(session.pack_size_lookup)
+    return session
