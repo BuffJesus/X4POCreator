@@ -160,7 +160,14 @@ def parse_all_files(paths, *, old_po_warning_days, short_sales_window_days, now=
         try:
             mm_data = parsers.parse_on_hand_min_max(paths["minmax"])
             for key, info in mm_data.items():
-                inventory_lookup[key] = info
+                existing = inventory_lookup.get(key, {})
+                merged = dict(existing)
+                merged.update(info)
+                if info.get("qoh") is None and "qoh" in existing:
+                    merged["qoh"] = existing.get("qoh")
+                if info.get("repl_cost") is None and "repl_cost" in existing:
+                    merged["repl_cost"] = existing.get("repl_cost")
+                inventory_lookup[key] = merged
         except Exception as exc:
             warnings.append(("Min/Max Parse Warning", f"Could not parse Min/Max report:\n{exc}\nContinuing without it."))
 

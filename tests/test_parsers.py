@@ -155,6 +155,20 @@ class ParserSmokeTests(unittest.TestCase):
             self.assertEqual(items[0]["item_code"], "GH781-4")
             self.assertIn(("AER-", "GH781-4"), seen)
 
+    def test_parse_on_hand_min_max_preserves_blank_qoh_and_cost_as_none(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "minmax.csv"
+            with open(path, "w", newline="", encoding="utf-8-sig") as f:
+                writer = csv.writer(f)
+                writer.writerow([
+                    "hdr", "AER-", "GH781-4", "", "", "x", "x", "2", "6", "11", "22", "MOTION", "01-Mar-2026", "05-Mar-2026",
+                ])
+
+            lookup = parsers.parse_on_hand_min_max(str(path))
+
+            self.assertIsNone(lookup[("AER-", "GH781-4")]["qoh"])
+            self.assertIsNone(lookup[("AER-", "GH781-4")]["repl_cost"])
+
 
 if __name__ == "__main__":
     unittest.main()

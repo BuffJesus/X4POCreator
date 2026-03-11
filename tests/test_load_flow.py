@@ -134,6 +134,52 @@ class LoadFlowTests(unittest.TestCase):
         self.assertEqual(len(rows), 1)
         self.assertIn("PO12345/S 01-Jan-2025 qty 6", rows[0]["po_reference"])
 
+    def test_parse_all_files_preserves_onhand_qoh_when_minmax_qoh_is_blank(self):
+        with patch("load_flow.parsers.parse_part_sales_csv", return_value=[{
+            "line_code": "AER-",
+            "item_code": "GH781-4",
+            "description": "HOSE",
+            "qty_received": 0,
+            "qty_sold": 2,
+        }]), patch(
+            "load_flow.parsers.parse_sales_date_range",
+            return_value=(None, None),
+        ), patch(
+            "load_flow.parsers.parse_on_hand_report",
+            return_value={("AER-", "GH781-4"): {"qoh": 9.0, "repl_cost": 12.5}},
+        ), patch(
+            "load_flow.parsers.parse_on_hand_min_max",
+            return_value={("AER-", "GH781-4"): {
+                "qoh": None,
+                "repl_cost": None,
+                "min": 2,
+                "max": 6,
+                "ytd_sales": 11,
+                "mo12_sales": 22,
+                "supplier": "MOTION",
+                "last_receipt": "01-Mar-2026",
+                "last_sale": "05-Mar-2026",
+            }},
+        ):
+            result = load_flow.parse_all_files(
+                {
+                    "sales": "sales.csv",
+                    "po": "",
+                    "susp": "",
+                    "onhand": "onhand.csv",
+                    "minmax": "minmax.csv",
+                    "packsize": "",
+                },
+                old_po_warning_days=90,
+                short_sales_window_days=7,
+            )
+
+        inventory = result["inventory_lookup"][("AER-", "GH781-4")]
+        self.assertEqual(inventory["qoh"], 9.0)
+        self.assertEqual(inventory["repl_cost"], 12.5)
+        self.assertEqual(inventory["min"], 2)
+        self.assertEqual(inventory["max"], 6)
+
 
 if __name__ == "__main__":
     unittest.main()

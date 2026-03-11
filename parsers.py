@@ -357,6 +357,17 @@ def parse_on_hand_min_max(filepath):
         except (ValueError, AttributeError):
             return 0.0
 
+    def _optional_float(val):
+        if val is None:
+            return None
+        text = str(val).strip()
+        if not text:
+            return None
+        try:
+            return float(text.replace(",", ""))
+        except (ValueError, AttributeError):
+            return None
+
     def _int(val):
         try:
             return int(float(val.replace(",", "")))
@@ -380,8 +391,8 @@ def parse_on_hand_min_max(filepath):
             min_val = _safe(row, lc_col + 7)
             max_val = _safe(row, lc_col + 8)
             lookup[(lc, ic)] = {
-                "qoh": _float(_safe(row, lc_col + 3)),
-                "repl_cost": _float(_safe(row, lc_col + 4)),
+                "qoh": _optional_float(_safe(row, lc_col + 3)),
+                "repl_cost": _optional_float(_safe(row, lc_col + 4)),
                 "min": _int(min_val) if min_val else None,
                 "max": _int(max_val) if max_val else None,
                 "ytd_sales": _int(_safe(row, lc_col + 9)),
