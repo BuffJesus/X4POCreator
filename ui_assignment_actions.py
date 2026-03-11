@@ -23,6 +23,7 @@ def bulk_apply_selected(app):
     if not selected:
         messagebox.showinfo("No Selection", "Select rows in the table first.")
         return
+    before_state = app._capture_bulk_history_state() if hasattr(app, "_capture_bulk_history_state") else None
     for item_id in selected:
         idx = int(item_id)
         app.filtered_items[idx]["vendor"] = vendor
@@ -35,6 +36,8 @@ def bulk_apply_selected(app):
     elif vendor not in app.vendor_codes_used:
         app.vendor_codes_used.append(vendor)
     app._update_bulk_summary()
+    if hasattr(app, "_finalize_bulk_history_action"):
+        app._finalize_bulk_history_action("vendor:selected", before_state)
 
 
 def bulk_apply_visible(app):
@@ -46,6 +49,7 @@ def bulk_apply_visible(app):
     if not visible:
         messagebox.showinfo("No Items", "There are no visible rows to update.")
         return
+    before_state = app._capture_bulk_history_state() if hasattr(app, "_capture_bulk_history_state") else None
     for item_id in visible:
         idx = int(item_id)
         app.filtered_items[idx]["vendor"] = vendor
@@ -58,6 +62,8 @@ def bulk_apply_visible(app):
     elif vendor not in app.vendor_codes_used:
         app.vendor_codes_used.append(vendor)
     app._update_bulk_summary()
+    if hasattr(app, "_finalize_bulk_history_action"):
+        app._finalize_bulk_history_action("vendor:visible", before_state)
 
 
 def undo_last_bulk_removal(app):

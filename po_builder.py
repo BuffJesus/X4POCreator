@@ -92,6 +92,32 @@ MAX_EXCEED_ABS_BUFFER = 5
 MAX_LOADING_GIF_FRAMES = 90
 BULK_EDITABLE_COLS = ("vendor", "final_qty", "qoh", "cur_min", "cur_max", "pack_size")
 REVIEW_EDITABLE_COLS = ("vendor", "order_qty", "pack_size")
+BULK_SHORTCUTS_TEXT = """Current bulk-sheet shortcuts
+
+Supported now
+- Ctrl+C: copy selected cells or rows
+- Ctrl+V: paste into the active editable area
+- Ctrl+A: select all visible rows
+- Ctrl+Z: undo the last bulk edit or row removal
+- Ctrl+Y: redo the last undone bulk edit or row removal
+- Ctrl+D: fill down using the current cell value
+- Ctrl+R: same as Ctrl+D for the current one-column bulk edit model
+- Ctrl+Enter: apply the current cell value across the selected rows in the active editable column
+- Delete / Backspace: clear selected cells, or remove selected rows
+- F2 or Enter: edit the current editable selection
+- Tab / Shift+Tab: move the active cell across editable bulk columns
+- Shift+Arrow: extend the current cell selection range
+- Home / End: jump to first or last editable column on the current row
+- Ctrl+Arrow: jump to row or editable-column edges in the current direction
+- Esc: clear the current selection
+- Shift+Space: select current row
+- Ctrl+Space: select current column
+
+Planned next
+- commit-and-move behavior while actively editing cells
+- Page Up / Page Down: stronger spreadsheet navigation
+"""
+MAX_BULK_HISTORY = 25
 
 
 # ─── Order Rules (persistent per-item buy rules) ────────────────────────────
@@ -308,6 +334,8 @@ class POBuilderApp:
         self.individual_items = []
         self.assigned_items = []        # final list of {item data + vendor + order_qty}
         self.last_removed_bulk_items = []  # [(index, item_dict)] for one-step undo
+        self.bulk_undo_stack = []
+        self.bulk_redo_stack = []
         self.startup_warning_rows = []  # structured rows for startup warning CSV export
         self.bulk_sheet = None
         self.review_grid_editor = None
@@ -1697,6 +1725,189 @@ class POBuilderApp:
             return "break"
         return None
 
+    def _capture_bulk_history_state(self):
+        return {
+            "filtered_items": copy.deepcopy(self.filtered_items),
+            "inventory_lookup": copy.deepcopy(self.inventory_lookup),
+            "qoh_adjustments": copy.deepcopy(self.qoh_adjustments),
+            "order_rules": copy.deepcopy(self.order_rules),
+            "vendor_codes_used": list(self.vendor_codes_used),
+            "_loaded_order_rules": copy.deepcopy(self._loaded_order_rules),
+            "_loaded_vendor_codes": list(self._loaded_vendor_codes),
+            "last_removed_bulk_items": copy.deepcopy(self.last_removed_bulk_items),
+        }
+
+    def _finalize_bulk_history_action(self, label, before_state):
+        if before_state is None:
+            return False
+        after_state = self._capture_bulk_history_state()
+        if after_state == before_state:
+            return False
+        self.bulk_undo_stack.append({
+            "label": label,
+            "before": before_state,
+            "after": after_state,
+        })
+        if len(self.bulk_undo_stack) > MAX_BULK_HISTORY:
+            self.bulk_undo_stack = self.bulk_undo_stack[-MAX_BULK_HISTORY:]
+        self.bulk_redo_stack = []
+        return True
+
+    def _restore_bulk_history_state(self, state):
+        self.filtered_items = copy.deepcopy(state.get("filtered_items", []))
+        self.inventory_lookup = copy.deepcopy(state.get("inventory_lookup", {}))
+        self.qoh_adjustments = copy.deepcopy(state.get("qoh_adjustments", {}))
+        self.order_rules = copy.deepcopy(state.get("order_rules", {}))
+        self.vendor_codes_used = list(state.get("vendor_codes_used", []))
+        self._loaded_order_rules = copy.deepcopy(state.get("_loaded_order_rules", {}))
+        self._loaded_vendor_codes = list(state.get("_loaded_vendor_codes", []))
+        self.last_removed_bulk_items = copy.deepcopy(state.get("last_removed_bulk_items", []))
+        self._refresh_vendor_inputs()
+        if self.bulk_sheet:
+            self.bulk_sheet.clear_selection()
+        self._apply_bulk_filter()
+        self._update_bulk_summary()
+        self._update_bulk_cell_status()
+
+    def _bulk_undo(self, event=None):
+        if not self.bulk_undo_stack:
+            return "break" if event is not None else None
+        entry = self.bulk_undo_stack.pop()
+        current_state = self._capture_bulk_history_state()
+        self._restore_bulk_history_state(entry["before"])
+        self.bulk_redo_stack.append({
+            "label": entry.get("label", ""),
+            "before": copy.deepcopy(entry["before"]),
+            "after": current_state,
+        })
+        return "break" if event is not None else None
+
+    def _bulk_redo(self, event=None):
+        if not self.bulk_redo_stack:
+            return "break" if event is not None else None
+        entry = self.bulk_redo_stack.pop()
+        current_state = self._capture_bulk_history_state()
+        self._restore_bulk_history_state(entry["after"])
+        self.bulk_undo_stack.append({
+            "label": entry.get("label", ""),
+            "before": current_state,
+            "after": copy.deepcopy(entry["after"]),
+        })
+        return "break" if event is not None else None
+
+    def _bulk_select_all(self, event=None):
+        if self.bulk_sheet and self.bulk_sheet.select_all_visible():
+            return "break"
+        return None
+
+    def _bulk_clear_selection(self, event=None):
+        if self.bulk_sheet:
+            self.bulk_sheet.clear_selection()
+            self._right_click_bulk_context = None
+            return "break"
+        return None
+
+    def _bulk_fill_selection_with_current_value(self, event=None, *, alias="fill"):
+        if not self.bulk_sheet:
+            return None
+        col_name = (
+            self.bulk_sheet.selected_editable_column_name()
+            or self.bulk_sheet.current_editable_column_name()
+        )
+        row_ids = list(self.bulk_sheet.selected_target_row_ids(col_name)) if col_name else []
+        if col_name not in BULK_EDITABLE_COLS or not row_ids:
+            return "break"
+        value = self.bulk_sheet.current_cell_value().strip()
+        before_state = self._capture_bulk_history_state() if hasattr(self, "_capture_bulk_history_state") else None
+        write_debug(
+            "bulk_shortcut_fill",
+            alias=alias,
+            col_name=col_name,
+            row_count=len(row_ids),
+            value=value,
+        )
+        for row_id in row_ids:
+            self._bulk_apply_editor_value(row_id, col_name, value)
+        self._apply_bulk_filter()
+        self.bulk_sheet.clear_selection()
+        self._update_bulk_summary()
+        self._update_bulk_cell_status()
+        if hasattr(self, "_finalize_bulk_history_action"):
+            self._finalize_bulk_history_action(f"{alias}:{col_name}", before_state)
+        return "break"
+
+    def _bulk_fill_down_selection(self, event=None):
+        return self._bulk_fill_selection_with_current_value(event, alias="fill_down")
+
+    def _bulk_fill_right_selection(self, event=None):
+        return self._bulk_fill_selection_with_current_value(event, alias="fill_right")
+
+    def _bulk_apply_current_value_to_selection(self, event=None):
+        return self._bulk_fill_selection_with_current_value(event, alias="ctrl_enter")
+
+    def _bulk_move_next_editable_cell(self, event=None):
+        if self.bulk_sheet and self.bulk_sheet.move_current_editable_cell(1):
+            return "break"
+        return None
+
+    def _bulk_move_prev_editable_cell(self, event=None):
+        if self.bulk_sheet and self.bulk_sheet.move_current_editable_cell(-1):
+            return "break"
+        return None
+
+    def _bulk_extend_selection_up(self, event=None):
+        if self.bulk_sheet and self.bulk_sheet.extend_selection(-1, 0):
+            return "break"
+        return None
+
+    def _bulk_extend_selection_down(self, event=None):
+        if self.bulk_sheet and self.bulk_sheet.extend_selection(1, 0):
+            return "break"
+        return None
+
+    def _bulk_extend_selection_left(self, event=None):
+        if self.bulk_sheet and self.bulk_sheet.extend_selection(0, -1):
+            return "break"
+        return None
+
+    def _bulk_extend_selection_right(self, event=None):
+        if self.bulk_sheet and self.bulk_sheet.extend_selection(0, 1):
+            return "break"
+        return None
+
+    def _bulk_jump_home(self, event=None):
+        if self.bulk_sheet and self.bulk_sheet.jump_current_cell("home", ctrl=False):
+            return "break"
+        return None
+
+    def _bulk_jump_end(self, event=None):
+        if self.bulk_sheet and self.bulk_sheet.jump_current_cell("end", ctrl=False):
+            return "break"
+        return None
+
+    def _bulk_jump_ctrl_left(self, event=None):
+        if self.bulk_sheet and self.bulk_sheet.jump_current_cell("left", ctrl=True):
+            return "break"
+        return None
+
+    def _bulk_jump_ctrl_right(self, event=None):
+        if self.bulk_sheet and self.bulk_sheet.jump_current_cell("right", ctrl=True):
+            return "break"
+        return None
+
+    def _bulk_jump_ctrl_up(self, event=None):
+        if self.bulk_sheet and self.bulk_sheet.jump_current_cell("up", ctrl=True):
+            return "break"
+        return None
+
+    def _bulk_jump_ctrl_down(self, event=None):
+        if self.bulk_sheet and self.bulk_sheet.jump_current_cell("down", ctrl=True):
+            return "break"
+        return None
+
+    def _show_bulk_shortcuts(self):
+        messagebox.showinfo("Bulk Shortcuts", BULK_SHORTCUTS_TEXT)
+
     def _bulk_begin_edit(self, event=None):
         if not self.bulk_sheet:
             return None
@@ -1738,6 +1949,7 @@ class POBuilderApp:
             write_debug("bulk_begin_edit.prompt_result", col_name=col_name, value="" if value is None else value, cancelled=value is None)
             if value is None:
                 return "break"
+            before_state = self._capture_bulk_history_state() if hasattr(self, "_capture_bulk_history_state") else None
             for row_id in row_ids:
                 self._bulk_apply_editor_value(row_id, col_name, value.strip())
             self._apply_bulk_filter()
@@ -1757,6 +1969,8 @@ class POBuilderApp:
             self._right_click_bulk_context = None
             self._update_bulk_summary()
             self._update_bulk_cell_status()
+            if hasattr(self, "_finalize_bulk_history_action"):
+                self._finalize_bulk_history_action(f"edit:{col_name}", before_state)
             return "break"
         self.bulk_sheet.sheet.open_cell()
         write_debug("bulk_begin_edit.open_cell", col_name=col_name, row_count=len(row_ids))
@@ -1788,6 +2002,7 @@ class POBuilderApp:
             return "break" if event is not None else None
         if not messagebox.askyesno("Confirm Remove", f"Remove {len(selected)} item(s) from this session?"):
             return "break" if event is not None else None
+        before_state = self._capture_bulk_history_state() if hasattr(self, "_capture_bulk_history_state") else None
         removed_payload = []
         for idx in sorted((int(row_id) for row_id in selected), reverse=True):
             if 0 <= idx < len(self.filtered_items):
@@ -1798,6 +2013,8 @@ class POBuilderApp:
             self.bulk_sheet.clear_selection()
         self._apply_bulk_filter()
         self._update_bulk_summary()
+        if hasattr(self, "_finalize_bulk_history_action"):
+            self._finalize_bulk_history_action("remove_rows", before_state)
         return "break" if event is not None else None
 
     def _bulk_fill_selected_cells(self):
@@ -1815,6 +2032,7 @@ class POBuilderApp:
         value = simpledialog.askstring("Fill Selected Cells", f"Enter a value for {col_name}:", parent=self.root)
         if value is None:
             return
+        before_state = self._capture_bulk_history_state() if hasattr(self, "_capture_bulk_history_state") else None
         if self.bulk_sheet:
             for row_id in row_ids:
                 self._bulk_apply_editor_value(row_id, col_name, value.strip())
@@ -1826,6 +2044,8 @@ class POBuilderApp:
             self._apply_bulk_filter()
         self._update_bulk_summary()
         self._update_bulk_cell_status()
+        if hasattr(self, "_finalize_bulk_history_action"):
+            self._finalize_bulk_history_action(f"fill:{col_name}", before_state)
 
     def _bulk_clear_selected_cells(self):
         col_name = (
@@ -1839,6 +2059,7 @@ class POBuilderApp:
         if col_name not in BULK_EDITABLE_COLS or not row_ids:
             messagebox.showinfo("No Cell Selection", "Select one or more rows or cells in a single editable column first.")
             return
+        before_state = self._capture_bulk_history_state() if hasattr(self, "_capture_bulk_history_state") else None
         if self.bulk_sheet:
             for row_id in row_ids:
                 self._bulk_apply_editor_value(row_id, col_name, "")
@@ -1850,6 +2071,8 @@ class POBuilderApp:
             self._apply_bulk_filter()
         self._update_bulk_summary()
         self._update_bulk_cell_status()
+        if hasattr(self, "_finalize_bulk_history_action"):
+            self._finalize_bulk_history_action(f"clear:{col_name}", before_state)
 
     def _bulk_delete_selected(self, event=None):
         if self.bulk_sheet and self.bulk_sheet.explicit_selected_row_ids():

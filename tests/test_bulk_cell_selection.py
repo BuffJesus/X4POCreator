@@ -272,6 +272,138 @@ class BulkSheetStatusTests(unittest.TestCase):
         self.assertEqual(result, "break")
         self.assertEqual(calls, [("buy_rule_editor", 7)])
 
+    def test_bulk_select_all_uses_sheet_helper(self):
+        calls = []
+        fake_app = SimpleNamespace(
+            bulk_sheet=SimpleNamespace(select_all_visible=lambda: calls.append("select_all") or True),
+        )
+
+        result = po_builder.POBuilderApp._bulk_select_all(fake_app)
+
+        self.assertEqual(result, "break")
+        self.assertEqual(calls, ["select_all"])
+
+    def test_bulk_clear_selection_clears_sheet_and_context(self):
+        calls = []
+        fake_app = SimpleNamespace(
+            bulk_sheet=SimpleNamespace(clear_selection=lambda: calls.append("cleared")),
+            _right_click_bulk_context={"row_id": "8", "col_name": "pack_size"},
+        )
+
+        result = po_builder.POBuilderApp._bulk_clear_selection(fake_app)
+
+        self.assertEqual(result, "break")
+        self.assertEqual(fake_app._right_click_bulk_context, None)
+        self.assertEqual(calls, ["cleared"])
+
+    def test_bulk_fill_down_uses_current_cell_value_for_selected_rows(self):
+        calls = []
+        fake_app = SimpleNamespace(
+            bulk_sheet=SimpleNamespace(
+                selected_editable_column_name=lambda: "pack_size",
+                current_editable_column_name=lambda: "pack_size",
+                selected_target_row_ids=lambda col_name: ("0", "1"),
+                current_cell_value=lambda: "500",
+                clear_selection=lambda: calls.append(("cleared",)),
+            ),
+            _bulk_apply_editor_value=lambda row_id, col_name, value: calls.append((row_id, col_name, value)),
+            _apply_bulk_filter=lambda: calls.append(("filter",)),
+            _update_bulk_summary=lambda: calls.append(("summary",)),
+            _update_bulk_cell_status=lambda: calls.append(("status",)),
+        )
+        fake_app._bulk_fill_selection_with_current_value = (
+            lambda event=None, alias="fill": po_builder.POBuilderApp._bulk_fill_selection_with_current_value(
+                fake_app, event, alias=alias
+            )
+        )
+
+        result = po_builder.POBuilderApp._bulk_fill_down_selection(fake_app)
+
+        self.assertEqual(result, "break")
+        self.assertEqual(
+            calls,
+            [("0", "pack_size", "500"), ("1", "pack_size", "500"), ("filter",), ("cleared",), ("summary",), ("status",)],
+        )
+
+    def test_bulk_apply_current_value_to_selection_reuses_fill_helper(self):
+        calls = []
+        fake_app = SimpleNamespace(
+            _bulk_fill_selection_with_current_value=lambda event=None, alias="fill": calls.append(alias) or "break",
+        )
+
+        result = po_builder.POBuilderApp._bulk_apply_current_value_to_selection(fake_app)
+
+        self.assertEqual(result, "break")
+        self.assertEqual(calls, ["ctrl_enter"])
+
+    def test_bulk_move_next_editable_cell_uses_sheet_helper(self):
+        fake_app = SimpleNamespace(
+            bulk_sheet=SimpleNamespace(move_current_editable_cell=lambda step: step == 1),
+        )
+
+        result = po_builder.POBuilderApp._bulk_move_next_editable_cell(fake_app)
+
+        self.assertEqual(result, "break")
+
+    def test_bulk_move_prev_editable_cell_uses_sheet_helper(self):
+        fake_app = SimpleNamespace(
+            bulk_sheet=SimpleNamespace(move_current_editable_cell=lambda step: step == -1),
+        )
+
+        result = po_builder.POBuilderApp._bulk_move_prev_editable_cell(fake_app)
+
+        self.assertEqual(result, "break")
+
+    def test_bulk_extend_selection_right_uses_sheet_helper(self):
+        fake_app = SimpleNamespace(
+            bulk_sheet=SimpleNamespace(extend_selection=lambda row_delta, col_delta: (row_delta, col_delta) == (0, 1)),
+        )
+
+        result = po_builder.POBuilderApp._bulk_extend_selection_right(fake_app)
+
+        self.assertEqual(result, "break")
+
+    def test_bulk_jump_ctrl_down_uses_sheet_helper(self):
+        fake_app = SimpleNamespace(
+            bulk_sheet=SimpleNamespace(jump_current_cell=lambda direction, ctrl=False: direction == "down" and ctrl),
+        )
+
+        result = po_builder.POBuilderApp._bulk_jump_ctrl_down(fake_app)
+
+        self.assertEqual(result, "break")
+
+    def test_bulk_undo_restores_previous_snapshot_and_queues_redo(self):
+        calls = []
+        fake_app = SimpleNamespace(
+            bulk_undo_stack=[{"label": "edit:pack_size", "before": {"filtered_items": [{"item_code": "A"}]}, "after": {"filtered_items": [{"item_code": "B"}]}}],
+            bulk_redo_stack=[],
+            _capture_bulk_history_state=lambda: {"filtered_items": [{"item_code": "LIVE"}]},
+            _restore_bulk_history_state=lambda state: calls.append(("restore", state)),
+        )
+
+        result = po_builder.POBuilderApp._bulk_undo(fake_app)
+
+        self.assertIsNone(result)
+        self.assertEqual(calls, [("restore", {"filtered_items": [{"item_code": "A"}]})])
+        self.assertEqual(fake_app.bulk_undo_stack, [])
+        self.assertEqual(fake_app.bulk_redo_stack[0]["after"], {"filtered_items": [{"item_code": "LIVE"}]})
+
+    def test_bulk_redo_restores_after_snapshot_and_queues_undo(self):
+        calls = []
+        fake_app = SimpleNamespace(
+            bulk_undo_stack=[],
+            bulk_redo_stack=[{"label": "edit:pack_size", "before": {"filtered_items": [{"item_code": "A"}]}, "after": {"filtered_items": [{"item_code": "B"}]}}],
+            _capture_bulk_history_state=lambda: {"filtered_items": [{"item_code": "LIVE"}]},
+            _restore_bulk_history_state=lambda state: calls.append(("restore", state)),
+        )
+
+        result = po_builder.POBuilderApp._bulk_redo(fake_app)
+
+        self.assertIsNone(result)
+        self.assertEqual(calls, [("restore", {"filtered_items": [{"item_code": "B"}]})])
+        self.assertEqual(fake_app.bulk_redo_stack, [])
+        self.assertEqual(fake_app.bulk_undo_stack[0]["before"], {"filtered_items": [{"item_code": "LIVE"}]})
+
 
 class BulkSheetViewTests(unittest.TestCase):
     def test_handle_edit_applies_value_to_selected_target_rows(self):
@@ -312,6 +444,187 @@ class BulkSheetViewTests(unittest.TestCase):
                 ("status",),
             ],
         )
+
+    def test_select_all_visible_selects_all_rows_and_updates_status(self):
+        calls = []
+        view = BulkSheetView.__new__(BulkSheetView)
+        view.row_ids = [4, 8, 12]
+        view._selection_snapshot = {"cells": (), "rows": (), "columns": (), "current": (None, None)}
+        view.current_cell = lambda: (None, None)
+        view._remember_selection = lambda: calls.append(("remember",))
+        view.app = SimpleNamespace(_update_bulk_sheet_status=lambda: calls.append(("status",)))
+        view.sheet = SimpleNamespace(
+            deselect=lambda *args, **kwargs: calls.append(("deselect",)),
+            select_row=lambda row, redraw=False: calls.append(("row", row, redraw)),
+            set_currently_selected=lambda row, column: calls.append(("current", row, column)),
+            refresh=lambda: calls.append(("refresh",)),
+            redraw=lambda: calls.append(("redraw",)),
+        )
+
+        result = view.select_all_visible()
+
+        self.assertTrue(result)
+        self.assertEqual(
+            calls,
+            [("deselect",), ("row", 0, False), ("row", 1, False), ("row", 2, False), ("current", 0, 0), ("remember",), ("refresh",), ("redraw",), ("status",)],
+        )
+
+    def test_move_current_editable_cell_advances_with_wrap(self):
+        calls = []
+        view = BulkSheetView.__new__(BulkSheetView)
+        view.columns = ("vendor", "line_code", "pack_size")
+        view.editable_cols = {"vendor", "pack_size"}
+        view.row_ids = [4, 8]
+        view.current_cell = lambda: (0, 2)
+        view._remember_selection = lambda: calls.append(("remember",))
+        view.app = SimpleNamespace(_update_bulk_sheet_status=lambda: calls.append(("status",)))
+        view.sheet = SimpleNamespace(
+            deselect=lambda *args, **kwargs: calls.append(("deselect",)),
+            set_currently_selected=lambda row, column: calls.append(("current", row, column)),
+            refresh=lambda: calls.append(("refresh",)),
+            redraw=lambda: calls.append(("redraw",)),
+        )
+
+        result = view.move_current_editable_cell(1)
+
+        self.assertTrue(result)
+        self.assertEqual(calls, [("deselect",), ("current", 1, 0), ("remember",), ("refresh",), ("redraw",), ("status",)])
+
+    def test_move_current_editable_cell_goes_back_to_previous_row(self):
+        calls = []
+        view = BulkSheetView.__new__(BulkSheetView)
+        view.columns = ("vendor", "line_code", "pack_size")
+        view.editable_cols = {"vendor", "pack_size"}
+        view.row_ids = [4, 8]
+        view.current_cell = lambda: (1, 0)
+        view._remember_selection = lambda: calls.append(("remember",))
+        view.app = SimpleNamespace(_update_bulk_sheet_status=lambda: calls.append(("status",)))
+        view.sheet = SimpleNamespace(
+            deselect=lambda *args, **kwargs: calls.append(("deselect",)),
+            set_currently_selected=lambda row, column: calls.append(("current", row, column)),
+            refresh=lambda: calls.append(("refresh",)),
+            redraw=lambda: calls.append(("redraw",)),
+        )
+
+        result = view.move_current_editable_cell(-1)
+
+        self.assertTrue(result)
+        self.assertEqual(calls, [("deselect",), ("current", 0, 2), ("remember",), ("refresh",), ("redraw",), ("status",)])
+
+    def test_extend_selection_builds_rectangular_range_from_anchor(self):
+        calls = []
+        view = BulkSheetView.__new__(BulkSheetView)
+        view.columns = ("vendor", "pack_size", "why")
+        view.row_ids = [4, 8, 12]
+        view._selection_anchor = (0, 0)
+        view.current_cell = lambda: (0, 0)
+        view.app = SimpleNamespace(_update_bulk_sheet_status=lambda: calls.append(("status",)))
+        view.sheet = SimpleNamespace(
+            deselect=lambda *args, **kwargs: calls.append(("deselect",)),
+            select_cell=lambda row, col, redraw=False: calls.append(("select", row, col, redraw)),
+            add_cell_selection=lambda row, col, redraw=False, set_as_current=False: calls.append(("add", row, col, redraw, set_as_current)),
+            set_currently_selected=lambda row, column: calls.append(("current", row, column)),
+            refresh=lambda: calls.append(("refresh",)),
+            redraw=lambda: calls.append(("redraw",)),
+        )
+
+        result = view.extend_selection(1, 1)
+
+        self.assertTrue(result)
+        self.assertEqual(
+            calls,
+            [
+                ("deselect",),
+                ("select", 0, 0, False),
+                ("add", 0, 1, False, False),
+                ("add", 1, 0, False, False),
+                ("add", 1, 1, False, False),
+                ("current", 1, 1),
+                ("refresh",),
+                ("redraw",),
+                ("status",),
+            ],
+        )
+        self.assertEqual(view._selection_snapshot["current"], (1, 1))
+
+    def test_jump_current_cell_end_moves_to_last_editable_column(self):
+        calls = []
+        view = BulkSheetView.__new__(BulkSheetView)
+        view.columns = ("vendor", "line_code", "pack_size")
+        view.editable_cols = {"vendor", "pack_size"}
+        view.row_ids = [4, 8, 12]
+        view.current_cell = lambda: (1, 0)
+        view._remember_selection = lambda: calls.append(("remember",))
+        view.app = SimpleNamespace(_update_bulk_sheet_status=lambda: calls.append(("status",)))
+        view.sheet = SimpleNamespace(
+            deselect=lambda *args, **kwargs: calls.append(("deselect",)),
+            set_currently_selected=lambda row, column: calls.append(("current", row, column)),
+            refresh=lambda: calls.append(("refresh",)),
+            redraw=lambda: calls.append(("redraw",)),
+        )
+
+        result = view.jump_current_cell("end", ctrl=False)
+
+        self.assertTrue(result)
+        self.assertEqual(calls, [("deselect",), ("current", 1, 2), ("remember",), ("refresh",), ("redraw",), ("status",)])
+
+    def test_jump_current_cell_ctrl_up_moves_to_first_row(self):
+        calls = []
+        view = BulkSheetView.__new__(BulkSheetView)
+        view.columns = ("vendor", "pack_size")
+        view.editable_cols = {"vendor", "pack_size"}
+        view.row_ids = [4, 8, 12]
+        view.current_cell = lambda: (2, 1)
+        view._remember_selection = lambda: calls.append(("remember",))
+        view.app = SimpleNamespace(_update_bulk_sheet_status=lambda: calls.append(("status",)))
+        view.sheet = SimpleNamespace(
+            deselect=lambda *args, **kwargs: calls.append(("deselect",)),
+            set_currently_selected=lambda row, column: calls.append(("current", row, column)),
+            refresh=lambda: calls.append(("refresh",)),
+            redraw=lambda: calls.append(("redraw",)),
+        )
+
+        result = view.jump_current_cell("up", ctrl=True)
+
+        self.assertTrue(result)
+        self.assertEqual(calls, [("deselect",), ("current", 0, 1), ("remember",), ("refresh",), ("redraw",), ("status",)])
+
+    def test_close_open_text_editor_commits_editor(self):
+        calls = []
+        view = BulkSheetView.__new__(BulkSheetView)
+        view.sheet = SimpleNamespace(
+            MT=SimpleNamespace(
+                text_editor=SimpleNamespace(open=True),
+                close_text_editor=lambda event: calls.append(event.keysym),
+            )
+        )
+
+        result = view._close_open_text_editor(keysym="Commit")
+
+        self.assertTrue(result)
+        self.assertEqual(calls, ["Commit"])
+
+    def test_commit_editor_and_move_uses_jump_for_arrow_keys(self):
+        calls = []
+        view = BulkSheetView.__new__(BulkSheetView)
+        view._close_open_text_editor = lambda keysym="Commit": calls.append(("close", keysym)) or True
+        view.jump_current_cell = lambda direction, ctrl=False: calls.append(("jump", direction, ctrl)) or True
+
+        result = view.commit_editor_and_move("down")
+
+        self.assertEqual(result, "break")
+        self.assertEqual(calls, [("close", "Commit"), ("jump", "down", False)])
+
+    def test_commit_editor_and_move_uses_editable_navigation_for_tab(self):
+        calls = []
+        view = BulkSheetView.__new__(BulkSheetView)
+        view._close_open_text_editor = lambda keysym="Commit": calls.append(("close", keysym)) or True
+        view.move_current_editable_cell = lambda step: calls.append(("move", step)) or True
+
+        result = view.commit_editor_and_move("next")
+
+        self.assertEqual(result, "break")
+        self.assertEqual(calls, [("close", "Commit"), ("move", 1)])
 
     def test_snapshot_target_row_ids_prefers_pre_edit_selection(self):
         view = BulkSheetView.__new__(BulkSheetView)

@@ -46,6 +46,8 @@ class AssignmentActionTests(unittest.TestCase):
             bulk_tree=DummyTree(selected=("0", "1")),
             filtered_items=[{"vendor": ""}, {"vendor": ""}],
             vendor_codes_used=[],
+            _capture_bulk_history_state=lambda: {"before": True},
+            _finalize_bulk_history_action=lambda label, before: calls.append((label, before)),
             _update_bulk_summary=lambda: calls.append("summary"),
         )
 
@@ -54,7 +56,7 @@ class AssignmentActionTests(unittest.TestCase):
         self.assertEqual(app.filtered_items[0]["vendor"], "GREGDIST")
         self.assertEqual(app.filtered_items[1]["vendor"], "GREGDIST")
         self.assertIn("GREGDIST", app.vendor_codes_used)
-        self.assertEqual(calls, ["summary"])
+        self.assertEqual(calls, ["summary", ("vendor:selected", {"before": True})])
 
     def test_assign_current_advances_until_finish(self):
         populate_calls = []

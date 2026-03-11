@@ -9,29 +9,30 @@ HELP_SECTIONS = [
         "Start here for the main purpose of each tab and the normal end-to-end flow.",
         """Quick Start
 
-This tool helps turn X4 reports into purchase-order files while also surfacing cleanup items for X4.
+PO Builder turns X4 report exports into vendor-ready PO import files while also surfacing X4 cleanup work.
 
 Normal flow
 - Load the current X4 CSV exports.
-- Exclude line codes or suspended customers you do not want included.
-- Review the Bulk Assign list and assign vendors quickly.
+- Exclude line codes or suspended customers you do not want in this run.
+- Review the Bulk Assign list, assign vendors, and adjust quantities only where needed.
 - Use Individual Assign for leftovers that need manual attention.
 - Review the final vendor groups and export the PO files.
-- Use the maintenance report to update X4 source values later when needed.
+- Use the maintenance report afterward to clean up X4 source values when needed.
 
 What each main tab is for
-- Load Files: choose the X4 reports and optional source CSVs.
-- Line Codes: exclude whole line codes from the run.
+- Load Files: choose reports, scan a folder, manage shared/local data, and check for updates.
+- Line Codes: exclude whole product groups from the run.
 - Customers: exclude suspended customers from the Suspended Items report.
-- Assign Vendors: bulk review and spreadsheet-style editing.
+- Assign Vendors: spreadsheet-style review, filtering, vendor assignment, and bulk editing.
 - Individual: one-item-at-a-time assignment for leftovers.
 - Review & Export: final cleanup before writing PO files.
 - Help: reference for reports, controls, and troubleshooting.
 
 Best practice
 - Use the latest reports from the same general time window.
+- Treat Bulk Assign as the main working screen and Individual as the exception path.
 - Review warnings instead of exporting blindly.
-- Prefer fixing pack, vendor, min, and max values when the app surfaces repeated issues.
+- Prefer fixing repeated pack, vendor, min, and max issues at the source when possible.
 """,
     ),
     (
@@ -40,7 +41,8 @@ Best practice
         """Part Sales & Receipts
 - Closed, printed invoice sales plus receipts during the selected period.
 - This is your confirmed movement history.
-- The app uses it for recent demand and suggested replenishment.
+- The app uses it for demand history and suggested replenishment.
+- Exact duplicate report rows are ignored so duplicated X4 rows do not inflate demand.
 
 POs by PG
 - Items currently on purchase orders.
@@ -56,6 +58,7 @@ Suspended Items
 On Hand Report / Min-Max source data
 - QOH, min, max, supplier, sales history, and receipt/sale dates come from the source CSVs.
 - These values are used for suggestion logic, warnings, and maintenance reporting.
+- Bulk QOH, min, and max edits affect this session's calculations and can appear in maintenance follow-up.
 
 Order multiples / pack quantities
 - Pack sizes come from the order-multiples source and saved item rules.
@@ -74,6 +77,7 @@ Maintenance report purpose
 - Inventory position = QOH + On PO.
 - The app does not subtract suspense from QOH because X4 already has.
 - Recommended order = target stock - inventory position, never below zero.
+- Reorder-cycle changes recalculate suggested min/max and suggested qty for the current session.
 
 Target stock
 - The app usually uses the stronger of current max and suggested max.
@@ -104,6 +108,11 @@ Common statuses
 - warning: data is incomplete or risky.
 - skip: no order needed.
 
+What overrides what
+- Manual Final Qty edits override the app suggestion for that session.
+- Manual Pack edits can change both the suggestion and the saved per-item rule.
+- Vendor changes do not change the recommendation math; they only affect grouping and export.
+
 Plain-language field names
 - Qty Needed Before Pack: what the item would need before pack rounding or special buy rules.
 - Suggested Qty: the app's recommendation after pack and buy-rule logic.
@@ -116,14 +125,17 @@ Plain-language field names
         "Spreadsheet-style controls, bulk actions, and selection behavior on the Assign Vendors tab.",
         """Basic editing
 - Click a cell to make it active.
-- Type or double-click to edit editable columns directly.
-- Editable bulk columns are Vendor, Order Qty, QOH, Min, Max, and Pack.
+- Double-click, F2, or Enter to edit the active editable cell or selection.
+- Editable bulk columns are Vendor, Final Qty, QOH, Min, Max, and Pack.
+- When editing directly in a cell, movement keys now commit the current change before moving.
 
 Selection
 - Ctrl+click adds cells or rows to the selection.
 - Shift+click extends the current cell or row range.
+- Shift+Arrow extends the current selection range from the anchor cell.
 - Shift+Space selects the current row.
 - Ctrl+Space selects the current column.
+- Ctrl+A selects all visible rows.
 - Fit Columns To Window resizes the bulk grid columns to fit within the visible area as well as possible.
 
 Bulk editing
@@ -131,7 +143,8 @@ Bulk editing
 - If rows are selected, Fill Selected Cells uses the active editable column across those rows.
 - Editing one selected cell in a single editable column applies that edited value across the whole selected range in that column.
 - Clear Selected Cells clears the selected editable cells in the active editable column.
-- F2 or Enter bulk-edits the current selection when multiple rows/cells are selected in one editable column.
+- Ctrl+D, Ctrl+R, and Ctrl+Enter reuse the current cell value across the selected rows in the active editable column.
+- Undo and Redo reverse recent bulk edits and row removals.
 
 Clipboard
 - Ctrl+C copies the current selected cells or rows.
@@ -149,6 +162,7 @@ Useful bulk actions
 - Remove Not Needed (On Screen): review likely-unnecessary rows currently visible.
 - Remove Not Needed (Filtered): review likely-unnecessary rows from the full filtered set.
 - Undo Last Remove: restores the most recent bulk-removal action.
+- Undo / Redo: reverses or reapplies broader bulk edit actions such as fill, paste, and row removal.
 
 Context menu
 - Remove Selected Rows
@@ -162,6 +176,44 @@ Context menu
 
 Status line
 - Shows the active editable column plus selected-cell or selected-row count.
+- If the sheet feels unfamiliar, open Bulk Shortcuts from the Bulk tab for a quick reference.
+""",
+    ),
+    (
+        "Shortcuts",
+        "Keyboard reference for the bulk editor and review grid.",
+        """Bulk grid essentials
+- Ctrl+C: copy selected cells or rows
+- Ctrl+V: paste into the active editable area
+- Ctrl+A: select all visible rows
+- Ctrl+Z / Ctrl+Y: undo and redo bulk actions
+- Ctrl+D / Ctrl+R: fill the selected rows from the current cell value
+- Ctrl+Enter: apply the current cell value to the selected rows in the active editable column
+- Delete / Backspace: clear selected cells, or remove rows if whole rows are selected
+- F2 or Enter: edit the current editable selection
+- Esc: clear the current selection
+
+Bulk navigation
+- Tab / Shift+Tab: move across editable bulk columns
+- Shift+Arrow: extend the current selection range
+- Home / End: jump to first or last editable column on the current row
+- Ctrl+Arrow: jump to the edge in the pressed direction
+- Shift+Space: select current row
+- Ctrl+Space: select current column
+
+Editing behavior
+- If an in-cell editor is open, arrow keys, Tab, and Shift+Tab commit the edit first and then move.
+- Bulk editing remains column-oriented on purpose. The app does not try to behave like a full spreadsheet across arbitrary multi-column edits.
+
+Review grid essentials
+- Double-click, F2, or Enter edits the active editable column
+- Left / Right changes the active editable column
+- Delete removes selected rows from the review list
+
+If something feels off
+- First check whether you selected rows or cells.
+- Then check the active editable column shown in the bulk status line.
+- For predictable bulk edits, work in one editable column at a time.
 """,
     ),
     (
@@ -182,6 +234,7 @@ Review table
 - Left and Right change the active editable column.
 - Up and Down move while editing.
 - Delete removes selected rows from the review list.
+- Pack edits from Review can persist into saved order rules.
 
 Export
 - Export writes one PO file per vendor.
@@ -219,6 +272,30 @@ How to use it
 Persistence
 - Pack overrides and buy-rule changes can persist through saved rules.
 - Session snapshots capture what was loaded, what was assigned, and what maintenance issues were present at export time.
+- Shared-folder users should remember that the maintenance report reflects the current session state, not live changes already made in X4 afterward.
+""",
+    ),
+    (
+        "Data And Sharing",
+        "How local data, shared data, and saved rules behave.",
+        """Local vs shared data
+- By default, the app stores operational files beside the script or beside the built EXE.
+- You can point the app at a shared folder from Load Files when multiple users need the same rules, vendor list, and history.
+- The active data source is shown in the UI so users can confirm whether they are working locally or against shared data.
+
+Files the app saves
+- vendor_codes.txt: saved vendor list
+- order_rules.json: per-item pack and buy-rule settings
+- duplicate_whitelist.txt: accepted duplicate item-code exceptions
+- order_history.json: recent export history
+- suspense_carry.json: carry-forward suspense tracking
+- sessions/: export-time session snapshots
+
+What to expect
+- Shared saves attempt to merge cleanly where possible.
+- Session snapshots are append-only and are the safest files to share.
+- suspense_carry.json is more sensitive because multiple users may affect the same demand carry logic.
+- Reload files if you changed shared rules or vendor data elsewhere and want the current session to reflect it.
 """,
     ),
     (
@@ -233,6 +310,7 @@ Suggestion looks wrong
 - Check QOH, On PO, Suspense, current max, and pack size.
 - Look at the Why text for Pos, Target, Basis, Susp, and OnPO.
 - Sparse annual sales may suppress suggested min/max.
+- If you changed reorder cycle, the session should recalculate immediately. If it still looks wrong, verify the underlying source values.
 
 Item marked review or warning
 - Review often means reel/manual-only handling or another rule requiring a human decision.
@@ -248,9 +326,19 @@ Paste did not do what you expected
 - Rectangular paste starts at the active cell.
 - Read-only columns are skipped.
 
+I edited a cell and moving with the keyboard felt wrong
+- In the bulk grid, arrow keys, Tab, and Shift+Tab now commit the current edit before moving.
+- If movement still seems wrong, check whether focus moved out of the editor or whether the selected area spans multiple rows.
+- For the cleanest behavior, keep bulk edits to one editable column at a time.
+
 Vendor is blank
 - Supplier data can prefill vendor automatically, but users can still overwrite it.
 - If supplier is missing in source data, vendor may need manual entry.
+
+Undo or redo did not restore what you expected
+- Undo / Redo is aimed at recent bulk actions on the Bulk Assign tab.
+- Undo Last Remove is still available for the older remove flow.
+- If the current filter hides restored rows, switch filters back to ALL before assuming data was lost.
 """,
     ),
 ]

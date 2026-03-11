@@ -1,4 +1,5 @@
 import tkinter as tk
+from types import SimpleNamespace
 
 try:
     from tksheet import Sheet
@@ -25,6 +26,7 @@ class BulkSheetView:
         self.row_ids = []
         self.row_lookup = {}
         self._selection_snapshot = {"cells": (), "rows": (), "columns": (), "current": (None, None)}
+        self._selection_anchor = None
         self._resize_after_id = None
         self._edit_refresh_after_id = None
         self._pending_edit = None
@@ -66,6 +68,7 @@ class BulkSheetView:
         self.sheet.extra_bindings("end_edit_table", self._handle_edit)
         self.sheet.disable_bindings("rc_popup_menu")
         self._build_context_menu()
+        self._bind_text_editor_shortcuts()
 
     @staticmethod
     def _split_clipboard_matrix(text):
@@ -132,6 +135,22 @@ class BulkSheetView:
         self.context_menu.add_command(label="Select Current Row", command=self.app._bulk_select_current_row)
         self.context_menu.add_command(label="Select Current Column", command=self.app._bulk_select_current_column)
 
+    def _bind_text_editor_shortcuts(self):
+        bindings = {
+            "<Left>": lambda event=None: self.commit_editor_and_move("left"),
+            "<Right>": lambda event=None: self.commit_editor_and_move("right"),
+            "<Up>": lambda event=None: self.commit_editor_and_move("up"),
+            "<Down>": lambda event=None: self.commit_editor_and_move("down"),
+            "<Tab>": lambda event=None: self.commit_editor_and_move("next"),
+            "<ISO_Left_Tab>": lambda event=None: self.commit_editor_and_move("prev"),
+            "<Shift-Tab>": lambda event=None: self.commit_editor_and_move("prev"),
+        }
+        for key, func in bindings.items():
+            try:
+                self.sheet.bind_key_text_editor(key, func)
+            except Exception:
+                pass
+
     def _handle_edit(self, event_data):
         row = event_data.get("row")
         col = event_data.get("column")
@@ -174,6 +193,9 @@ class BulkSheetView:
         self._edit_refresh_after_id = None
         pending = self._pending_edit
         self._pending_edit = None
+        before_state = None
+        if pending and pending.get("editable") and hasattr(self.app, "_capture_bulk_history_state"):
+            before_state = self.app._capture_bulk_history_state()
         if pending:
             row = pending.get("row")
             col = pending.get("col")
@@ -227,6 +249,8 @@ class BulkSheetView:
         self.clear_selection()
         self.app._update_bulk_summary()
         self.app._update_bulk_sheet_status()
+        if pending and pending.get("editable") and hasattr(self.app, "_finalize_bulk_history_action"):
+            self.app._finalize_bulk_history_action(f"sheet_edit:{pending.get('col_name', '')}", before_state)
 
     def _queue_post_edit_refresh(self):
         if self._edit_refresh_after_id is not None:
@@ -257,7 +281,32 @@ class BulkSheetView:
         except Exception:
             pass
         self._selection_snapshot = {"cells": (), "rows": (), "columns": (), "current": (None, None)}
+        self._selection_anchor = None
         self.app._update_bulk_sheet_status()
+
+    def select_all_visible(self):
+        if not self.row_ids:
+            return False
+        try:
+            self.sheet.deselect("all", redraw=False)
+        except Exception:
+            pass
+        for row in range(len(self.row_ids)):
+            self.sheet.select_row(row, redraw=False)
+        current_row, current_col = self.current_cell()
+        if current_row is None:
+            current_row = 0
+        if current_col is None:
+            current_col = 0
+        try:
+            self.sheet.set_currently_selected(row=current_row, column=current_col)
+        except Exception:
+            pass
+        self._remember_selection()
+        self.sheet.refresh()
+        self.sheet.redraw()
+        self.app._update_bulk_sheet_status()
+        return True
 
     def _remember_selection(self):
         self._selection_snapshot = {
@@ -266,6 +315,9 @@ class BulkSheetView:
             "columns": tuple(sorted(self.sheet.get_selected_columns())),
             "current": self.current_cell(),
         }
+        current = self._selection_snapshot.get("current")
+        if current and current != (None, None):
+            self._selection_anchor = current
 
     def _snapshot_target_row_ids(self, col_name):
         col_idx = self.col_index.get(col_name)
@@ -511,6 +563,148 @@ class BulkSheetView:
         self.app._update_bulk_sheet_status()
         return True
 
+    def move_current_editable_cell(self, step):
+        editable_positions = [idx for idx, name in enumerate(self.columns) if name in self.editable_cols]
+        if not editable_positions or not self.row_ids:
+            return False
+        row, col = self.current_cell()
+        if row is None:
+            row = 0
+        if col not in editable_positions:
+            target_col = editable_positions[0 if step >= 0 else -1]
+        else:
+            current_pos = editable_positions.index(col)
+            next_pos = current_pos + step
+            if next_pos >= len(editable_positions):
+                row = min(len(self.row_ids) - 1, row + 1)
+                target_col = editable_positions[0]
+            elif next_pos < 0:
+                row = max(0, row - 1)
+                target_col = editable_positions[-1]
+            else:
+                target_col = editable_positions[next_pos]
+        try:
+            self.sheet.deselect("all", redraw=False)
+        except Exception:
+            pass
+        try:
+            self.sheet.set_currently_selected(row=row, column=target_col)
+        except Exception:
+            return False
+        self._remember_selection()
+        self.sheet.refresh()
+        self.sheet.redraw()
+        self.app._update_bulk_sheet_status()
+        return True
+
+    def _close_open_text_editor(self, *, keysym="Commit"):
+        try:
+            if not self.sheet.MT.text_editor.open:
+                return False
+        except Exception:
+            return False
+        try:
+            self.sheet.MT.close_text_editor(SimpleNamespace(keysym=keysym))
+        except Exception:
+            return False
+        return True
+
+    def commit_editor_and_move(self, direction):
+        if not self._close_open_text_editor(keysym="Commit"):
+            return None
+        if direction == "next":
+            moved = self.move_current_editable_cell(1)
+        elif direction == "prev":
+            moved = self.move_current_editable_cell(-1)
+        elif direction in ("left", "right", "up", "down"):
+            moved = self.jump_current_cell(direction, ctrl=False)
+        else:
+            moved = False
+        return "break" if moved else "break"
+
+    def _set_current_cell(self, row, col):
+        if not self.row_ids or row < 0 or row >= len(self.row_ids) or col < 0 or col >= len(self.columns):
+            return False
+        try:
+            self.sheet.deselect("all", redraw=False)
+        except Exception:
+            pass
+        try:
+            self.sheet.set_currently_selected(row=row, column=col)
+        except Exception:
+            return False
+        self._remember_selection()
+        self.sheet.refresh()
+        self.sheet.redraw()
+        self.app._update_bulk_sheet_status()
+        return True
+
+    def extend_selection(self, row_delta, col_delta):
+        if not self.row_ids or not self.columns:
+            return False
+        row, col = self.current_cell()
+        if row is None or col is None:
+            row, col = 0, 0
+        anchor_row, anchor_col = self._selection_anchor or (row, col)
+        target_row = max(0, min(len(self.row_ids) - 1, row + row_delta))
+        target_col = max(0, min(len(self.columns) - 1, col + col_delta))
+        try:
+            self.sheet.deselect("all", redraw=False)
+            self.sheet.select_cell(anchor_row, anchor_col, redraw=False)
+            for sel_row in range(min(anchor_row, target_row), max(anchor_row, target_row) + 1):
+                for sel_col in range(min(anchor_col, target_col), max(anchor_col, target_col) + 1):
+                    if sel_row == anchor_row and sel_col == anchor_col:
+                        continue
+                    self.sheet.add_cell_selection(sel_row, sel_col, redraw=False, set_as_current=False)
+            self.sheet.set_currently_selected(row=target_row, column=target_col)
+        except Exception:
+            return False
+        self._selection_snapshot = {
+            "cells": tuple(
+                (sel_row, sel_col)
+                for sel_row in range(min(anchor_row, target_row), max(anchor_row, target_row) + 1)
+                for sel_col in range(min(anchor_col, target_col), max(anchor_col, target_col) + 1)
+            ),
+            "rows": (),
+            "columns": (),
+            "current": (target_row, target_col),
+        }
+        self.sheet.refresh()
+        self.sheet.redraw()
+        self.app._update_bulk_sheet_status()
+        return True
+
+    def jump_current_cell(self, direction, ctrl=False):
+        editable_positions = [idx for idx, name in enumerate(self.columns) if name in self.editable_cols]
+        if not editable_positions or not self.row_ids:
+            return False
+        row, col = self.current_cell()
+        if row is None:
+            row = 0
+        if col is None:
+            col = editable_positions[0]
+        if direction == "home":
+            target_row = 0 if ctrl else row
+            target_col = editable_positions[0]
+        elif direction == "end":
+            target_row = len(self.row_ids) - 1 if ctrl else row
+            target_col = editable_positions[-1]
+        elif direction == "left":
+            target_row = row
+            target_col = editable_positions[0] if ctrl else editable_positions[max(0, editable_positions.index(col) - 1)] if col in editable_positions else editable_positions[0]
+        elif direction == "right":
+            target_row = row
+            target_col = editable_positions[-1] if ctrl else editable_positions[min(len(editable_positions) - 1, editable_positions.index(col) + 1)] if col in editable_positions else editable_positions[-1]
+        elif direction == "up":
+            target_row = 0 if ctrl else max(0, row - 1)
+            target_col = col
+        elif direction == "down":
+            target_row = len(self.row_ids) - 1 if ctrl else min(len(self.row_ids) - 1, row + 1)
+            target_col = col
+        else:
+            return False
+        return self._set_current_cell(target_row, target_col)
+
     def copy_selection_to_clipboard(self):
         selected_cells = self.selected_cells()
         explicit_rows = self.explicit_selected_row_ids()
@@ -574,6 +768,7 @@ class BulkSheetView:
         current_row, current_col = self.current_cell()
         selected_col = self.selected_editable_column_name()
         target_col = selected_col or self.current_editable_column_name()
+        before_state = self.app._capture_bulk_history_state() if hasattr(self.app, "_capture_bulk_history_state") else None
 
         if len(matrix[0]) == 1 and target_col in self.editable_cols:
             row_ids = list(self.selected_target_row_ids(target_col))
@@ -594,6 +789,8 @@ class BulkSheetView:
             self.clear_selection()
             self.app._update_bulk_summary()
             self.app._update_bulk_sheet_status()
+            if hasattr(self.app, "_finalize_bulk_history_action"):
+                self.app._finalize_bulk_history_action(f"paste:{target_col}", before_state)
             return True
 
         if current_row is None or current_col is None:
@@ -615,4 +812,6 @@ class BulkSheetView:
         self.clear_selection()
         self.app._update_bulk_summary()
         self.app._update_bulk_sheet_status()
+        if hasattr(self.app, "_finalize_bulk_history_action"):
+            self.app._finalize_bulk_history_action("paste:block", before_state)
         return True
