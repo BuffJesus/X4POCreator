@@ -183,7 +183,7 @@ def build_bulk_tab(app, editable_cols):
         app.bulk_sheet.sheet.bind("<ButtonRelease-1>", lambda e: app._update_bulk_sheet_status())
         app.bulk_sheet.sheet.bind("<KeyRelease>", lambda e: app._update_bulk_sheet_status())
         app.bulk_sheet.sheet.popup_menu_add_command("Remove Selected Rows", app._bulk_remove_selected_rows)
-        app.bulk_sheet.sheet.popup_menu_add_command("Bulk Edit Selection", app._bulk_begin_edit)
+        app.bulk_sheet.sheet.popup_menu_add_command("Bulk Edit Selection", app._bulk_begin_edit_from_menu)
         app.bulk_sheet.sheet.popup_menu_add_command("Select Current Row", app._bulk_select_current_row)
         app.bulk_sheet.sheet.popup_menu_add_command("Select Current Column", app._bulk_select_current_column)
         app.bulk_sheet.sheet.popup_menu_add_command("View Item Details", app._view_item_details)

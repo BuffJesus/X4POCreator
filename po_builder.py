@@ -1503,6 +1503,13 @@ class POBuilderApp:
         self._right_click_bulk_context = None
         return "break"
 
+    def _bulk_begin_edit_from_menu(self):
+        write_debug(
+            "bulk_begin_edit.menu_command",
+            right_click_context=repr(getattr(self, "_right_click_bulk_context", None)),
+        )
+        return self._bulk_begin_edit()
+
     def _bulk_fit_columns(self):
         if self.bulk_sheet:
             self.bulk_sheet.fit_columns_to_window()
