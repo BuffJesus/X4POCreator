@@ -10,8 +10,27 @@ import storage
 from models import SessionSnapshot
 
 
+def group_assigned_items(assigned_items):
+    vendor_groups = defaultdict(list)
+    for item in assigned_items:
+        vendor_groups[item["vendor"]].append(item)
+    return vendor_groups
+
+
+def loaded_report_paths_from_app(app):
+    return {
+        "sales": app.var_sales_path.get().strip(),
+        "po": app.var_po_path.get().strip(),
+        "susp": app.var_susp_path.get().strip(),
+        "onhand": app.var_onhand_path.get().strip(),
+        "minmax": app.var_minmax_path.get().strip(),
+        "packsize": app.var_packsize_path.get().strip(),
+    }
+
+
 def do_export(app, export_vendor_po, order_history_file, sessions_dir):
-    if not app.assigned_items:
+    session = getattr(app, "session", app)
+    if not session.assigned_items:
         messagebox.showwarning("No Items", "No items to export.")
         return
 
@@ -22,9 +41,7 @@ def do_export(app, export_vendor_po, order_history_file, sessions_dir):
     app._show_loading("Exporting POs...")
     app.root.update()
 
-    vendor_groups = defaultdict(list)
-    for item in app.assigned_items:
-        vendor_groups[item["vendor"]].append(item)
+    vendor_groups = group_assigned_items(session.assigned_items)
 
     created_files = []
     for vendor, items in sorted(vendor_groups.items()):
@@ -36,11 +53,16 @@ def do_export(app, export_vendor_po, order_history_file, sessions_dir):
             messagebox.showerror("Export Error", f"Failed to export PO for {vendor}:\n{exc}")
             return
 
-    storage.append_order_history(order_history_file, app.assigned_items)
+    storage.append_order_history(order_history_file, session.assigned_items)
     if hasattr(app, "_persist_suspense_carry"):
         app._persist_suspense_carry()
     maintenance_issues = app._build_maintenance_report()
-    session_snapshot = build_session_snapshot(app, output_dir, created_files, maintenance_issues)
+    session_snapshot = build_session_snapshot(
+        app,
+        output_dir,
+        created_files,
+        maintenance_issues,
+    )
     try:
         storage.save_session_snapshot(sessions_dir, session_snapshot)
     except Exception as exc:
@@ -61,15 +83,7 @@ def do_export(app, export_vendor_po, order_history_file, sessions_dir):
     app._show_maintenance_report(output_dir, maintenance_issues)
 
 
-def build_session_snapshot(app, output_dir, created_files, maintenance_issues):
-    loaded_report_paths = {
-        "sales": app.var_sales_path.get().strip(),
-        "po": app.var_po_path.get().strip(),
-        "susp": app.var_susp_path.get().strip(),
-        "onhand": app.var_onhand_path.get().strip(),
-        "minmax": app.var_minmax_path.get().strip(),
-        "packsize": app.var_packsize_path.get().strip(),
-    }
+def build_session_snapshot_from_state(session, loaded_report_paths, output_dir, created_files, maintenance_issues):
     qoh_adjustments = [
         {
             "line_code": key[0],
@@ -77,18 +91,29 @@ def build_session_snapshot(app, output_dir, created_files, maintenance_issues):
             "old": adj["old"],
             "new": adj["new"],
         }
-        for key, adj in sorted(app.qoh_adjustments.items())
+        for key, adj in sorted(session.qoh_adjustments.items())
     ]
     return SessionSnapshot(
         created_at=datetime.now().isoformat(),
         output_dir=output_dir,
         po_files=tuple(created_files),
         loaded_report_paths=loaded_report_paths,
-        assigned_items=tuple(copy.deepcopy(item) for item in app.assigned_items),
+        assigned_items=tuple(copy.deepcopy(item) for item in session.assigned_items),
         maintenance_issues=tuple(maintenance_issues),
-        startup_warning_rows=tuple(copy.deepcopy(row) for row in app.startup_warning_rows),
+        startup_warning_rows=tuple(copy.deepcopy(row) for row in session.startup_warning_rows),
         qoh_adjustments=tuple(qoh_adjustments),
-        order_rules=copy.deepcopy(app.order_rules),
+        order_rules=copy.deepcopy(session.order_rules),
+    )
+
+
+def build_session_snapshot(app, output_dir, created_files, maintenance_issues):
+    session = getattr(app, "session", app)
+    return build_session_snapshot_from_state(
+        session,
+        loaded_report_paths_from_app(app),
+        output_dir,
+        created_files,
+        maintenance_issues,
     )
 
 

@@ -10,10 +10,20 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 import export_flow
-from models import MaintenanceIssue
+from models import AppSessionState, MaintenanceIssue
 
 
 class ExportFlowTests(unittest.TestCase):
+    def test_group_assigned_items_groups_by_vendor(self):
+        grouped = export_flow.group_assigned_items([
+            {"vendor": "MOTION", "item_code": "A"},
+            {"vendor": "SOURCE", "item_code": "B"},
+            {"vendor": "MOTION", "item_code": "C"},
+        ])
+
+        self.assertEqual(list(grouped.keys()), ["MOTION", "SOURCE"])
+        self.assertEqual([item["item_code"] for item in grouped["MOTION"]], ["A", "C"])
+
     def test_build_session_snapshot_captures_expected_fields(self):
         app = SimpleNamespace(
             var_sales_path=SimpleNamespace(get=lambda: "C:\\Reports\\sales.csv"),
@@ -53,6 +63,46 @@ class ExportFlowTests(unittest.TestCase):
         self.assertEqual(snapshot.output_dir, "C:\\Exports")
         self.assertEqual(snapshot.loaded_report_paths["sales"], "C:\\Reports\\sales.csv")
         self.assertEqual(snapshot.po_files, ("C:\\Exports\\PO_A.xlsx",))
+        self.assertEqual(snapshot.qoh_adjustments[0]["new"], 5)
+        self.assertEqual(snapshot.order_rules["AER-:GH781-4"]["pack_size"], 500)
+
+    def test_build_session_snapshot_from_state_captures_expected_fields(self):
+        session = AppSessionState(
+            qoh_adjustments={("AER-", "GH781-4"): {"old": 2, "new": 5}},
+            assigned_items=[{"line_code": "AER-", "item_code": "GH781-4", "order_qty": 250}],
+            startup_warning_rows=[{"warning_type": "Pack Fallback Conflict"}],
+            order_rules={"AER-:GH781-4": {"pack_size": 500}},
+        )
+        issues = (
+            MaintenanceIssue(
+                line_code="AER-",
+                item_code="GH781-4",
+                description="HOSE",
+                issue="Set order multiple to 500",
+                assigned_vendor="GREGDIST",
+                x4_supplier="",
+                pack_size="500",
+                x4_order_multiple="",
+                x4_min="22",
+                x4_max="67",
+                target_min="22",
+                target_max="67",
+                sug_min="22",
+                sug_max="67",
+                qoh_old="2",
+                qoh_new="5",
+            ),
+        )
+
+        snapshot = export_flow.build_session_snapshot_from_state(
+            session,
+            {"sales": "C:\\Reports\\sales.csv"},
+            "C:\\Exports",
+            ("C:\\Exports\\PO_A.xlsx",),
+            issues,
+        )
+
+        self.assertEqual(snapshot.loaded_report_paths["sales"], "C:\\Reports\\sales.csv")
         self.assertEqual(snapshot.qoh_adjustments[0]["new"], 5)
         self.assertEqual(snapshot.order_rules["AER-:GH781-4"]["pack_size"], 500)
 
