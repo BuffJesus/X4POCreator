@@ -22,6 +22,7 @@ class BulkSheetView:
         self.row_lookup = {}
         self._selection_snapshot = {"cells": (), "rows": (), "columns": (), "current": (None, None)}
         self._resize_after_id = None
+        self._edit_refresh_after_id = None
 
         headers = [self.labels[col] for col in self.columns]
         self.sheet = Sheet(
@@ -87,10 +88,26 @@ class BulkSheetView:
             target_row_ids = [row_id]
         for target_row_id in target_row_ids:
             self.app._bulk_apply_editor_value(target_row_id, col_name, str(value))
+        self._queue_post_edit_refresh()
+
+    def _run_post_edit_refresh(self):
+        self._edit_refresh_after_id = None
         self.app._apply_bulk_filter()
         self.clear_selection()
         self.app._update_bulk_summary()
         self.app._update_bulk_sheet_status()
+
+    def _queue_post_edit_refresh(self):
+        if self._edit_refresh_after_id is not None:
+            try:
+                self.sheet.after_cancel(self._edit_refresh_after_id)
+            except Exception:
+                pass
+            self._edit_refresh_after_id = None
+        try:
+            self._edit_refresh_after_id = self.sheet.after(1, self._run_post_edit_refresh)
+        except Exception:
+            self._run_post_edit_refresh()
 
     def set_rows(self, rows, row_ids):
         self.row_ids = [int(row_id) for row_id in row_ids]
