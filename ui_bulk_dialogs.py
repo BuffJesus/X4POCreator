@@ -365,6 +365,8 @@ def open_buy_rule_editor(app, idx, order_rules_file):
         app.order_rules[rule_key] = new_rule
         storage.save_order_rules(order_rules_file, app.order_rules)
         enrich_item(item, inv, item.get("pack_size"), new_rule)
+        app._apply_bulk_filter()
+        app._update_bulk_summary()
         if getattr(app, "bulk_sheet", None):
             app.bulk_sheet.refresh_row(str(idx), app._bulk_row_values(item))
         else:

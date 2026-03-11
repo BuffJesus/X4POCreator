@@ -196,6 +196,53 @@ class BulkSheetStatusTests(unittest.TestCase):
         self.assertEqual(result, "break")
         self.assertEqual(calls[:5], [("8", "pack_size", "3"), ("filter",), ("cleared",), ("summary",), ("status",)])
 
+    def test_bulk_begin_edit_right_click_context_overrides_existing_selection(self):
+        calls = []
+        fake_app = SimpleNamespace(
+            bulk_sheet=SimpleNamespace(
+                selected_editable_column_name=lambda: "pack_size",
+                current_editable_column_name=lambda: "pack_size",
+                selected_target_row_ids=lambda col_name: ("0", "1", "2"),
+                selected_row_ids=lambda: ("0", "1", "2"),
+                current_cell_value=lambda: "2",
+                clear_selection=lambda: calls.append(("cleared",)),
+                sheet=SimpleNamespace(open_cell=lambda: calls.append(("open_cell",))),
+            ),
+            root=None,
+            _right_click_bulk_context={"row_id": "2", "col_name": "pack_size"},
+            _bulk_apply_editor_value=lambda row_id, col_name, value: calls.append((row_id, col_name, value)),
+            _apply_bulk_filter=lambda: calls.append(("filter",)),
+            _update_bulk_summary=lambda: calls.append(("summary",)),
+            _update_bulk_cell_status=lambda: calls.append(("status",)),
+        )
+
+        with patch("po_builder.simpledialog.askstring", return_value="5"):
+            result = po_builder.POBuilderApp._bulk_begin_edit(fake_app)
+
+        self.assertEqual(result, "break")
+        self.assertEqual(calls[:5], [("2", "pack_size", "5"), ("filter",), ("cleared",), ("summary",), ("status",)])
+
+    def test_bulk_begin_edit_right_click_buy_rule_opens_editor(self):
+        calls = []
+        fake_app = SimpleNamespace(
+            bulk_sheet=SimpleNamespace(
+                selected_editable_column_name=lambda: "",
+                current_editable_column_name=lambda: "",
+                selected_target_row_ids=lambda col_name: (),
+                selected_row_ids=lambda: (),
+                current_cell_value=lambda: "",
+                sheet=SimpleNamespace(open_cell=lambda: calls.append(("open_cell",))),
+            ),
+            root=None,
+            _right_click_bulk_context={"row_id": "7", "col_name": "buy_rule"},
+            _open_buy_rule_editor=lambda idx: calls.append(("buy_rule_editor", idx)),
+        )
+
+        result = po_builder.POBuilderApp._bulk_begin_edit(fake_app)
+
+        self.assertEqual(result, "break")
+        self.assertEqual(calls, [("buy_rule_editor", 7)])
+
 
 class BulkSheetViewTests(unittest.TestCase):
     def test_handle_edit_applies_value_to_selected_target_rows(self):

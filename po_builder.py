@@ -1452,11 +1452,8 @@ class POBuilderApp:
         if col_name:
             row_ids = list(self.bulk_sheet.selected_target_row_ids(col_name))
         clicked_row_id = right_click_context.get("row_id")
-        if clicked_row_id and clicked_row_id not in row_ids:
-            if row_ids:
-                row_ids = [clicked_row_id]
-            else:
-                row_ids = [clicked_row_id]
+        if clicked_row_id:
+            row_ids = [clicked_row_id]
         if not row_ids and self.bulk_sheet:
             row_ids = list(self.bulk_sheet.selected_row_ids())
         write_debug(
@@ -1466,6 +1463,11 @@ class POBuilderApp:
             row_count=len(row_ids),
             right_click_row_id=clicked_row_id or "",
         )
+        if col_name == "buy_rule" and row_ids:
+            self._open_buy_rule_editor(int(row_ids[0]))
+            write_debug("bulk_begin_edit.buy_rule_editor", row_id=row_ids[0])
+            self._right_click_bulk_context = None
+            return "break"
         if col_name in BULK_EDITABLE_COLS and len(row_ids) >= 1:
             if len(row_ids) == 1:
                 prompt = f"Enter a value for {col_name}:"
