@@ -1269,6 +1269,11 @@ class POBuilderApp:
         if manual_override:
             item["manual_override"] = True
 
+    @staticmethod
+    def _clear_manual_override(item):
+        """Allow recalculation-driven edits to restore the suggested quantity."""
+        item["manual_override"] = False
+
     def _recalculate_item(self, item):
         """Refresh derived ordering fields for a single item after edits."""
         key = (item["line_code"], item["item_code"])
@@ -1288,10 +1293,12 @@ class POBuilderApp:
             return None
         filtered["vendor"] = item.get("vendor", filtered.get("vendor", ""))
         filtered["pack_size"] = item.get("pack_size")
+        if not item.get("manual_override", False):
+            self._clear_manual_override(filtered)
         self._set_effective_order_qty(
             filtered,
             item.get("order_qty", self._get_effective_order_qty(filtered)),
-            manual_override=True,
+            manual_override=item.get("manual_override", False),
         )
         self._recalculate_item(filtered)
         item["status"] = filtered.get("status", item.get("status", "ok"))
@@ -1303,6 +1310,8 @@ class POBuilderApp:
         item["suggested_qty"] = filtered.get("suggested_qty")
         item["raw_need"] = filtered.get("raw_need")
         item["final_qty"] = self._get_effective_order_qty(filtered)
+        item["order_qty"] = self._get_effective_order_qty(filtered)
+        item["manual_override"] = filtered.get("manual_override", item.get("manual_override", False))
         return filtered
 
     def _bulk_row_values(self, item):
@@ -1587,6 +1596,7 @@ class POBuilderApp:
                     rule["pack_size"] = item["pack_size"]
                 self.order_rules[rule_key] = rule
                 storage.save_order_rules(ORDER_RULES_FILE, self.order_rules)
+                self._clear_manual_override(item)
                 self._recalculate_item(item)
             except ValueError:
                 pass
@@ -1711,6 +1721,7 @@ class POBuilderApp:
         elif col_name == "pack_size":
             try:
                 item["pack_size"] = None if raw == "" else int(float(raw))
+                self._clear_manual_override(item)
                 self._sync_review_item_to_filtered(item)
             except ValueError:
                 pass

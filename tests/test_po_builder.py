@@ -33,6 +33,7 @@ class POBuilderTests(unittest.TestCase):
         fake_app._rename_vendor_code = (
             lambda old_vendor, new_vendor: po_builder.POBuilderApp._rename_vendor_code(fake_app, old_vendor, new_vendor)
         )
+        fake_app._clear_manual_override = lambda item: po_builder.POBuilderApp._clear_manual_override(item)
         fake_app._recalculate_item = lambda item: po_builder.POBuilderApp._recalculate_item(fake_app, item)
         fake_app._sync_review_item_to_filtered = (
             lambda item: po_builder.POBuilderApp._sync_review_item_to_filtered(fake_app, item)
@@ -283,7 +284,7 @@ class POBuilderTests(unittest.TestCase):
         self.assertEqual(item["final_qty"], 12)
         self.assertEqual(item["target_stock"], 14)
 
-    def test_bulk_pack_size_edit_recalculates_and_persists_rule(self):
+    def test_bulk_pack_size_edit_recalculates_qty_and_persists_rule(self):
         fake_app = self._make_calc_app()
         key = ("AER-", "GH781-4")
         fake_app.inventory_lookup[key] = {"qoh": 0, "max": 10}
@@ -295,9 +296,10 @@ class POBuilderTests(unittest.TestCase):
             "qty_suspended": 0,
             "qty_on_po": 0,
             "demand_signal": 9,
-            "pack_size": 4,
-            "final_qty": 12,
-            "order_qty": 12,
+            "pack_size": 5,
+            "final_qty": 10,
+            "order_qty": 10,
+            "manual_override": True,
         }]
         po_builder.POBuilderApp._recalculate_item(fake_app, fake_app.filtered_items[0])
 
@@ -311,9 +313,56 @@ class POBuilderTests(unittest.TestCase):
 
         item = fake_app.filtered_items[0]
         self.assertEqual(item["pack_size"], 6)
+        self.assertFalse(item["manual_override"])
+        self.assertEqual(item["suggested_qty"], 12)
         self.assertEqual(item["final_qty"], 12)
+        self.assertEqual(item["order_qty"], 12)
         self.assertEqual(fake_app.order_rules["AER-:GH781-4"]["pack_size"], 6)
         self.assertEqual(saved_rules["AER-:GH781-4"]["pack_size"], 6)
+
+    def test_review_pack_size_edit_recalculates_order_qty(self):
+        fake_app = self._make_calc_app()
+        key = ("AER-", "GH781-4")
+        filtered_item = {
+            "line_code": key[0],
+            "item_code": key[1],
+            "description": "HOSE",
+            "qty_sold": 9,
+            "qty_suspended": 0,
+            "qty_on_po": 0,
+            "demand_signal": 9,
+            "vendor": "MOTION",
+            "pack_size": 5,
+            "final_qty": 10,
+            "order_qty": 10,
+            "manual_override": True,
+        }
+        fake_app.inventory_lookup[key] = {"qoh": 0, "max": 10}
+        fake_app.filtered_items = [filtered_item]
+        po_builder.POBuilderApp._recalculate_item(fake_app, filtered_item)
+        fake_app.assigned_items = [{
+            "line_code": key[0],
+            "item_code": key[1],
+            "description": "HOSE",
+            "vendor": "MOTION",
+            "pack_size": filtered_item["pack_size"],
+            "order_qty": filtered_item["order_qty"],
+            "final_qty": filtered_item["final_qty"],
+            "status": filtered_item["status"],
+            "why": filtered_item["why"],
+            "order_policy": filtered_item["order_policy"],
+            "data_flags": list(filtered_item["data_flags"]),
+            "manual_override": True,
+        }]
+
+        po_builder.POBuilderApp._review_apply_editor_value(fake_app, "0", "pack_size", "6")
+
+        assigned = fake_app.assigned_items[0]
+        self.assertFalse(filtered_item["manual_override"])
+        self.assertEqual(filtered_item["pack_size"], 6)
+        self.assertEqual(filtered_item["final_qty"], 12)
+        self.assertEqual(assigned["final_qty"], 12)
+        self.assertEqual(assigned["order_qty"], 12)
 
     def test_parse_all_files_sales_window_warning_uses_actionable_language(self):
         original_parse_sales = po_builder.parsers.parse_part_sales_csv
