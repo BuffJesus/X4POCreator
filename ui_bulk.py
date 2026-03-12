@@ -26,8 +26,11 @@ def build_bulk_tab(app, editable_cols):
     app.lbl_bulk_summary = ttk.Label(top_frame, text="", style="Info.TLabel")
     app.lbl_bulk_summary.pack(side=tk.LEFT)
 
-    action_frame = ttk.LabelFrame(frame, text="Bulk Actions", padding=8)
-    action_frame.pack(anchor="w", pady=(0, 8))
+    controls_frame = ttk.Frame(frame)
+    controls_frame.pack(fill=tk.X, pady=(0, 8))
+
+    action_frame = ttk.LabelFrame(controls_frame, text="Bulk Actions", padding=8)
+    action_frame.pack(side=tk.LEFT, anchor="nw")
 
     vendor_row = ttk.Frame(action_frame)
     vendor_row.pack(fill=tk.X, pady=2)
@@ -68,8 +71,8 @@ def build_bulk_tab(app, editable_cols):
     for idx, button in enumerate(removal_buttons):
         button.pack(side=tk.LEFT, padx=(8 if idx == 0 else 4, 0))
 
-    filter_frame = ttk.Frame(frame)
-    filter_frame.pack(fill=tk.X, pady=(0, 4))
+    filter_frame = ttk.LabelFrame(controls_frame, text="Filters", padding=8)
+    filter_frame.pack(side=tk.LEFT, anchor="nw", padx=(16, 0))
 
     filter_row_1 = ttk.Frame(filter_frame)
     filter_row_1.pack(fill=tk.X, pady=(0, 2))
