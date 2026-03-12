@@ -26,6 +26,7 @@ import data_folder_flow
 import export_flow
 import item_workflow
 import load_flow
+import loading_flow
 import maintenance_flow
 import parsers
 import persistent_state_flow
@@ -541,92 +542,34 @@ class POBuilderApp:
 
     def _start_loading_audio(self):
         """Start looping Nyan Cat loading audio if available."""
-        if not HAS_WINSOUND:
-            return
-        if not os.path.exists(LOADING_WAV_FILE):
-            return
-        try:
-            winsound.PlaySound(
-                LOADING_WAV_FILE,
-                winsound.SND_FILENAME | winsound.SND_ASYNC | winsound.SND_LOOP,
-            )
-        except Exception:
-            pass
+        loading_flow.start_loading_audio(
+            has_winsound=HAS_WINSOUND,
+            loading_wav_file=LOADING_WAV_FILE,
+            winsound_module=winsound if HAS_WINSOUND else None,
+        )
 
     def _stop_loading_audio(self):
         """Stop loading audio playback."""
-        if not HAS_WINSOUND:
-            return
-        try:
-            winsound.PlaySound(None, winsound.SND_PURGE)
-        except Exception:
-            pass
+        loading_flow.stop_loading_audio(
+            has_winsound=HAS_WINSOUND,
+            winsound_module=winsound if HAS_WINSOUND else None,
+        )
 
     def _animate_loading(self):
         """Cycle through gif frames at native speed."""
-        if not self._loading_overlay or not self._loading_frames:
-            return
-        frame = self._loading_frames[self._loading_frame_idx % len(self._loading_frames)]
-        self._loading_img_label.configure(image=frame)
-        self._loading_frame_idx += 1
-        self._loading_after_id = self.root.after(50, self._animate_loading)
+        loading_flow.animate_loading(self)
 
     def _autosize_dialog(self, dlg, min_w=420, min_h=280, max_w_ratio=0.9, max_h_ratio=0.9):
         """Size a popup to its content while keeping it inside the screen."""
-        dlg.update_idletasks()
-        screen_w = dlg.winfo_screenwidth()
-        screen_h = dlg.winfo_screenheight()
-        max_w = max(min_w, int(screen_w * max_w_ratio))
-        max_h = max(min_h, int(screen_h * max_h_ratio))
-
-        req_w = dlg.winfo_reqwidth() + 16
-        req_h = dlg.winfo_reqheight() + 16
-        width = max(min_w, min(req_w, max_w))
-        height = max(min_h, min(req_h, max_h))
-
-        x = max(0, (screen_w - width) // 2)
-        y = max(0, (screen_h - height) // 3)
-        dlg.geometry(f"{width}x{height}+{x}+{y}")
-        dlg.minsize(min_w, min_h)
+        loading_flow.autosize_dialog(dlg, min_w=min_w, min_h=min_h, max_w_ratio=max_w_ratio, max_h_ratio=max_h_ratio)
 
     def _hide_loading(self):
         """Remove the loading overlay."""
-        if self._loading_after_id:
-            self.root.after_cancel(self._loading_after_id)
-            self._loading_after_id = None
-        self._stop_loading_audio()
-        if self._loading_overlay:
-            self._loading_overlay.destroy()
-            self._loading_overlay = None
+        loading_flow.hide_loading(self)
 
     def _run_with_loading(self, text, func, *args, min_seconds=5):
         """Show loading overlay with animation, run func in a thread, then hide."""
-        import time
-        self._show_loading(text)
-        self.root.update()
-        result_holder = {"result": None, "error": None}
-        start_time = time.time()
-
-        def _worker():
-            try:
-                result_holder["result"] = func(*args)
-            except Exception as e:
-                result_holder["error"] = e
-
-        thread = threading.Thread(target=_worker, daemon=True)
-        thread.start()
-
-        # Keep the UI responsive (animation runs) while thread works
-        # or until minimum display time is reached
-        while thread.is_alive() or (time.time() - start_time) < min_seconds:
-            self.root.update()
-            self.root.after(16)  # ~60fps
-
-        self._hide_loading()
-
-        if result_holder["error"]:
-            raise result_holder["error"]
-        return result_holder["result"]
+        return loading_flow.run_with_loading(self, text, func, *args, min_seconds=min_seconds)
 
     # ── Tab 1: Load Files ────────────────────────────────────────────────
 
