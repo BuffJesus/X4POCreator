@@ -18,11 +18,11 @@ import urllib.request
 import urllib.error
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox, simpledialog
-from collections import defaultdict
 from datetime import datetime
 import json
 import webbrowser
 import assignment_flow
+import data_folder_flow
 import export_flow
 import item_workflow
 import load_flow
@@ -45,7 +45,6 @@ from models import AppSessionState, ItemKey, MaintenanceCandidate, SessionItemSt
 from rules import (
     enrich_item,
     evaluate_item_status,
-    get_rule_pack_size,
 )
 
 try:
@@ -393,15 +392,7 @@ class POBuilderApp:
 
     @staticmethod
     def _build_data_paths(data_dir):
-        return {
-            "duplicate_whitelist": os.path.join(data_dir, "duplicate_whitelist.txt"),
-            "order_history": os.path.join(data_dir, "order_history.json"),
-            "order_rules": os.path.join(data_dir, "order_rules.json"),
-            "suspense_carry": os.path.join(data_dir, "suspense_carry.json"),
-            "sessions": os.path.join(data_dir, "sessions"),
-            "vendor_codes": os.path.join(data_dir, "vendor_codes.txt"),
-            "ignored_items": os.path.join(data_dir, "ignored_items.txt"),
-        }
+        return data_folder_flow.build_data_paths(data_dir)
 
     def _data_path(self, key):
         return self.data_paths[key]
@@ -417,51 +408,16 @@ class POBuilderApp:
             write_debug("app_settings.save_failed", error=str(exc), path=APP_SETTINGS_FILE)
 
     def _configure_initial_data_dir(self):
-        requested = str(self.app_settings.get("shared_data_dir", "") or "").strip()
-        self.update_check_enabled = bool(self.app_settings.get("check_for_updates_on_startup", True))
-        if requested:
-            normalized = os.path.abspath(requested)
-            ok, reason = storage.validate_storage_directory(normalized)
-            if ok:
-                self.shared_data_dir = normalized
-                self.data_dir = normalized
-            else:
-                self._startup_data_dir_warning = (
-                    "Shared data folder is unavailable, so the app fell back to local data.\n\n"
-                    f"Requested folder:\n{normalized}\n\nReason:\n{reason}"
-                )
-                self.app_settings["shared_data_dir"] = ""
-                self._save_app_settings()
-        self.data_paths = self._build_data_paths(self.data_dir)
+        data_folder_flow.configure_initial_data_dir(self)
 
     def _load_persistent_state(self):
-        dup_whitelist, _ = storage.load_duplicate_whitelist(self._data_path("duplicate_whitelist"), with_meta=True)
-        ignored_item_keys, _ = storage.load_ignored_items(self._data_path("ignored_items"), with_meta=True)
-        order_rules, _ = storage.load_order_rules_with_meta(self._data_path("order_rules"))
-        suspense_carry, _ = storage.load_suspense_carry_with_meta(self._data_path("suspense_carry"))
-        vendor_codes, _ = storage.load_vendor_codes(self._data_path("vendor_codes"), KNOWN_VENDORS, with_meta=True)
-        self.dup_whitelist = set(dup_whitelist)
-        self.ignored_item_keys = set(ignored_item_keys)
-        self.order_rules = dict(order_rules)
-        self.suspense_carry = dict(suspense_carry)
-        self.vendor_codes_used = list(vendor_codes)
-        self._loaded_dup_whitelist = set(self.dup_whitelist)
-        self._loaded_ignored_item_keys = set(self.ignored_item_keys)
-        self._loaded_order_rules = copy.deepcopy(self.order_rules)
-        self._loaded_suspense_carry = copy.deepcopy(self.suspense_carry)
-        self._loaded_vendor_codes = list(self.vendor_codes_used)
-        self._refresh_data_folder_labels()
+        data_folder_flow.load_persistent_state(self, KNOWN_VENDORS)
 
     def _active_data_folder_label(self):
-        if self.shared_data_dir:
-            return f"Shared Folder: {self.data_dir}"
-        return f"Local Data: {self.data_dir}"
+        return data_folder_flow.active_data_folder_label(self)
 
     def _refresh_data_folder_labels(self):
-        label_text = self._active_data_folder_label()
-        for attr_name in ("lbl_data_source", "lbl_bulk_data_source", "lbl_assign_data_source", "lbl_review_data_source"):
-            if hasattr(self, attr_name):
-                getattr(self, attr_name).config(text=label_text)
+        data_folder_flow.refresh_data_folder_labels(self)
 
     def _open_active_data_folder(self):
         try:
@@ -473,132 +429,22 @@ class POBuilderApp:
             messagebox.showerror("Open Data Folder", f"Could not open the active data folder:\n{exc}")
 
     def _rebuild_duplicate_ic_lookup(self):
-        duplicate_ic_lookup = defaultdict(set)
-        for line_code, item_code in self.inventory_lookup:
-            duplicate_ic_lookup[item_code].add(line_code)
-        self.duplicate_ic_lookup = {
-            item_code: line_codes
-            for item_code, line_codes in duplicate_ic_lookup.items()
-            if len(line_codes) > 1 and item_code not in self.dup_whitelist
-        }
+        data_folder_flow.rebuild_duplicate_ic_lookup(self)
 
     def _prune_ignored_items_from_session(self):
-        before_counts = (
-            len(self.filtered_items),
-            len(self.assigned_items),
-            len(self.individual_items),
-        )
-        self.filtered_items = [
-            item for item in self.filtered_items
-            if self._ignore_key(item.get("line_code", ""), item.get("item_code", "")) not in self.ignored_item_keys
-        ]
-        self.assigned_items = [
-            item for item in self.assigned_items
-            if self._ignore_key(item.get("line_code", ""), item.get("item_code", "")) not in self.ignored_item_keys
-        ]
-        self.individual_items = [
-            item for item in self.individual_items
-            if self._ignore_key(item.get("line_code", ""), item.get("item_code", "")) not in self.ignored_item_keys
-        ]
-        return before_counts != (
-            len(self.filtered_items),
-            len(self.assigned_items),
-            len(self.individual_items),
-        )
+        return data_folder_flow.prune_ignored_items_from_session(self)
 
     def _has_active_assignment_session(self):
-        return bool(self.filtered_items or self.assigned_items or self.individual_items)
+        return data_folder_flow.has_active_assignment_session(self)
 
     def _refresh_active_data_state(self, notify=True):
-        self._load_persistent_state()
-        self._refresh_vendor_inputs()
-        if not self._has_active_assignment_session():
-            if notify:
-                messagebox.showinfo(
-                    "Active Data Refreshed",
-                    "Reloaded shared/local rules, history, vendor codes, ignores, and other saved data from disk.",
-                )
-            return {"session_updated": False, "ignored_changed_session": False}
-
-        ignored_changed_session = self._prune_ignored_items_from_session()
-        self._rebuild_duplicate_ic_lookup()
-        try:
-            days = self.var_lookback_days.get()
-        except Exception:
-            days = 14
-        self.recent_orders = storage.get_recent_orders(self._data_path("order_history"), days)
-
-        for item in self.filtered_items:
-            key = (item["line_code"], item["item_code"])
-            rule_pack = get_rule_pack_size(self.order_rules.get(get_rule_key(*key)))
-            if rule_pack is not None:
-                item["pack_size"] = rule_pack
-            elif not item.get("pack_size"):
-                item["pack_size"] = self._resolve_pack_size(key)
-            self._recalculate_item(item)
-
-        for item in self.assigned_items:
-            self._sync_review_item_to_filtered(item)
-
-        if self.individual_items:
-            if not hasattr(self, "assign_index"):
-                self.assign_index = 0
-            self.assign_index = min(self.assign_index, max(0, len(self.individual_items) - 1))
-            if self.individual_items:
-                self._populate_assign_item()
-
-        self._apply_bulk_filter()
-        self._update_bulk_summary()
-        if hasattr(self, "tree"):
-            self._populate_review_tab()
-
-        detail = " Current session updated to match the active shared/local data where possible."
-        if ignored_changed_session:
-            detail += " Ignored items were removed from the current session."
-        if notify:
-            messagebox.showinfo(
-                "Active Data Refreshed",
-                "Reloaded shared/local rules, history, vendor codes, ignores, and other saved data from disk." + detail,
-            )
-        return {"session_updated": True, "ignored_changed_session": ignored_changed_session}
+        return data_folder_flow.refresh_active_data_state(self, KNOWN_VENDORS, get_rule_key, notify=notify)
 
     def _set_shared_data_folder(self):
-        selected = filedialog.askdirectory(
-            title="Select Shared Data Folder",
-            initialdir=self.data_dir,
-            mustexist=False,
-        )
-        if not selected:
-            return
-        normalized = os.path.abspath(selected)
-        ok, reason = storage.validate_storage_directory(normalized)
-        if not ok:
-            messagebox.showerror("Shared Data Folder", f"Cannot use that folder:\n{reason}")
-            return
-        self.shared_data_dir = normalized
-        self.data_dir = normalized
-        self.data_paths = self._build_data_paths(self.data_dir)
-        self.app_settings["shared_data_dir"] = normalized
-        self._save_app_settings()
-        result = self._refresh_active_data_state(notify=False)
-        if result["session_updated"]:
-            messagebox.showinfo(
-                "Shared Data Folder Updated",
-                "Switched to the shared data folder and refreshed the current session to match the active shared/local data where possible.",
-            )
+        data_folder_flow.set_shared_data_folder(self, KNOWN_VENDORS, get_rule_key)
 
     def _use_local_data_folder(self):
-        self.shared_data_dir = ""
-        self.data_dir = LOCAL_DATA_DIR
-        self.data_paths = self._build_data_paths(self.data_dir)
-        self.app_settings["shared_data_dir"] = ""
-        self._save_app_settings()
-        result = self._refresh_active_data_state(notify=False)
-        if result["session_updated"]:
-            messagebox.showinfo(
-                "Local Data Enabled",
-                "Switched to local data and refreshed the current session to match the active shared/local data where possible.",
-            )
+        data_folder_flow.use_local_data_folder(self, LOCAL_DATA_DIR, KNOWN_VENDORS, get_rule_key)
 
     def _set_update_check_enabled(self):
         if hasattr(self, "var_check_updates"):
