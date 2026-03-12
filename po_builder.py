@@ -28,6 +28,7 @@ import item_workflow
 import load_flow
 import maintenance_flow
 import parsers
+import persistent_state_flow
 import storage
 from debug_log import DEBUG_LOG_FILE, write_debug
 from bulk_sheet import BulkSheetView
@@ -938,43 +939,10 @@ class POBuilderApp:
         return supplier or ""
 
     def _get_suspense_carry_qty(self, key):
-        entry = self.suspense_carry.get(key, {})
-        try:
-            return max(0, int(float(entry.get("qty", 0))))
-        except Exception:
-            return 0
+        return persistent_state_flow.get_suspense_carry_qty(self, key)
 
     def _persist_suspense_carry(self):
-        next_carry = {}
-        current_stamp = datetime.now().isoformat()
-        for item in self.filtered_items:
-            key = (item["line_code"], item["item_code"])
-            prior_qty = self._get_suspense_carry_qty(key)
-            sales_qty = max(0, int(item.get("qty_sold", 0) or 0))
-            current_suspense = max(0, int(item.get("qty_suspended", 0) or 0))
-            remaining_prior = max(0, prior_qty - sales_qty)
-            newly_covered = 0
-            if item.get("vendor"):
-                ordered_qty = max(0, int(item.get("final_qty", item.get("order_qty", 0)) or 0))
-                newly_covered = min(ordered_qty, max(0, int(item.get("effective_qty_suspended", 0) or 0)))
-            next_qty = remaining_prior + newly_covered
-            if next_qty > 0:
-                next_carry[key] = {"qty": next_qty, "updated_at": current_stamp}
-        self.suspense_carry = next_carry
-        result = storage.save_suspense_carry(
-            self._data_path("suspense_carry"),
-            self.suspense_carry,
-            base_carry=self._loaded_suspense_carry,
-        )
-        self.suspense_carry = dict(result["payload"])
-        self._loaded_suspense_carry = copy.deepcopy(self.suspense_carry)
-        if result.get("conflict"):
-            write_debug(
-                "suspense_carry.merge_conflict",
-                path=self._data_path("suspense_carry"),
-                merged_entries=len(self.suspense_carry),
-            )
-        return result
+        return persistent_state_flow.persist_suspense_carry(self, write_debug)
 
     def _proceed_to_assign(self):
         """Apply all filters, merge suspended items, and move to bulk vendor assignment."""
@@ -1089,43 +1057,19 @@ class POBuilderApp:
 
     @staticmethod
     def _normalize_vendor_code(value):
-        return str(value or "").strip().upper()
+        return persistent_state_flow.normalize_vendor_code(value)
 
     def _save_vendor_codes(self):
-        result = storage.save_vendor_codes(
-            self._data_path("vendor_codes"),
-            self.vendor_codes_used,
-            base_vendor_codes=self._loaded_vendor_codes,
-        )
-        self.vendor_codes_used = list(result["payload"])
-        self._loaded_vendor_codes = list(self.vendor_codes_used)
+        persistent_state_flow.save_vendor_codes(self)
 
     def _save_order_rules(self):
-        result = storage.save_order_rules(
-            self._data_path("order_rules"),
-            self.order_rules,
-            base_rules=self._loaded_order_rules,
-        )
-        self.order_rules = dict(result["payload"])
-        self._loaded_order_rules = copy.deepcopy(self.order_rules)
+        persistent_state_flow.save_order_rules(self)
 
     def _save_duplicate_whitelist(self):
-        result = storage.save_duplicate_whitelist(
-            self._data_path("duplicate_whitelist"),
-            self.dup_whitelist,
-            base_whitelist=self._loaded_dup_whitelist,
-        )
-        self.dup_whitelist = set(result["payload"])
-        self._loaded_dup_whitelist = set(self.dup_whitelist)
+        persistent_state_flow.save_duplicate_whitelist(self)
 
     def _save_ignored_item_keys(self):
-        result = storage.save_ignored_items(
-            self._data_path("ignored_items"),
-            self.ignored_item_keys,
-            base_ignored_items=self._loaded_ignored_item_keys,
-        )
-        self.ignored_item_keys = set(result["payload"])
-        self._loaded_ignored_item_keys = set(self.ignored_item_keys)
+        persistent_state_flow.save_ignored_item_keys(self)
 
     def _refresh_vendor_inputs(self):
         if hasattr(self, "combo_bulk_vendor"):
@@ -1137,37 +1081,14 @@ class POBuilderApp:
             self.combo_vendor_filter["values"] = ["ALL"] + vendors
 
     def _remember_vendor_code(self, vendor):
-        normalized = self._normalize_vendor_code(vendor)
-        if not normalized:
-            return ""
-        if normalized not in self.vendor_codes_used:
-            self.vendor_codes_used.append(normalized)
-            self.vendor_codes_used.sort()
-            self._save_vendor_codes()
-            self._refresh_vendor_inputs()
-        return normalized
+        return persistent_state_flow.remember_vendor_code(self, vendor)
 
     def _rename_vendor_code(self, old_vendor, new_vendor):
-        old_normalized = self._normalize_vendor_code(old_vendor)
-        new_normalized = self._normalize_vendor_code(new_vendor)
-        if not old_normalized or not new_normalized:
-            return ""
-
-        for collection_name in ("filtered_items", "individual_items", "assigned_items"):
-            collection = getattr(self, collection_name, [])
-            for item in collection:
-                if self._normalize_vendor_code(item.get("vendor", "")) == old_normalized:
-                    item["vendor"] = new_normalized
-
-        self.vendor_codes_used = [code for code in self.vendor_codes_used if code != old_normalized]
-        if new_normalized not in self.vendor_codes_used:
-            self.vendor_codes_used.append(new_normalized)
-        self.vendor_codes_used.sort()
-        self._save_vendor_codes()
-        self._refresh_vendor_inputs()
-        self._update_bulk_summary()
-        self._update_review_summary()
-        return new_normalized
+        normalized = persistent_state_flow.rename_vendor_code(self, old_vendor, new_vendor)
+        if normalized:
+            self._update_bulk_summary()
+            self._update_review_summary()
+        return normalized
 
     def _remove_vendor_code(self, vendor):
         normalized = self._normalize_vendor_code(vendor)
