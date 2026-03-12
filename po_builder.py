@@ -29,6 +29,7 @@ import load_flow
 import maintenance_flow
 import parsers
 import persistent_state_flow
+import session_state_flow
 import storage
 from debug_log import DEBUG_LOG_FILE, write_debug
 from bulk_sheet import BulkSheetView
@@ -1238,48 +1239,13 @@ class POBuilderApp:
         return None
 
     def _capture_bulk_history_state(self):
-        return {
-            "filtered_items": copy.deepcopy(self.filtered_items),
-            "inventory_lookup": copy.deepcopy(self.inventory_lookup),
-            "qoh_adjustments": copy.deepcopy(self.qoh_adjustments),
-            "order_rules": copy.deepcopy(self.order_rules),
-            "vendor_codes_used": list(self.vendor_codes_used),
-            "_loaded_order_rules": copy.deepcopy(self._loaded_order_rules),
-            "_loaded_vendor_codes": list(self._loaded_vendor_codes),
-            "last_removed_bulk_items": copy.deepcopy(self.last_removed_bulk_items),
-        }
+        return session_state_flow.capture_bulk_history_state(self)
 
     def _finalize_bulk_history_action(self, label, before_state):
-        if before_state is None:
-            return False
-        after_state = self._capture_bulk_history_state()
-        if after_state == before_state:
-            return False
-        self.bulk_undo_stack.append({
-            "label": label,
-            "before": before_state,
-            "after": after_state,
-        })
-        if len(self.bulk_undo_stack) > MAX_BULK_HISTORY:
-            self.bulk_undo_stack = self.bulk_undo_stack[-MAX_BULK_HISTORY:]
-        self.bulk_redo_stack = []
-        return True
+        return session_state_flow.finalize_bulk_history_action(self, label, before_state, MAX_BULK_HISTORY)
 
     def _restore_bulk_history_state(self, state):
-        self.filtered_items = copy.deepcopy(state.get("filtered_items", []))
-        self.inventory_lookup = copy.deepcopy(state.get("inventory_lookup", {}))
-        self.qoh_adjustments = copy.deepcopy(state.get("qoh_adjustments", {}))
-        self.order_rules = copy.deepcopy(state.get("order_rules", {}))
-        self.vendor_codes_used = list(state.get("vendor_codes_used", []))
-        self._loaded_order_rules = copy.deepcopy(state.get("_loaded_order_rules", {}))
-        self._loaded_vendor_codes = list(state.get("_loaded_vendor_codes", []))
-        self.last_removed_bulk_items = copy.deepcopy(state.get("last_removed_bulk_items", []))
-        self._refresh_vendor_inputs()
-        if self.bulk_sheet:
-            self.bulk_sheet.clear_selection()
-        self._apply_bulk_filter()
-        self._update_bulk_summary()
-        self._update_bulk_cell_status()
+        session_state_flow.restore_bulk_history_state(self, state)
 
     def _bulk_undo(self, event=None):
         if not self.bulk_undo_stack:
@@ -1752,31 +1718,10 @@ class POBuilderApp:
 
     @staticmethod
     def _ignore_key(line_code, item_code):
-        return f"{str(line_code).strip()}:{str(item_code).strip()}"
+        return session_state_flow.ignore_key(line_code, item_code)
 
     def _ignore_items_by_keys(self, ignore_keys):
-        normalized = {str(key).strip() for key in ignore_keys if str(key).strip()}
-        if not normalized:
-            return 0
-        self.ignored_item_keys.update(normalized)
-        self._save_ignored_item_keys()
-        self.filtered_items = [
-            item for item in self.filtered_items
-            if self._ignore_key(item.get("line_code", ""), item.get("item_code", "")) not in normalized
-        ]
-        self.assigned_items = [
-            item for item in self.assigned_items
-            if self._ignore_key(item.get("line_code", ""), item.get("item_code", "")) not in normalized
-        ]
-        self.individual_items = [
-            item for item in self.individual_items
-            if self._ignore_key(item.get("line_code", ""), item.get("item_code", "")) not in normalized
-        ]
-        self._apply_bulk_filter()
-        self._update_bulk_summary()
-        if hasattr(self, "tree"):
-            self._populate_review_tab()
-        return len(normalized)
+        return session_state_flow.ignore_items_by_keys(self, ignore_keys)
 
     def _ignore_from_bulk(self):
         right_click_context = getattr(self, "_right_click_bulk_context", None) or {}
