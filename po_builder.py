@@ -20,7 +20,7 @@ import tkinter as tk
 from tkinter import ttk, filedialog, messagebox, simpledialog
 from datetime import datetime
 import json
-import webbrowser
+import app_runtime_flow
 import assignment_flow
 import data_folder_flow
 import export_flow
@@ -404,10 +404,7 @@ class POBuilderApp:
         return settings if isinstance(settings, dict) else {}
 
     def _save_app_settings(self):
-        try:
-            storage.save_json_file(APP_SETTINGS_FILE, self.app_settings)
-        except Exception as exc:
-            write_debug("app_settings.save_failed", error=str(exc), path=APP_SETTINGS_FILE)
+        app_runtime_flow.save_app_settings(self, APP_SETTINGS_FILE, write_debug)
 
     def _configure_initial_data_dir(self):
         data_folder_flow.configure_initial_data_dir(self)
@@ -422,13 +419,7 @@ class POBuilderApp:
         data_folder_flow.refresh_data_folder_labels(self)
 
     def _open_active_data_folder(self):
-        try:
-            if os.name == "nt":
-                os.startfile(self.data_dir)
-            else:
-                webbrowser.open(f"file://{self.data_dir}")
-        except Exception as exc:
-            messagebox.showerror("Open Data Folder", f"Could not open the active data folder:\n{exc}")
+        app_runtime_flow.open_active_data_folder(self)
 
     def _rebuild_duplicate_ic_lookup(self):
         data_folder_flow.rebuild_duplicate_ic_lookup(self)
@@ -449,50 +440,27 @@ class POBuilderApp:
         data_folder_flow.use_local_data_folder(self, LOCAL_DATA_DIR, KNOWN_VENDORS, get_rule_key)
 
     def _set_update_check_enabled(self):
-        if hasattr(self, "var_check_updates"):
-            self.update_check_enabled = bool(self.var_check_updates.get())
-        else:
-            self.update_check_enabled = True
-        self.app_settings["check_for_updates_on_startup"] = self.update_check_enabled
-        self._save_app_settings()
+        app_runtime_flow.set_update_check_enabled(self)
 
     def _start_update_check(self):
-        if not self.update_check_enabled or not is_release_version(APP_VERSION):
-            return
-        worker = threading.Thread(target=self._check_for_updates_worker, daemon=True)
-        worker.start()
+        app_runtime_flow.start_update_check(self, APP_VERSION, is_release_version, threading.Thread)
 
     def _check_for_updates_worker(self):
-        try:
-            release = fetch_latest_github_release()
-        except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, OSError, json.JSONDecodeError):
-            return
-        latest_tag = release.get("tag_name", "")
-        if not is_newer_version(latest_tag, APP_VERSION):
-            return
-        self.root.after(0, lambda: self._prompt_for_update(release))
+        app_runtime_flow.check_for_updates_worker(
+            self,
+            app_version=APP_VERSION,
+            fetch_latest_release=fetch_latest_github_release,
+            is_newer_version=is_newer_version,
+            url_error_types=(urllib.error.URLError, urllib.error.HTTPError, TimeoutError, OSError, json.JSONDecodeError),
+        )
 
     def _prompt_for_update(self, release):
-        latest_tag = release.get("tag_name", "")
-        release_name = release.get("name") or latest_tag
-        published_at = release.get("published_at", "")
-        details = f"Version {latest_tag}"
-        if release_name and release_name != latest_tag:
-            details = f"{release_name} ({latest_tag})"
-        if published_at:
-            details += f"\nPublished: {published_at[:10]}"
-        answer = messagebox.askyesno(
-            "Update Available",
-            f"A newer release is available on GitHub.\n\nCurrent version: {APP_VERSION}\nLatest release: {details}\n\nOpen the release page now?",
+        app_runtime_flow.prompt_for_update(
+            self,
+            release,
+            app_version=APP_VERSION,
+            releases_page_url=GITHUB_RELEASES_PAGE_URL,
         )
-        if answer:
-            try:
-                webbrowser.open(release.get("html_url") or GITHUB_RELEASES_PAGE_URL)
-            except Exception:
-                messagebox.showinfo(
-                    "Release Page",
-                    f"Open this page in your browser:\n{release.get('html_url') or GITHUB_RELEASES_PAGE_URL}",
-                )
 
     def _load_gif_frames(self):
         """Load animated GIF frames for the loading overlay."""
