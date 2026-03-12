@@ -31,6 +31,7 @@ import maintenance_flow
 import parsers
 import persistent_state_flow
 import reorder_flow
+import review_flow
 import session_state_flow
 import storage
 import ui_state_flow
@@ -1672,41 +1673,16 @@ class POBuilderApp:
         ui_review.sort_tree(self, col)
 
     def _review_editor_widget(self, col_name):
-        if col_name == "vendor":
-            return ttk.Combobox(self.tree, values=self.vendor_codes_used, font=("Segoe UI", 10))
-        return ttk.Entry(self.tree, font=("Segoe UI", 10))
+        return review_flow.review_editor_widget(self, col_name)
 
     def _review_editor_value(self, row_id, col_name):
-        return self.tree.set(row_id, col_name)
+        return review_flow.review_editor_value(self, row_id, col_name)
 
     def _review_refresh_editor_row(self, row_id):
-        idx = int(row_id)
-        self.tree.item(row_id, values=self._review_row_values(self.assigned_items[idx]))
+        review_flow.review_refresh_editor_row(self, row_id)
 
     def _review_apply_editor_value(self, row_id, col_name, raw):
-        idx = int(row_id)
-        item = self.assigned_items[idx]
-        if col_name == "order_qty":
-            try:
-                self._set_effective_order_qty(item, int(float(raw)), manual_override=True)
-                self._sync_review_item_to_filtered(item)
-            except ValueError:
-                pass
-        elif col_name == "vendor":
-            new_val = raw.upper()
-            if new_val:
-                item["vendor"] = new_val
-                self._remember_vendor_code(new_val)
-                self._sync_review_item_to_filtered(item)
-                self._update_review_summary()
-        elif col_name == "pack_size":
-            try:
-                item_workflow.apply_pack_size_edit(item, raw, self.order_rules, get_rule_key)
-                self._save_order_rules()
-                self._clear_manual_override(item)
-                self._sync_review_item_to_filtered(item)
-            except ValueError:
-                pass
+        review_flow.review_apply_editor_value(self, row_id, col_name, raw, get_rule_key)
 
     def _on_review_tree_click(self, event):
         """Remember the clicked editable review column for keyboard editing."""
