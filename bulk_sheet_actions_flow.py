@@ -106,3 +106,84 @@ def bulk_fill_selection_with_current_value(app, editable_cols, write_debug, even
     if hasattr(app, "_finalize_bulk_history_action"):
         app._finalize_bulk_history_action(f"{alias}:{col_name}", before_state)
     return "break"
+
+
+def bulk_begin_edit(app, editable_cols, askstring, write_debug, event=None):
+    if not app.bulk_sheet:
+        return None
+    right_click_context = getattr(app, "_right_click_bulk_context", None) or {}
+    col_name = (
+        right_click_context.get("col_name", "")
+        or app.bulk_sheet.selected_editable_column_name()
+        or app.bulk_sheet.current_editable_column_name()
+    )
+    row_ids = []
+    if col_name:
+        row_ids = list(app.bulk_sheet.selected_target_row_ids(col_name))
+    clicked_row_id = right_click_context.get("row_id")
+    if clicked_row_id:
+        if not row_ids or clicked_row_id not in row_ids:
+            row_ids = [clicked_row_id]
+    elif not row_ids and col_name:
+        row_ids = list(app.bulk_sheet.selected_row_ids())
+    write_debug(
+        "bulk_begin_edit",
+        col_name=col_name,
+        row_ids=",".join(row_ids),
+        row_count=len(row_ids),
+        right_click_row_id=clicked_row_id or "",
+    )
+    if col_name == "buy_rule" and clicked_row_id:
+        app._open_buy_rule_editor(int(clicked_row_id))
+        write_debug("bulk_begin_edit.buy_rule_editor", row_id=clicked_row_id)
+        app._right_click_bulk_context = None
+        return "break"
+    if col_name not in editable_cols:
+        if app.bulk_sheet and hasattr(app.bulk_sheet, "sheet"):
+            app.bulk_sheet.sheet.open_cell()
+        write_debug("bulk_begin_edit.open_cell", col_name=col_name, row_count=len(row_ids))
+        app._right_click_bulk_context = None
+        return "break"
+
+    initial_value = app.bulk_sheet.current_cell_value()
+    value = askstring("Bulk Edit", f"Enter a value for {col_name}:", initialvalue=initial_value, parent=app.root)
+    write_debug("bulk_begin_edit.prompt_result", col_name=col_name, value="" if value is None else value, cancelled=value is None)
+    if value is None:
+        app._right_click_bulk_context = None
+        return "break"
+    value = value.strip()
+    if not row_ids:
+        if app.bulk_sheet and hasattr(app.bulk_sheet, "sheet"):
+            app.bulk_sheet.sheet.open_cell()
+        app._right_click_bulk_context = None
+        return "break"
+    before_state = app._capture_bulk_history_state() if hasattr(app, "_capture_bulk_history_state") else None
+    write_debug(
+        "bulk_begin_edit.apply",
+        col_name=col_name,
+        row_count=len(row_ids),
+        value=value,
+        right_click_context=repr(right_click_context),
+    )
+    for row_id in row_ids:
+        app._bulk_apply_editor_value(row_id, col_name, value)
+    app._apply_bulk_filter()
+    for row_id in row_ids[:12]:
+        try:
+            rendered = app._bulk_row_values(app.filtered_items[int(row_id)])
+            write_debug(
+                "bulk_begin_edit.rendered_row",
+                row_id=row_id,
+                col_name=col_name,
+                rendered=" || ".join("" if cell is None else str(cell) for cell in rendered),
+            )
+        except Exception as exc:
+            write_debug("bulk_begin_edit.rendered_row_error", row_id=row_id, col_name=col_name, error=str(exc))
+    if app.bulk_sheet:
+        app.bulk_sheet.clear_selection()
+    app._right_click_bulk_context = None
+    app._update_bulk_summary()
+    app._update_bulk_cell_status()
+    if hasattr(app, "_finalize_bulk_history_action"):
+        app._finalize_bulk_history_action(f"edit:{col_name}", before_state)
+    return "break"

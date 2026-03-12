@@ -1182,73 +1182,13 @@ class POBuilderApp:
         messagebox.showinfo("Bulk Shortcuts", BULK_SHORTCUTS_TEXT)
 
     def _bulk_begin_edit(self, event=None):
-        if not self.bulk_sheet:
-            return None
-        right_click_context = getattr(self, "_right_click_bulk_context", None) or {}
-        col_name = (
-            right_click_context.get("col_name", "")
-            or
-            self.bulk_sheet.selected_editable_column_name()
-            or self.bulk_sheet.current_editable_column_name()
+        return bulk_sheet_actions_flow.bulk_begin_edit(
+            self,
+            BULK_EDITABLE_COLS,
+            simpledialog.askstring,
+            write_debug,
+            event,
         )
-        row_ids = []
-        if col_name:
-            row_ids = list(self.bulk_sheet.selected_target_row_ids(col_name))
-        clicked_row_id = right_click_context.get("row_id")
-        if clicked_row_id:
-            if not row_ids or clicked_row_id not in row_ids:
-                row_ids = [clicked_row_id]
-        if not row_ids and self.bulk_sheet:
-            row_ids = list(self.bulk_sheet.selected_row_ids())
-        write_debug(
-            "bulk_begin_edit",
-            col_name=col_name,
-            row_ids=",".join(row_ids),
-            row_count=len(row_ids),
-            right_click_row_id=clicked_row_id or "",
-        )
-        if col_name == "buy_rule" and row_ids:
-            self._open_buy_rule_editor(int(row_ids[0]))
-            write_debug("bulk_begin_edit.buy_rule_editor", row_id=row_ids[0])
-            self._right_click_bulk_context = None
-            return "break"
-        if col_name in BULK_EDITABLE_COLS and len(row_ids) >= 1:
-            if len(row_ids) == 1:
-                prompt = f"Enter a value for {col_name}:"
-            else:
-                prompt = f"Enter a value for {col_name} across {len(row_ids)} selected row(s):"
-            initial = self.bulk_sheet.current_cell_value()
-            value = simpledialog.askstring("Bulk Edit Selection", prompt, parent=self.root, initialvalue=initial)
-            write_debug("bulk_begin_edit.prompt_result", col_name=col_name, value="" if value is None else value, cancelled=value is None)
-            if value is None:
-                return "break"
-            before_state = self._capture_bulk_history_state() if hasattr(self, "_capture_bulk_history_state") else None
-            for row_id in row_ids:
-                self._bulk_apply_editor_value(row_id, col_name, value.strip())
-            self._apply_bulk_filter()
-            for row_id in row_ids[:12]:
-                try:
-                    rendered = self._bulk_row_values(self.filtered_items[int(row_id)])
-                    write_debug(
-                        "bulk_begin_edit.rendered_row",
-                        row_id=row_id,
-                        col_name=col_name,
-                        rendered=" || ".join("" if cell is None else str(cell) for cell in rendered),
-                    )
-                except Exception as exc:
-                    write_debug("bulk_begin_edit.rendered_row_error", row_id=row_id, col_name=col_name, error=str(exc))
-            if self.bulk_sheet:
-                self.bulk_sheet.clear_selection()
-            self._right_click_bulk_context = None
-            self._update_bulk_summary()
-            self._update_bulk_cell_status()
-            if hasattr(self, "_finalize_bulk_history_action"):
-                self._finalize_bulk_history_action(f"edit:{col_name}", before_state)
-            return "break"
-        self.bulk_sheet.sheet.open_cell()
-        write_debug("bulk_begin_edit.open_cell", col_name=col_name, row_count=len(row_ids))
-        self._right_click_bulk_context = None
-        return "break"
 
     def _bulk_begin_edit_from_menu(self):
         write_debug(

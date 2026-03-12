@@ -71,6 +71,57 @@ class BulkSheetActionsFlowTests(unittest.TestCase):
             ],
         )
 
+    def test_bulk_begin_edit_opens_buy_rule_editor_from_right_click(self):
+        events = []
+        fake_app = SimpleNamespace(
+            bulk_sheet=SimpleNamespace(
+                selected_editable_column_name=lambda: "",
+                current_editable_column_name=lambda: "",
+                selected_target_row_ids=lambda col_name: (),
+                selected_row_ids=lambda: (),
+            ),
+            _right_click_bulk_context={"row_id": "7", "col_name": "buy_rule"},
+            _open_buy_rule_editor=lambda idx: events.append(("buy_rule", idx)),
+        )
+
+        result = bulk_sheet_actions_flow.bulk_begin_edit(
+            fake_app,
+            ("pack_size",),
+            lambda *args, **kwargs: None,
+            lambda event, **kwargs: events.append((event, kwargs)),
+        )
+
+        self.assertEqual(result, "break")
+        self.assertIn(("buy_rule", 7), events)
+        self.assertIn("bulk_begin_edit", [entry[0] for entry in events if isinstance(entry, tuple) and isinstance(entry[0], str)])
+        self.assertIn("bulk_begin_edit.buy_rule_editor", [entry[0] for entry in events if isinstance(entry, tuple) and isinstance(entry[0], str)])
+        self.assertIsNone(fake_app._right_click_bulk_context)
+
+    def test_bulk_begin_edit_opens_sheet_cell_for_non_editable_column(self):
+        events = []
+        fake_app = SimpleNamespace(
+            bulk_sheet=SimpleNamespace(
+                selected_editable_column_name=lambda: "",
+                current_editable_column_name=lambda: "",
+                selected_target_row_ids=lambda col_name: (),
+                selected_row_ids=lambda: (),
+                sheet=SimpleNamespace(open_cell=lambda: events.append("open_cell")),
+            ),
+            _right_click_bulk_context={"row_id": "3", "col_name": "description"},
+        )
+
+        result = bulk_sheet_actions_flow.bulk_begin_edit(
+            fake_app,
+            ("pack_size",),
+            lambda *args, **kwargs: None,
+            lambda event, **kwargs: events.append((event, kwargs)),
+        )
+
+        self.assertEqual(result, "break")
+        self.assertIn("open_cell", events)
+        self.assertIn("bulk_begin_edit.open_cell", [entry[0] for entry in events if isinstance(entry, tuple)])
+        self.assertIsNone(fake_app._right_click_bulk_context)
+
 
 if __name__ == "__main__":
     unittest.main()
