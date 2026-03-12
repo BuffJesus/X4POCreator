@@ -458,8 +458,103 @@ class POBuilderApp:
         return f"Local Data: {self.data_dir}"
 
     def _refresh_data_folder_labels(self):
-        if hasattr(self, "lbl_data_source"):
-            self.lbl_data_source.config(text=self._active_data_folder_label())
+        label_text = self._active_data_folder_label()
+        for attr_name in ("lbl_data_source", "lbl_bulk_data_source", "lbl_assign_data_source", "lbl_review_data_source"):
+            if hasattr(self, attr_name):
+                getattr(self, attr_name).config(text=label_text)
+
+    def _open_active_data_folder(self):
+        try:
+            if os.name == "nt":
+                os.startfile(self.data_dir)
+            else:
+                webbrowser.open(f"file://{self.data_dir}")
+        except Exception as exc:
+            messagebox.showerror("Open Data Folder", f"Could not open the active data folder:\n{exc}")
+
+    def _rebuild_duplicate_ic_lookup(self):
+        duplicate_ic_lookup = defaultdict(set)
+        for line_code, item_code in self.inventory_lookup:
+            duplicate_ic_lookup[item_code].add(line_code)
+        self.duplicate_ic_lookup = {
+            item_code: line_codes
+            for item_code, line_codes in duplicate_ic_lookup.items()
+            if len(line_codes) > 1 and item_code not in self.dup_whitelist
+        }
+
+    def _prune_ignored_items_from_session(self):
+        before_counts = (
+            len(self.filtered_items),
+            len(self.assigned_items),
+            len(self.individual_items),
+        )
+        self.filtered_items = [
+            item for item in self.filtered_items
+            if self._ignore_key(item.get("line_code", ""), item.get("item_code", "")) not in self.ignored_item_keys
+        ]
+        self.assigned_items = [
+            item for item in self.assigned_items
+            if self._ignore_key(item.get("line_code", ""), item.get("item_code", "")) not in self.ignored_item_keys
+        ]
+        self.individual_items = [
+            item for item in self.individual_items
+            if self._ignore_key(item.get("line_code", ""), item.get("item_code", "")) not in self.ignored_item_keys
+        ]
+        return before_counts != (
+            len(self.filtered_items),
+            len(self.assigned_items),
+            len(self.individual_items),
+        )
+
+    def _refresh_active_data_state(self):
+        self._load_persistent_state()
+        self._refresh_vendor_inputs()
+        if not (self.filtered_items or self.assigned_items or self.individual_items):
+            messagebox.showinfo(
+                "Active Data Refreshed",
+                "Reloaded shared/local rules, history, vendor codes, ignores, and other saved data from disk.",
+            )
+            return
+
+        ignored_changed_session = self._prune_ignored_items_from_session()
+        self._rebuild_duplicate_ic_lookup()
+        try:
+            days = self.var_lookback_days.get()
+        except Exception:
+            days = 14
+        self.recent_orders = storage.get_recent_orders(self._data_path("order_history"), days)
+
+        for item in self.filtered_items:
+            key = (item["line_code"], item["item_code"])
+            rule_pack = get_rule_pack_size(self.order_rules.get(get_rule_key(*key)))
+            if rule_pack is not None:
+                item["pack_size"] = rule_pack
+            elif not item.get("pack_size"):
+                item["pack_size"] = self._resolve_pack_size(key)
+            self._recalculate_item(item)
+
+        for item in self.assigned_items:
+            self._sync_review_item_to_filtered(item)
+
+        if self.individual_items:
+            if not hasattr(self, "assign_index"):
+                self.assign_index = 0
+            self.assign_index = min(self.assign_index, max(0, len(self.individual_items) - 1))
+            if self.individual_items:
+                self._populate_assign_item()
+
+        self._apply_bulk_filter()
+        self._update_bulk_summary()
+        if hasattr(self, "tree"):
+            self._populate_review_tab()
+
+        detail = " Current session updated to match the active shared/local data where possible."
+        if ignored_changed_session:
+            detail += " Ignored items were removed from the current session."
+        messagebox.showinfo(
+            "Active Data Refreshed",
+            "Reloaded shared/local rules, history, vendor codes, ignores, and other saved data from disk." + detail,
+        )
 
     def _set_shared_data_folder(self):
         selected = filedialog.askdirectory(

@@ -200,6 +200,120 @@ class POBuilderTests(unittest.TestCase):
         self.assertEqual(fake_app.assigned_items, [])
         self.assertEqual(fake_app.individual_items, [])
 
+    def test_refresh_data_folder_labels_updates_all_visible_data_source_labels(self):
+        class Label:
+            def __init__(self):
+                self.text = None
+
+            def config(self, *, text):
+                self.text = text
+
+        fake_app = SimpleNamespace(
+            shared_data_dir="C:\\Shared",
+            data_dir="C:\\Shared",
+            lbl_data_source=Label(),
+            lbl_bulk_data_source=Label(),
+            lbl_assign_data_source=Label(),
+            lbl_review_data_source=Label(),
+        )
+        fake_app._active_data_folder_label = lambda: po_builder.POBuilderApp._active_data_folder_label(fake_app)
+
+        po_builder.POBuilderApp._refresh_data_folder_labels(fake_app)
+
+        self.assertEqual(fake_app.lbl_data_source.text, "Shared Folder: C:\\Shared")
+        self.assertEqual(fake_app.lbl_bulk_data_source.text, "Shared Folder: C:\\Shared")
+        self.assertEqual(fake_app.lbl_assign_data_source.text, "Shared Folder: C:\\Shared")
+        self.assertEqual(fake_app.lbl_review_data_source.text, "Shared Folder: C:\\Shared")
+
+    def test_refresh_active_data_state_without_session_only_reloads_persistent_state(self):
+        events = []
+        fake_app = SimpleNamespace(
+            filtered_items=[],
+            assigned_items=[],
+            individual_items=[],
+            _load_persistent_state=lambda: events.append("load"),
+            _refresh_vendor_inputs=lambda: events.append("vendors"),
+        )
+
+        with patch("po_builder.messagebox.showinfo") as mocked_info:
+            po_builder.POBuilderApp._refresh_active_data_state(fake_app)
+
+        self.assertEqual(events, ["load", "vendors"])
+        mocked_info.assert_called_once()
+
+    def test_refresh_active_data_state_updates_session_and_prunes_ignored(self):
+        events = []
+        filtered = [
+            {
+                "line_code": "AER-",
+                "item_code": "GH781-4",
+                "pack_size": None,
+                "vendor": "MOTION",
+                "final_qty": 6,
+                "order_qty": 6,
+            },
+            {
+                "line_code": "MOT-",
+                "item_code": "ABC123",
+                "pack_size": 4,
+                "vendor": "SOURCE",
+                "final_qty": 4,
+                "order_qty": 4,
+            },
+        ]
+        assigned = [{
+            "line_code": "MOT-",
+            "item_code": "ABC123",
+            "pack_size": 4,
+            "vendor": "SOURCE",
+            "order_qty": 4,
+            "final_qty": 4,
+        }]
+        fake_app = SimpleNamespace(
+            filtered_items=filtered,
+            assigned_items=assigned,
+            individual_items=[{"line_code": "AER-", "item_code": "GH781-4"}],
+            ignored_item_keys={"AER-:GH781-4"},
+            dup_whitelist=set(),
+            inventory_lookup={
+                ("AER-", "GH781-4"): {"qoh": 1},
+                ("ALT-", "ABC123"): {"qoh": 2},
+                ("MOT-", "ABC123"): {"qoh": 3},
+            },
+            order_rules={"MOT-:ABC123": {"pack_size": 8}},
+            recent_orders={},
+            data_dir=str(ROOT),
+            assign_index=0,
+            var_lookback_days=SimpleNamespace(get=lambda: 21),
+            _load_persistent_state=lambda: events.append("load"),
+            _refresh_vendor_inputs=lambda: events.append("vendors"),
+            _resolve_pack_size=lambda key: 12,
+            _recalculate_item=lambda item: item.update({"recalculated": True}),
+            _sync_review_item_to_filtered=lambda item: item.update({"synced": True}),
+            _populate_assign_item=lambda: events.append("assign"),
+            _apply_bulk_filter=lambda: events.append("bulk"),
+            _update_bulk_summary=lambda: events.append("summary"),
+            _populate_review_tab=lambda: events.append("review"),
+            _data_path=lambda key: str(ROOT / f"test_{key}"),
+            tree=object(),
+        )
+        fake_app._ignore_key = lambda lc, ic: po_builder.POBuilderApp._ignore_key(lc, ic)
+        fake_app._prune_ignored_items_from_session = lambda: po_builder.POBuilderApp._prune_ignored_items_from_session(fake_app)
+        fake_app._rebuild_duplicate_ic_lookup = lambda: po_builder.POBuilderApp._rebuild_duplicate_ic_lookup(fake_app)
+
+        with patch("po_builder.storage.get_recent_orders", return_value={("MOT-", "ABC123"): [{"qty": 2}]}), \
+             patch("po_builder.messagebox.showinfo") as mocked_info:
+            po_builder.POBuilderApp._refresh_active_data_state(fake_app)
+
+        self.assertEqual(fake_app.filtered_items, [filtered[1]])
+        self.assertEqual(fake_app.individual_items, [])
+        self.assertEqual(fake_app.filtered_items[0]["pack_size"], 8)
+        self.assertTrue(fake_app.assigned_items[0]["synced"])
+        self.assertIn("ABC123", fake_app.duplicate_ic_lookup)
+        self.assertEqual(fake_app.recent_orders[("MOT-", "ABC123")][0]["qty"], 2)
+        self.assertEqual(events, ["load", "vendors", "bulk", "summary", "review"])
+        mocked_info.assert_called_once()
+
     def test_refresh_suggestions_recalculates_filtered_and_assigned_items(self):
         fake_app = self._make_calc_app()
         key = ("AER-", "GH781-4")

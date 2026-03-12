@@ -44,7 +44,9 @@ def build_load_tab(app):
     data_button_row = ttk.Frame(data_frame)
     data_button_row.pack(anchor="w", pady=(8, 0))
     ttk.Button(data_button_row, text="Set Shared Folder...", command=app._set_shared_data_folder).pack(side=tk.LEFT, padx=(0, 8))
-    ttk.Button(data_button_row, text="Use Local Data", command=app._use_local_data_folder).pack(side=tk.LEFT)
+    ttk.Button(data_button_row, text="Use Local Data", command=app._use_local_data_folder).pack(side=tk.LEFT, padx=(0, 8))
+    ttk.Button(data_button_row, text="Refresh Active Data", command=app._refresh_active_data_state).pack(side=tk.LEFT, padx=(0, 8))
+    ttk.Button(data_button_row, text="Open Active Folder", command=app._open_active_data_folder).pack(side=tk.LEFT)
 
     app.var_check_updates = tk.BooleanVar(value=app.update_check_enabled)
     ttk.Checkbutton(

@@ -14,6 +14,9 @@ def build_individual_tab(app):
         style="SubHeader.TLabel",
         wraplength=800,
     ).pack(anchor="w", pady=(2, 12))
+    app.lbl_assign_data_source = ttk.Label(frame, text="", style="Info.TLabel")
+    app.lbl_assign_data_source.pack(anchor="w", pady=(0, 8))
+    app._refresh_data_folder_labels()
 
     app.lbl_assign_progress = ttk.Label(frame, text="Item 0 / 0", style="Info.TLabel")
     app.lbl_assign_progress.pack(anchor="w")

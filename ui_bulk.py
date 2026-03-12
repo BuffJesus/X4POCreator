@@ -16,6 +16,9 @@ def build_bulk_tab(app, editable_cols):
         style="SubHeader.TLabel",
         wraplength=900,
     ).pack(anchor="w", pady=(2, 8))
+    app.lbl_bulk_data_source = ttk.Label(frame, text="", style="Info.TLabel")
+    app.lbl_bulk_data_source.pack(anchor="w", pady=(0, 8))
+    app._refresh_data_folder_labels()
 
     top_frame = ttk.Frame(frame)
     top_frame.pack(fill=tk.X, pady=(0, 8))

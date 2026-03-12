@@ -17,6 +17,9 @@ def build_review_tab(app):
         style="SubHeader.TLabel",
         wraplength=800,
     ).pack(anchor="w", pady=(2, 8))
+    app.lbl_review_data_source = ttk.Label(frame, text="", style="Info.TLabel")
+    app.lbl_review_data_source.pack(anchor="w", pady=(0, 8))
+    app._refresh_data_folder_labels()
 
     app.lbl_review_summary = ttk.Label(frame, text="", style="Info.TLabel")
     app.lbl_review_summary.pack(anchor="w", pady=(0, 8))
