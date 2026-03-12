@@ -22,6 +22,7 @@ from datetime import datetime
 import json
 import app_runtime_flow
 import assignment_flow
+import bulk_sheet_actions_flow
 import data_folder_flow
 import export_flow
 import item_workflow
@@ -1071,24 +1072,16 @@ class POBuilderApp:
         self._update_bulk_cell_status()
 
     def _bulk_copy_selection(self, event=None):
-        if self.bulk_sheet and self.bulk_sheet.copy_selection_to_clipboard():
-            return "break"
-        return None
+        return bulk_sheet_actions_flow.bulk_copy_selection(self)
 
     def _bulk_paste_selection(self, event=None):
-        if self.bulk_sheet and self.bulk_sheet.paste_from_clipboard():
-            return "break"
-        return None
+        return bulk_sheet_actions_flow.bulk_paste_selection(self)
 
     def _bulk_select_current_row(self, event=None):
-        if self.bulk_sheet and self.bulk_sheet.select_current_row():
-            return "break"
-        return None
+        return bulk_sheet_actions_flow.bulk_select_current_row(self)
 
     def _bulk_select_current_column(self, event=None):
-        if self.bulk_sheet and self.bulk_sheet.select_current_column():
-            return "break"
-        return None
+        return bulk_sheet_actions_flow.bulk_select_current_column(self)
 
     def _capture_bulk_history_state(self):
         return session_state_flow.capture_bulk_history_state(self)
@@ -1126,16 +1119,10 @@ class POBuilderApp:
         return "break" if event is not None else None
 
     def _bulk_select_all(self, event=None):
-        if self.bulk_sheet and self.bulk_sheet.select_all_visible():
-            return "break"
-        return None
+        return bulk_sheet_actions_flow.bulk_select_all(self)
 
     def _bulk_clear_selection(self, event=None):
-        if self.bulk_sheet:
-            self.bulk_sheet.clear_selection()
-            self._right_click_bulk_context = None
-            return "break"
-        return None
+        return bulk_sheet_actions_flow.bulk_clear_selection(self)
 
     def _bulk_fill_selection_with_current_value(self, event=None, *, alias="fill"):
         if not self.bulk_sheet:
@@ -1176,64 +1163,40 @@ class POBuilderApp:
         return self._bulk_fill_selection_with_current_value(event, alias="ctrl_enter")
 
     def _bulk_move_next_editable_cell(self, event=None):
-        if self.bulk_sheet and self.bulk_sheet.move_current_editable_cell(1):
-            return "break"
-        return None
+        return bulk_sheet_actions_flow.bulk_move_next_editable_cell(self)
 
     def _bulk_move_prev_editable_cell(self, event=None):
-        if self.bulk_sheet and self.bulk_sheet.move_current_editable_cell(-1):
-            return "break"
-        return None
+        return bulk_sheet_actions_flow.bulk_move_prev_editable_cell(self)
 
     def _bulk_extend_selection_up(self, event=None):
-        if self.bulk_sheet and self.bulk_sheet.extend_selection(-1, 0):
-            return "break"
-        return None
+        return bulk_sheet_actions_flow.bulk_extend_selection_up(self)
 
     def _bulk_extend_selection_down(self, event=None):
-        if self.bulk_sheet and self.bulk_sheet.extend_selection(1, 0):
-            return "break"
-        return None
+        return bulk_sheet_actions_flow.bulk_extend_selection_down(self)
 
     def _bulk_extend_selection_left(self, event=None):
-        if self.bulk_sheet and self.bulk_sheet.extend_selection(0, -1):
-            return "break"
-        return None
+        return bulk_sheet_actions_flow.bulk_extend_selection_left(self)
 
     def _bulk_extend_selection_right(self, event=None):
-        if self.bulk_sheet and self.bulk_sheet.extend_selection(0, 1):
-            return "break"
-        return None
+        return bulk_sheet_actions_flow.bulk_extend_selection_right(self)
 
     def _bulk_jump_home(self, event=None):
-        if self.bulk_sheet and self.bulk_sheet.jump_current_cell("home", ctrl=False):
-            return "break"
-        return None
+        return bulk_sheet_actions_flow.bulk_jump_home(self)
 
     def _bulk_jump_end(self, event=None):
-        if self.bulk_sheet and self.bulk_sheet.jump_current_cell("end", ctrl=False):
-            return "break"
-        return None
+        return bulk_sheet_actions_flow.bulk_jump_end(self)
 
     def _bulk_jump_ctrl_left(self, event=None):
-        if self.bulk_sheet and self.bulk_sheet.jump_current_cell("left", ctrl=True):
-            return "break"
-        return None
+        return bulk_sheet_actions_flow.bulk_jump_ctrl_left(self)
 
     def _bulk_jump_ctrl_right(self, event=None):
-        if self.bulk_sheet and self.bulk_sheet.jump_current_cell("right", ctrl=True):
-            return "break"
-        return None
+        return bulk_sheet_actions_flow.bulk_jump_ctrl_right(self)
 
     def _bulk_jump_ctrl_up(self, event=None):
-        if self.bulk_sheet and self.bulk_sheet.jump_current_cell("up", ctrl=True):
-            return "break"
-        return None
+        return bulk_sheet_actions_flow.bulk_jump_ctrl_up(self)
 
     def _bulk_jump_ctrl_down(self, event=None):
-        if self.bulk_sheet and self.bulk_sheet.jump_current_cell("down", ctrl=True):
-            return "break"
-        return None
+        return bulk_sheet_actions_flow.bulk_jump_ctrl_down(self)
 
     def _show_bulk_shortcuts(self):
         messagebox.showinfo("Bulk Shortcuts", BULK_SHORTCUTS_TEXT)
