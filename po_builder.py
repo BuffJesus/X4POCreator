@@ -30,8 +30,10 @@ import loading_flow
 import maintenance_flow
 import parsers
 import persistent_state_flow
+import reorder_flow
 import session_state_flow
 import storage
+import ui_state_flow
 from debug_log import DEBUG_LOG_FILE, write_debug
 from bulk_sheet import BulkSheetView
 import ui_assignment_actions
@@ -846,9 +848,7 @@ class POBuilderApp:
 
     def _default_vendor_for_key(self, key):
         """Use the X4 supplier as the initial vendor when available."""
-        inv = self.inventory_lookup.get(key, {})
-        supplier = (inv.get("supplier", "") or "").strip().upper()
-        return supplier or ""
+        return reorder_flow.default_vendor_for_key(self, key)
 
     def _get_suspense_carry_qty(self, key):
         return persistent_state_flow.get_suspense_carry_qty(self, key)
@@ -942,8 +942,7 @@ class POBuilderApp:
 
     def _get_cycle_weeks(self):
         """Return the number of weeks for the selected reorder cycle."""
-        cycle = self.var_reorder_cycle.get()
-        return {"Weekly": 1, "Biweekly": 2, "Monthly": 4}.get(cycle, 2)
+        return reorder_flow.get_cycle_weeks(self)
 
     def _suggest_min_max(self, key):
         """
@@ -952,17 +951,7 @@ class POBuilderApp:
         Max = usage during 2 cycles (stock-up target)
         Returns (sug_min, sug_max) or (None, None) if history is too sparse.
         """
-        inv = self.inventory_lookup.get(key, {})
-        mo12 = inv.get("mo12_sales", 0)
-        if not mo12 or mo12 <= 0:
-            return None, None
-        if mo12 < MIN_ANNUAL_SALES_FOR_SUGGESTIONS:
-            return None, None
-        weekly = mo12 / 52
-        weeks = self._get_cycle_weeks()
-        sug_min = max(1, math.ceil(weekly * weeks))
-        sug_max = max(sug_min + 1, math.ceil(weekly * weeks * 2))
-        return sug_min, sug_max
+        return reorder_flow.suggest_min_max(self, key, MIN_ANNUAL_SALES_FOR_SUGGESTIONS)
 
     def _find_filtered_item(self, key):
         return item_workflow.find_filtered_item(self.filtered_items, key)
@@ -984,13 +973,7 @@ class POBuilderApp:
         persistent_state_flow.save_ignored_item_keys(self)
 
     def _refresh_vendor_inputs(self):
-        if hasattr(self, "combo_bulk_vendor"):
-            self.combo_bulk_vendor["values"] = self.vendor_codes_used
-        if hasattr(self, "combo_vendor"):
-            self.combo_vendor["values"] = self.vendor_codes_used
-        if hasattr(self, "combo_vendor_filter"):
-            vendors = sorted(set(item["vendor"] for item in self.assigned_items if item.get("vendor")))
-            self.combo_vendor_filter["values"] = ["ALL"] + vendors
+        ui_state_flow.refresh_vendor_inputs(self)
 
     def _remember_vendor_code(self, vendor):
         return persistent_state_flow.remember_vendor_code(self, vendor)
@@ -1003,12 +986,7 @@ class POBuilderApp:
         return normalized
 
     def _remove_vendor_code(self, vendor):
-        normalized = self._normalize_vendor_code(vendor)
-        if not normalized:
-            return
-        self.vendor_codes_used = [code for code in self.vendor_codes_used if code != normalized]
-        self._save_vendor_codes()
-        self._refresh_vendor_inputs()
+        ui_state_flow.remove_vendor_code(self, vendor)
 
     def _open_vendor_manager(self):
         ui_vendor_manager.open_vendor_manager(self)
@@ -1045,20 +1023,11 @@ class POBuilderApp:
 
     def _refresh_suggestions(self):
         """Recalculate suggestions when the reorder cycle changes."""
-        for item in self.filtered_items:
-            self._recalculate_item(item)
-        for item in self.assigned_items:
-            self._sync_review_item_to_filtered(item)
-        self._apply_bulk_filter()
+        reorder_flow.refresh_suggestions(self)
 
     def _refresh_recent_orders(self):
         """Reload recent orders when lookback days changes."""
-        try:
-            days = self.var_lookback_days.get()
-        except Exception:
-            days = 14
-        self.recent_orders = storage.get_recent_orders(self._data_path("order_history"), days)
-        self._apply_bulk_filter()
+        reorder_flow.refresh_recent_orders(self)
 
     def _update_bulk_summary(self):
         ui_bulk.update_bulk_summary(self)
@@ -1095,36 +1064,7 @@ class POBuilderApp:
         ui_assignment_actions.undo_last_bulk_removal(self)
 
     def _update_bulk_cell_status(self):
-        if not hasattr(self, "lbl_bulk_cell_status"):
-            return
-        bulk_sheet = getattr(self, "bulk_sheet", None)
-        sheet_selected_cells = bulk_sheet.selected_cells() if bulk_sheet else []
-        active_col = (
-            bulk_sheet.selected_editable_column_name() if bulk_sheet else ""
-        ) or (bulk_sheet.current_column_name() if bulk_sheet else "")
-        if active_col:
-            label_map = {
-                "vendor": "Vendor",
-                "final_qty": "Order Qty",
-                "qoh": "QOH",
-                "cur_min": "Min",
-                "cur_max": "Max",
-                "pack_size": "Pack",
-            }
-            col_label = label_map.get(active_col, active_col)
-            count = len(sheet_selected_cells)
-            if count:
-                self.lbl_bulk_cell_status.config(text=f"Active edit column: {col_label} | Selected cells: {count}")
-                return
-            selected_rows = len(self.bulk_sheet.selected_row_ids()) if getattr(self, "bulk_sheet", None) else (
-                len(self.bulk_tree.selection()) if hasattr(self, "bulk_tree") else 0
-            )
-            self.lbl_bulk_cell_status.config(text=f"Active edit column: {col_label} | Selected rows: {selected_rows}")
-        else:
-            selected_rows = len(self.bulk_sheet.selected_row_ids()) if getattr(self, "bulk_sheet", None) else (
-                len(self.bulk_tree.selection()) if hasattr(self, "bulk_tree") else 0
-            )
-            self.lbl_bulk_cell_status.config(text=f"Active edit column: none | Selected rows: {selected_rows}")
+        ui_state_flow.update_bulk_cell_status(self)
 
     def _update_bulk_sheet_status(self):
         self._update_bulk_cell_status()
