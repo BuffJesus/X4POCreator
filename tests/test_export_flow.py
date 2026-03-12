@@ -4,6 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -137,6 +138,44 @@ class ExportFlowTests(unittest.TestCase):
         self.assertEqual(rows[1][0], "AER-")
         self.assertEqual(rows[1][2], 'Bad - text "quote"')
         self.assertEqual(rows[1][3], "Fix supplier -> pack")
+
+    def test_do_export_surfaces_shared_suspense_carry_merge_note(self):
+        session = AppSessionState(
+            assigned_items=[{"vendor": "MOTION", "line_code": "AER-", "item_code": "GH781-4", "order_qty": 2}],
+            startup_warning_rows=[],
+            qoh_adjustments={},
+            order_rules={},
+        )
+        app = SimpleNamespace(
+            session=session,
+            root=SimpleNamespace(update=lambda: None),
+            _show_loading=lambda message: None,
+            _hide_loading=lambda: None,
+            _persist_suspense_carry=lambda: {"conflict": True},
+            _build_maintenance_report=lambda: [],
+            _show_maintenance_report=lambda output_dir, issues: None,
+            var_sales_path=SimpleNamespace(get=lambda: ""),
+            var_po_path=SimpleNamespace(get=lambda: ""),
+            var_susp_path=SimpleNamespace(get=lambda: ""),
+            var_onhand_path=SimpleNamespace(get=lambda: ""),
+            var_minmax_path=SimpleNamespace(get=lambda: ""),
+            var_packsize_path=SimpleNamespace(get=lambda: ""),
+        )
+
+        with tempfile.TemporaryDirectory() as tmp, \
+             patch("export_flow.filedialog.askdirectory", return_value=tmp), \
+             patch("export_flow.storage.append_order_history"), \
+             patch("export_flow.storage.save_session_snapshot"), \
+             patch("export_flow.messagebox.showinfo") as mocked_info:
+            export_flow.do_export(
+                app,
+                lambda vendor, items, output_dir: str(Path(output_dir) / f"{vendor}.xlsx"),
+                str(Path(tmp) / "order_history.json"),
+                str(Path(tmp) / "sessions"),
+            )
+
+        mocked_info.assert_called_once()
+        self.assertIn("merged your update with newer shared data", mocked_info.call_args.args[1])
 
 
 if __name__ == "__main__":

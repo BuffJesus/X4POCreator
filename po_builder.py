@@ -506,15 +506,19 @@ class POBuilderApp:
             len(self.individual_items),
         )
 
-    def _refresh_active_data_state(self):
+    def _has_active_assignment_session(self):
+        return bool(self.filtered_items or self.assigned_items or self.individual_items)
+
+    def _refresh_active_data_state(self, notify=True):
         self._load_persistent_state()
         self._refresh_vendor_inputs()
-        if not (self.filtered_items or self.assigned_items or self.individual_items):
-            messagebox.showinfo(
-                "Active Data Refreshed",
-                "Reloaded shared/local rules, history, vendor codes, ignores, and other saved data from disk.",
-            )
-            return
+        if not self._has_active_assignment_session():
+            if notify:
+                messagebox.showinfo(
+                    "Active Data Refreshed",
+                    "Reloaded shared/local rules, history, vendor codes, ignores, and other saved data from disk.",
+                )
+            return {"session_updated": False, "ignored_changed_session": False}
 
         ignored_changed_session = self._prune_ignored_items_from_session()
         self._rebuild_duplicate_ic_lookup()
@@ -551,10 +555,12 @@ class POBuilderApp:
         detail = " Current session updated to match the active shared/local data where possible."
         if ignored_changed_session:
             detail += " Ignored items were removed from the current session."
-        messagebox.showinfo(
-            "Active Data Refreshed",
-            "Reloaded shared/local rules, history, vendor codes, ignores, and other saved data from disk." + detail,
-        )
+        if notify:
+            messagebox.showinfo(
+                "Active Data Refreshed",
+                "Reloaded shared/local rules, history, vendor codes, ignores, and other saved data from disk." + detail,
+            )
+        return {"session_updated": True, "ignored_changed_session": ignored_changed_session}
 
     def _set_shared_data_folder(self):
         selected = filedialog.askdirectory(
@@ -574,11 +580,11 @@ class POBuilderApp:
         self.data_paths = self._build_data_paths(self.data_dir)
         self.app_settings["shared_data_dir"] = normalized
         self._save_app_settings()
-        self._load_persistent_state()
-        if self.filtered_items or self.assigned_items:
+        result = self._refresh_active_data_state(notify=False)
+        if result["session_updated"]:
             messagebox.showinfo(
                 "Shared Data Folder Updated",
-                "Reload files to apply the shared rules, history, and vendor list to the current session.",
+                "Switched to the shared data folder and refreshed the current session to match the active shared/local data where possible.",
             )
 
     def _use_local_data_folder(self):
@@ -587,11 +593,11 @@ class POBuilderApp:
         self.data_paths = self._build_data_paths(self.data_dir)
         self.app_settings["shared_data_dir"] = ""
         self._save_app_settings()
-        self._load_persistent_state()
-        if self.filtered_items or self.assigned_items:
+        result = self._refresh_active_data_state(notify=False)
+        if result["session_updated"]:
             messagebox.showinfo(
                 "Local Data Enabled",
-                "Reload files to apply the local rules, history, and vendor list to the current session.",
+                "Switched to local data and refreshed the current session to match the active shared/local data where possible.",
             )
 
     def _set_update_check_enabled(self):
@@ -1116,6 +1122,13 @@ class POBuilderApp:
         )
         self.suspense_carry = dict(result["payload"])
         self._loaded_suspense_carry = copy.deepcopy(self.suspense_carry)
+        if result.get("conflict"):
+            write_debug(
+                "suspense_carry.merge_conflict",
+                path=self._data_path("suspense_carry"),
+                merged_entries=len(self.suspense_carry),
+            )
+        return result
 
     def _proceed_to_assign(self):
         """Apply all filters, merge suspended items, and move to bulk vendor assignment."""

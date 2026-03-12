@@ -54,8 +54,9 @@ def do_export(app, export_vendor_po, order_history_file, sessions_dir):
             return
 
     storage.append_order_history(order_history_file, session.assigned_items)
+    suspense_carry_result = None
     if hasattr(app, "_persist_suspense_carry"):
-        app._persist_suspense_carry()
+        suspense_carry_result = app._persist_suspense_carry()
     maintenance_issues = app._build_maintenance_report()
     session_snapshot = build_session_snapshot(
         app,
@@ -73,11 +74,17 @@ def do_export(app, export_vendor_po, order_history_file, sessions_dir):
     app._hide_loading()
 
     file_list = "\n".join(f"  - {os.path.basename(path)}" for path in created_files)
+    shared_merge_note = ""
+    if suspense_carry_result and suspense_carry_result.get("conflict"):
+        shared_merge_note = (
+            "\n\nShared suspense carry changed on disk during export, so PO Builder merged your update with newer shared data."
+        )
     messagebox.showinfo(
         "Export Complete",
         f"Created {len(created_files)} PO file(s) in:\n{output_dir}\n\n{file_list}\n\n"
         "Each file is ready for X4 Import from Excel.\n"
-        "Remember to set the Vendor field in X4 when importing each file.\n\n"
+        "Remember to set the Vendor field in X4 when importing each file."
+        f"{shared_merge_note}\n\n"
         "A maintenance report will open next if the app found supplier, pack, min/max, or QOH differences worth reviewing in X4.",
     )
     app._show_maintenance_report(output_dir, maintenance_issues)

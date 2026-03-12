@@ -234,11 +234,13 @@ class POBuilderTests(unittest.TestCase):
             _load_persistent_state=lambda: events.append("load"),
             _refresh_vendor_inputs=lambda: events.append("vendors"),
         )
+        fake_app._has_active_assignment_session = lambda: po_builder.POBuilderApp._has_active_assignment_session(fake_app)
 
         with patch("po_builder.messagebox.showinfo") as mocked_info:
-            po_builder.POBuilderApp._refresh_active_data_state(fake_app)
+            result = po_builder.POBuilderApp._refresh_active_data_state(fake_app)
 
         self.assertEqual(events, ["load", "vendors"])
+        self.assertEqual(result, {"session_updated": False, "ignored_changed_session": False})
         mocked_info.assert_called_once()
 
     def test_refresh_active_data_state_updates_session_and_prunes_ignored(self):
@@ -300,10 +302,11 @@ class POBuilderTests(unittest.TestCase):
         fake_app._ignore_key = lambda lc, ic: po_builder.POBuilderApp._ignore_key(lc, ic)
         fake_app._prune_ignored_items_from_session = lambda: po_builder.POBuilderApp._prune_ignored_items_from_session(fake_app)
         fake_app._rebuild_duplicate_ic_lookup = lambda: po_builder.POBuilderApp._rebuild_duplicate_ic_lookup(fake_app)
+        fake_app._has_active_assignment_session = lambda: po_builder.POBuilderApp._has_active_assignment_session(fake_app)
 
         with patch("po_builder.storage.get_recent_orders", return_value={("MOT-", "ABC123"): [{"qty": 2}]}), \
              patch("po_builder.messagebox.showinfo") as mocked_info:
-            po_builder.POBuilderApp._refresh_active_data_state(fake_app)
+            result = po_builder.POBuilderApp._refresh_active_data_state(fake_app)
 
         self.assertEqual(fake_app.filtered_items, [filtered[1]])
         self.assertEqual(fake_app.individual_items, [])
@@ -312,7 +315,58 @@ class POBuilderTests(unittest.TestCase):
         self.assertIn("ABC123", fake_app.duplicate_ic_lookup)
         self.assertEqual(fake_app.recent_orders[("MOT-", "ABC123")][0]["qty"], 2)
         self.assertEqual(events, ["load", "vendors", "bulk", "summary", "review"])
+        self.assertEqual(result, {"session_updated": True, "ignored_changed_session": True})
         mocked_info.assert_called_once()
+
+    def test_set_shared_data_folder_refreshes_current_session_when_individual_items_exist(self):
+        events = []
+        fake_app = SimpleNamespace(
+            data_dir=str(ROOT),
+            shared_data_dir="",
+            filtered_items=[],
+            assigned_items=[],
+            individual_items=[{"line_code": "AER-", "item_code": "GH781-4"}],
+            app_settings={},
+            _build_data_paths=lambda path: {"order_rules": str(Path(path) / "order_rules.json")},
+            _save_app_settings=lambda: events.append("save"),
+            _refresh_active_data_state=lambda notify=False: events.append(("refresh", notify)) or {"session_updated": True},
+        )
+
+        with patch("po_builder.filedialog.askdirectory", return_value=str(ROOT / "SharedData")), \
+             patch("po_builder.storage.validate_storage_directory", return_value=(True, "")), \
+             patch("po_builder.messagebox.showinfo") as mocked_info:
+            po_builder.POBuilderApp._set_shared_data_folder(fake_app)
+
+        self.assertEqual(fake_app.shared_data_dir, str((ROOT / "SharedData").resolve()))
+        self.assertEqual(fake_app.data_dir, str((ROOT / "SharedData").resolve()))
+        self.assertEqual(fake_app.app_settings["shared_data_dir"], str((ROOT / "SharedData").resolve()))
+        self.assertEqual(events, ["save", ("refresh", False)])
+        mocked_info.assert_called_once()
+        self.assertIn("refreshed the current session", mocked_info.call_args.args[1])
+
+    def test_use_local_data_folder_refreshes_current_session_when_individual_items_exist(self):
+        events = []
+        fake_app = SimpleNamespace(
+            shared_data_dir=str(ROOT / "SharedData"),
+            data_dir=str(ROOT / "SharedData"),
+            filtered_items=[],
+            assigned_items=[],
+            individual_items=[{"line_code": "AER-", "item_code": "GH781-4"}],
+            app_settings={"shared_data_dir": str(ROOT / "SharedData")},
+            _build_data_paths=lambda path: {"order_rules": str(Path(path) / "order_rules.json")},
+            _save_app_settings=lambda: events.append("save"),
+            _refresh_active_data_state=lambda notify=False: events.append(("refresh", notify)) or {"session_updated": True},
+        )
+
+        with patch("po_builder.messagebox.showinfo") as mocked_info:
+            po_builder.POBuilderApp._use_local_data_folder(fake_app)
+
+        self.assertEqual(fake_app.shared_data_dir, "")
+        self.assertEqual(fake_app.data_dir, po_builder.LOCAL_DATA_DIR)
+        self.assertEqual(fake_app.app_settings["shared_data_dir"], "")
+        self.assertEqual(events, ["save", ("refresh", False)])
+        mocked_info.assert_called_once()
+        self.assertIn("refreshed the current session", mocked_info.call_args.args[1])
 
     def test_refresh_suggestions_recalculates_filtered_and_assigned_items(self):
         fake_app = self._make_calc_app()
