@@ -1125,33 +1125,13 @@ class POBuilderApp:
         return bulk_sheet_actions_flow.bulk_clear_selection(self)
 
     def _bulk_fill_selection_with_current_value(self, event=None, *, alias="fill"):
-        if not self.bulk_sheet:
-            return None
-        col_name = (
-            self.bulk_sheet.selected_editable_column_name()
-            or self.bulk_sheet.current_editable_column_name()
-        )
-        row_ids = list(self.bulk_sheet.selected_target_row_ids(col_name)) if col_name else []
-        if col_name not in BULK_EDITABLE_COLS or not row_ids:
-            return "break"
-        value = self.bulk_sheet.current_cell_value().strip()
-        before_state = self._capture_bulk_history_state() if hasattr(self, "_capture_bulk_history_state") else None
-        write_debug(
-            "bulk_shortcut_fill",
+        return bulk_sheet_actions_flow.bulk_fill_selection_with_current_value(
+            self,
+            BULK_EDITABLE_COLS,
+            write_debug,
+            event,
             alias=alias,
-            col_name=col_name,
-            row_count=len(row_ids),
-            value=value,
         )
-        for row_id in row_ids:
-            self._bulk_apply_editor_value(row_id, col_name, value)
-        self._apply_bulk_filter()
-        self.bulk_sheet.clear_selection()
-        self._update_bulk_summary()
-        self._update_bulk_cell_status()
-        if hasattr(self, "_finalize_bulk_history_action"):
-            self._finalize_bulk_history_action(f"{alias}:{col_name}", before_state)
-        return "break"
 
     def _bulk_fill_down_selection(self, event=None):
         return self._bulk_fill_selection_with_current_value(event, alias="fill_down")

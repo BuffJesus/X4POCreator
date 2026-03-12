@@ -76,3 +76,33 @@ def bulk_jump_ctrl_up(app):
 
 def bulk_jump_ctrl_down(app):
     return maybe_break(app.bulk_sheet and app.bulk_sheet.jump_current_cell("down", ctrl=True))
+
+
+def bulk_fill_selection_with_current_value(app, editable_cols, write_debug, event=None, *, alias="fill"):
+    if not app.bulk_sheet:
+        return None
+    col_name = (
+        app.bulk_sheet.selected_editable_column_name()
+        or app.bulk_sheet.current_editable_column_name()
+    )
+    row_ids = list(app.bulk_sheet.selected_target_row_ids(col_name)) if col_name else []
+    if col_name not in editable_cols or not row_ids:
+        return "break"
+    value = app.bulk_sheet.current_cell_value().strip()
+    before_state = app._capture_bulk_history_state() if hasattr(app, "_capture_bulk_history_state") else None
+    write_debug(
+        "bulk_shortcut_fill",
+        alias=alias,
+        col_name=col_name,
+        row_count=len(row_ids),
+        value=value,
+    )
+    for row_id in row_ids:
+        app._bulk_apply_editor_value(row_id, col_name, value)
+    app._apply_bulk_filter()
+    app.bulk_sheet.clear_selection()
+    app._update_bulk_summary()
+    app._update_bulk_cell_status()
+    if hasattr(app, "_finalize_bulk_history_action"):
+        app._finalize_bulk_history_action(f"{alias}:{col_name}", before_state)
+    return "break"
