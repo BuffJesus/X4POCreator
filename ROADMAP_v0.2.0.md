@@ -92,7 +92,7 @@ Suggested work:
 
 - standardize the top-level release note structure used by `RELEASE_v*.md`
 - add a repeatable release checklist for version bump, tests, build, smoke test, tag, and GitHub release
-- keep `VERSION` as the single source of truth for the app version used by the startup update check
+- keep the internal app version as the single source of truth used by the startup update check
 
 ## Not In Scope
 
@@ -128,7 +128,7 @@ Do not cut `v0.2.0` until all of these are true.
 
 - release notes are written
 - the release checklist is followed
-- `VERSION` and Git tag match the intended release
+- internal app version and Git tag match the intended release
 
 ## Recommended Path From 0.1.7
 

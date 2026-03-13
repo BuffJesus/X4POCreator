@@ -16,8 +16,8 @@ class UIBulkTests(unittest.TestCase):
         fake_app = SimpleNamespace(
             bulk_sheet=SimpleNamespace(refresh_row=lambda row_id, values: events.append((row_id, values))),
             filtered_items=[
-                {"line_code": "AER-", "item_code": "GH781-4", "vendor": "MOTION"},
-                {"line_code": "AER-", "item_code": "GH781-5", "vendor": ""},
+                {"line_code": "AER-", "item_code": "GH781-4", "vendor": "MOTION", "description": ""},
+                {"line_code": "AER-", "item_code": "GH781-5", "vendor": "", "description": ""},
             ],
             _bulk_row_values=lambda item: (item["item_code"], item.get("vendor", "")),
             _apply_bulk_filter=lambda: events.append("filter"),
@@ -26,6 +26,9 @@ class UIBulkTests(unittest.TestCase):
             var_bulk_status_filter=SimpleNamespace(get=lambda: "ALL"),
             var_bulk_source_filter=SimpleNamespace(get=lambda: "ALL"),
             var_bulk_item_status=SimpleNamespace(get=lambda: "ALL"),
+            var_bulk_performance_filter=SimpleNamespace(get=lambda: "ALL"),
+            var_bulk_sales_health_filter=SimpleNamespace(get=lambda: "ALL"),
+            var_bulk_attention_filter=SimpleNamespace(get=lambda: "ALL"),
         )
 
         result = ui_bulk.refresh_bulk_view_after_edit(fake_app, ("0", "1"))
@@ -37,7 +40,7 @@ class UIBulkTests(unittest.TestCase):
         events = []
         fake_app = SimpleNamespace(
             bulk_sheet=SimpleNamespace(refresh_row=lambda row_id, values: events.append((row_id, values))),
-            filtered_items=[{"line_code": "AER-", "item_code": "GH781-4"}],
+            filtered_items=[{"line_code": "AER-", "item_code": "GH781-4", "description": ""}],
             _bulk_row_values=lambda item: (item["item_code"],),
             _apply_bulk_filter=lambda: events.append("filter"),
             _bulk_sort_col=None,
@@ -45,12 +48,79 @@ class UIBulkTests(unittest.TestCase):
             var_bulk_status_filter=SimpleNamespace(get=lambda: "ALL"),
             var_bulk_source_filter=SimpleNamespace(get=lambda: "ALL"),
             var_bulk_item_status=SimpleNamespace(get=lambda: "ALL"),
+            var_bulk_performance_filter=SimpleNamespace(get=lambda: "ALL"),
+            var_bulk_sales_health_filter=SimpleNamespace(get=lambda: "ALL"),
+            var_bulk_attention_filter=SimpleNamespace(get=lambda: "ALL"),
         )
 
         result = ui_bulk.refresh_bulk_view_after_edit(fake_app, ("0",))
 
         self.assertFalse(result)
         self.assertEqual(events, ["filter"])
+
+    def test_can_incremental_refresh_requires_new_signal_filters_to_be_all(self):
+        fake_app = SimpleNamespace(
+            bulk_sheet=object(),
+            _bulk_sort_col=None,
+            var_bulk_lc_filter=SimpleNamespace(get=lambda: "ALL"),
+            var_bulk_status_filter=SimpleNamespace(get=lambda: "ALL"),
+            var_bulk_source_filter=SimpleNamespace(get=lambda: "ALL"),
+            var_bulk_item_status=SimpleNamespace(get=lambda: "ALL"),
+            var_bulk_performance_filter=SimpleNamespace(get=lambda: "Steady"),
+            var_bulk_sales_health_filter=SimpleNamespace(get=lambda: "ALL"),
+            var_bulk_attention_filter=SimpleNamespace(get=lambda: "ALL"),
+        )
+
+        self.assertFalse(ui_bulk.can_incremental_refresh(fake_app))
+
+    def test_apply_bulk_filter_honors_performance_health_and_attention_filters(self):
+        captured = []
+        fake_app = SimpleNamespace(
+            filtered_items=[
+                {
+                    "line_code": "AER-",
+                    "item_code": "A",
+                    "description": "Item A",
+                    "vendor": "MOTION",
+                    "qty_sold": 1,
+                    "qty_suspended": 0,
+                    "status": "ok",
+                    "performance_profile": "steady",
+                    "sales_health_signal": "dormant",
+                    "reorder_attention_signal": "review_missed_reorder",
+                },
+                {
+                    "line_code": "AER-",
+                    "item_code": "B",
+                    "description": "Item B",
+                    "vendor": "MOTION",
+                    "qty_sold": 1,
+                    "qty_suspended": 0,
+                    "status": "ok",
+                    "performance_profile": "steady",
+                    "sales_health_signal": "active",
+                    "reorder_attention_signal": "normal",
+                },
+            ],
+            bulk_sheet=SimpleNamespace(set_rows=lambda rows, row_ids: captured.append((rows, row_ids))),
+            var_bulk_lc_filter=SimpleNamespace(get=lambda: "ALL"),
+            var_bulk_status_filter=SimpleNamespace(get=lambda: "ALL"),
+            var_bulk_source_filter=SimpleNamespace(get=lambda: "ALL"),
+            var_bulk_item_status=SimpleNamespace(get=lambda: "ALL"),
+            var_bulk_performance_filter=SimpleNamespace(get=lambda: "Steady"),
+            var_bulk_sales_health_filter=SimpleNamespace(get=lambda: "Dormant"),
+            var_bulk_attention_filter=SimpleNamespace(get=lambda: "Missed Reorder"),
+            _suggest_min_max=lambda key: (None, None),
+            inventory_lookup={},
+            order_rules={},
+            bulk_tree_columns=(),
+            bulk_tree_labels={},
+        )
+
+        ui_bulk.apply_bulk_filter(fake_app)
+
+        self.assertEqual(captured[0][1], ["0"])
+        self.assertEqual(captured[0][0][0][2], "A")
 
 
 if __name__ == "__main__":

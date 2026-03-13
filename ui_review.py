@@ -34,6 +34,30 @@ def build_review_tab(app):
     app.combo_vendor_filter.pack(side=tk.LEFT)
     app.combo_vendor_filter.bind("<<ComboboxSelected>>", lambda e: app._apply_review_filter())
 
+    ttk.Label(filter_frame, text="Performance:").pack(side=tk.LEFT, padx=(12, 6))
+    app.var_review_performance_filter = tk.StringVar(value="ALL")
+    app.combo_review_performance = ttk.Combobox(
+        filter_frame,
+        textvariable=app.var_review_performance_filter,
+        state="readonly",
+        width=12,
+        values=["ALL", "Top", "Steady", "Intermittent", "Legacy"],
+    )
+    app.combo_review_performance.pack(side=tk.LEFT)
+    app.combo_review_performance.bind("<<ComboboxSelected>>", lambda e: app._apply_review_filter())
+
+    ttk.Label(filter_frame, text="Attention:").pack(side=tk.LEFT, padx=(12, 6))
+    app.var_review_attention_filter = tk.StringVar(value="ALL")
+    app.combo_review_attention = ttk.Combobox(
+        filter_frame,
+        textvariable=app.var_review_attention_filter,
+        state="readonly",
+        width=14,
+        values=["ALL", "Normal", "Missed Reorder"],
+    )
+    app.combo_review_attention.pack(side=tk.LEFT)
+    app.combo_review_attention.bind("<<ComboboxSelected>>", lambda e: app._apply_review_filter())
+
     tree_frame = ttk.Frame(frame)
     tree_frame.pack(fill=tk.BOTH, expand=True, pady=4)
 
@@ -128,6 +152,8 @@ def populate_review_tab(app):
     vendors = sorted(set(item["vendor"] for item in app.assigned_items))
     app.combo_vendor_filter["values"] = ["ALL"] + vendors
     app.var_vendor_filter.set("ALL")
+    app.var_review_performance_filter.set("ALL")
+    app.var_review_attention_filter.set("ALL")
     update_review_summary(app)
 
 
@@ -143,11 +169,32 @@ def update_review_summary(app):
 
 def apply_review_filter(app):
     vendor_filter = app.var_vendor_filter.get()
+    performance_filter = app.var_review_performance_filter.get()
+    attention_filter = app.var_review_attention_filter.get()
     for item_id in app.tree.get_children():
         app.tree.delete(item_id)
     for i, item in enumerate(app.assigned_items):
-        if vendor_filter == "ALL" or item["vendor"] == vendor_filter:
-            app.tree.insert("", "end", iid=str(i), values=review_row_values(item))
+        if vendor_filter != "ALL" and item["vendor"] != vendor_filter:
+            continue
+        if performance_filter != "ALL":
+            performance = (item.get("performance_profile", "") or "").lower()
+            expected = {
+                "Top": "top_performer",
+                "Steady": "steady",
+                "Intermittent": "intermittent",
+                "Legacy": "legacy",
+            }.get(performance_filter, "")
+            if performance != expected:
+                continue
+        if attention_filter != "ALL":
+            attention = (item.get("reorder_attention_signal", "") or "").lower()
+            expected_attention = {
+                "Normal": "normal",
+                "Missed Reorder": "review_missed_reorder",
+            }.get(attention_filter, "")
+            if attention != expected_attention:
+                continue
+        app.tree.insert("", "end", iid=str(i), values=review_row_values(item))
 
 
 def sort_tree(app, col):

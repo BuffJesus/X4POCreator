@@ -124,10 +124,49 @@ def build_bulk_tab(app, editable_cols):
     app.combo_bulk_item_status.pack(side=tk.LEFT, padx=2)
     app.combo_bulk_item_status.bind("<<ComboboxSelected>>", lambda e: app._apply_bulk_filter())
 
-    ttk.Label(filter_row_2, text="Reorder Cycle:").pack(side=tk.LEFT, padx=(12, 2))
+    ttk.Label(filter_row_2, text="Performance:").pack(side=tk.LEFT, padx=(12, 2))
+    app.var_bulk_performance_filter = tk.StringVar(value="ALL")
+    app.combo_bulk_performance = ttk.Combobox(
+        filter_row_2,
+        textvariable=app.var_bulk_performance_filter,
+        state="readonly",
+        width=12,
+        values=["ALL", "Top", "Steady", "Intermittent", "Legacy"],
+    )
+    app.combo_bulk_performance.pack(side=tk.LEFT, padx=2)
+    app.combo_bulk_performance.bind("<<ComboboxSelected>>", lambda e: app._apply_bulk_filter())
+
+    filter_row_3 = ttk.Frame(filter_frame)
+    filter_row_3.pack(fill=tk.X, pady=(2, 0))
+
+    ttk.Label(filter_row_3, text="Sales Health:").pack(side=tk.LEFT, padx=(0, 2))
+    app.var_bulk_sales_health_filter = tk.StringVar(value="ALL")
+    app.combo_bulk_sales_health = ttk.Combobox(
+        filter_row_3,
+        textvariable=app.var_bulk_sales_health_filter,
+        state="readonly",
+        width=12,
+        values=["ALL", "Active", "Cooling", "Dormant", "Stale", "Unknown"],
+    )
+    app.combo_bulk_sales_health.pack(side=tk.LEFT, padx=2)
+    app.combo_bulk_sales_health.bind("<<ComboboxSelected>>", lambda e: app._apply_bulk_filter())
+
+    ttk.Label(filter_row_3, text="Attention:").pack(side=tk.LEFT, padx=(12, 2))
+    app.var_bulk_attention_filter = tk.StringVar(value="ALL")
+    app.combo_bulk_attention = ttk.Combobox(
+        filter_row_3,
+        textvariable=app.var_bulk_attention_filter,
+        state="readonly",
+        width=14,
+        values=["ALL", "Normal", "Missed Reorder"],
+    )
+    app.combo_bulk_attention.pack(side=tk.LEFT, padx=2)
+    app.combo_bulk_attention.bind("<<ComboboxSelected>>", lambda e: app._apply_bulk_filter())
+
+    ttk.Label(filter_row_3, text="Reorder Cycle:").pack(side=tk.LEFT, padx=(12, 2))
     app.var_reorder_cycle = tk.StringVar(value="Biweekly")
     app.combo_cycle = ttk.Combobox(
-        filter_row_2,
+        filter_row_3,
         textvariable=app.var_reorder_cycle,
         state="readonly",
         width=10,
@@ -136,9 +175,9 @@ def build_bulk_tab(app, editable_cols):
     app.combo_cycle.pack(side=tk.LEFT, padx=2)
     app.combo_cycle.bind("<<ComboboxSelected>>", lambda e: app._refresh_suggestions())
 
-    ttk.Label(filter_row_2, text="History (days):").pack(side=tk.LEFT, padx=(12, 2))
+    ttk.Label(filter_row_3, text="History (days):").pack(side=tk.LEFT, padx=(12, 2))
     app.var_lookback_days = tk.IntVar(value=14)
-    lookback_spin = ttk.Spinbox(filter_row_2, from_=1, to=90, textvariable=app.var_lookback_days, width=4)
+    lookback_spin = ttk.Spinbox(filter_row_3, from_=1, to=90, textvariable=app.var_lookback_days, width=4)
     lookback_spin.pack(side=tk.LEFT, padx=2)
     lookback_spin.bind("<Return>", lambda e: app._refresh_recent_orders())
     lookback_spin.bind("<FocusOut>", lambda e: app._refresh_recent_orders())
@@ -354,16 +393,29 @@ def update_bulk_summary(app):
     app.lbl_bulk_summary.config(text="  ·  ".join(parts))
 
 
+def _filter_value(app, attr_name, default="ALL"):
+    var = getattr(app, attr_name, None)
+    if var is None:
+        return default
+    try:
+        return var.get()
+    except Exception:
+        return default
+
+
 def can_incremental_refresh(app):
     if not getattr(app, "bulk_sheet", None):
         return False
     if getattr(app, "_bulk_sort_col", None):
         return False
     return (
-        app.var_bulk_lc_filter.get() == "ALL"
-        and app.var_bulk_status_filter.get() == "ALL"
-        and app.var_bulk_source_filter.get() == "ALL"
-        and app.var_bulk_item_status.get() == "ALL"
+        _filter_value(app, "var_bulk_lc_filter") == "ALL"
+        and _filter_value(app, "var_bulk_status_filter") == "ALL"
+        and _filter_value(app, "var_bulk_source_filter") == "ALL"
+        and _filter_value(app, "var_bulk_item_status") == "ALL"
+        and _filter_value(app, "var_bulk_performance_filter") == "ALL"
+        and _filter_value(app, "var_bulk_sales_health_filter") == "ALL"
+        and _filter_value(app, "var_bulk_attention_filter") == "ALL"
     )
 
 
@@ -384,10 +436,13 @@ def refresh_bulk_view_after_edit(app, row_ids):
 
 
 def apply_bulk_filter(app):
-    lc_filter = app.var_bulk_lc_filter.get()
-    status_filter = app.var_bulk_status_filter.get()
-    source_filter = app.var_bulk_source_filter.get()
-    item_status_filter = app.var_bulk_item_status.get()
+    lc_filter = _filter_value(app, "var_bulk_lc_filter")
+    status_filter = _filter_value(app, "var_bulk_status_filter")
+    source_filter = _filter_value(app, "var_bulk_source_filter")
+    item_status_filter = _filter_value(app, "var_bulk_item_status")
+    performance_filter = _filter_value(app, "var_bulk_performance_filter")
+    sales_health_filter = _filter_value(app, "var_bulk_sales_health_filter")
+    attention_filter = _filter_value(app, "var_bulk_attention_filter")
 
     rows = []
     row_ids = []
@@ -413,6 +468,28 @@ def apply_bulk_filter(app):
             if item_status_filter == "Warning" and item_status != "warning":
                 continue
             if item_status_filter == "No Pack" and "missing_pack" not in item.get("data_flags", []):
+                continue
+        if performance_filter != "ALL":
+            performance = (item.get("performance_profile", "") or "").lower()
+            expected = {
+                "Top": "top_performer",
+                "Steady": "steady",
+                "Intermittent": "intermittent",
+                "Legacy": "legacy",
+            }.get(performance_filter, "")
+            if performance != expected:
+                continue
+        if sales_health_filter != "ALL":
+            sales_health = (item.get("sales_health_signal", "") or "").lower()
+            if sales_health != sales_health_filter.lower():
+                continue
+        if attention_filter != "ALL":
+            attention = (item.get("reorder_attention_signal", "") or "").lower()
+            expected_attention = {
+                "Normal": "normal",
+                "Missed Reorder": "review_missed_reorder",
+            }.get(attention_filter, "")
+            if attention != expected_attention:
                 continue
         row_ids.append(str(i))
         rows.append(list(bulk_row_values(app, item)))

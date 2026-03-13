@@ -10,8 +10,8 @@ Use this checklist for every tagged release.
 
 ## 2. Update Versioning
 
-- update [`VERSION`](/C:/Users/Cornelio/Desktop/POCreator/VERSION)
-- ensure any version-sensitive UI or startup-update behavior still reads from `VERSION`
+- update [`app_version.py`](C:\Users\Cornelio\Desktop\POCreator\app_version.py)
+- ensure any version-sensitive UI or startup-update behavior still reads from the internal app version
 - prepare the release notes file as `RELEASE_vX.Y.Z.md`
 
 ## 3. Verify The Repo State
@@ -62,6 +62,6 @@ Each release note should include:
 
 ## 9. Post-Release Verification
 
-- confirm the GitHub release tag matches `VERSION`
+- confirm the GitHub release tag matches the internal app version
 - confirm the startup update check points users at the expected latest release
 - confirm teammates can download and run the released executable
