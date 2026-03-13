@@ -1,5 +1,6 @@
 from collections import defaultdict
 
+import performance_flow
 import storage
 from rules import enrich_item, get_rule_pack_size
 
@@ -134,6 +135,10 @@ def prepare_assignment_session(
         if rule_pack is not None:
             item["pack_size"] = rule_pack
         enrich_item(item, inv, item.get("pack_size"), rule)
+    performance_flow.annotate_items(
+        session.filtered_items,
+        inventory_lookup=session.inventory_lookup,
+    )
 
     duplicate_ic_lookup = defaultdict(set)
     for line_code, item_code in session.inventory_lookup:

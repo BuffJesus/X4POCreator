@@ -3,6 +3,8 @@ from collections import defaultdict
 from datetime import datetime
 
 import parsers
+import performance_flow
+import sales_history_flow
 
 
 def parse_all_files(paths, *, old_po_warning_days, short_sales_window_days, now=None):
@@ -23,6 +25,8 @@ def parse_all_files(paths, *, old_po_warning_days, short_sales_window_days, now=
     if sales_start and sales_end:
         span_days = (sales_end.date() - sales_start.date()).days + 1
         result["sales_span_days"] = span_days
+        result["sales_window_start"] = sales_start.date().isoformat()
+        result["sales_window_end"] = sales_end.date().isoformat()
         if span_days < short_sales_window_days:
             warnings.append((
                 "Sales Window Warning",
@@ -173,6 +177,17 @@ def parse_all_files(paths, *, old_po_warning_days, short_sales_window_days, now=
             warnings.append(("Min/Max Parse Warning", f"Could not parse Min/Max report:\n{exc}\nContinuing without it."))
 
     result["inventory_lookup"] = inventory_lookup
+    sales_history_flow.annotate_sales_items(
+        result["sales_items"],
+        inventory_lookup=inventory_lookup,
+        sales_span_days=result.get("sales_span_days"),
+        parse_date=parsers.parse_x4_date,
+        now=now,
+    )
+    performance_flow.annotate_items(
+        result["sales_items"],
+        inventory_lookup=inventory_lookup,
+    )
     if inventory_lookup:
         negative_qoh = [
             ((line_code, item_code), info)
@@ -259,5 +274,8 @@ def apply_load_result(session, result, *, parsers_module=parsers):
     session.pack_size_lookup = result.get("pack_size_lookup", {})
     session.pack_size_source_lookup = copy.deepcopy(session.pack_size_lookup)
     session.startup_warning_rows = result.get("startup_warning_rows", [])
+    session.sales_span_days = result.get("sales_span_days")
+    session.sales_window_start = result.get("sales_window_start", "")
+    session.sales_window_end = result.get("sales_window_end", "")
     session.pack_size_by_item, session.pack_size_conflicts = parsers_module.build_pack_size_fallbacks(session.pack_size_lookup)
     return session

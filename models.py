@@ -79,6 +79,9 @@ class SessionSnapshot:
 
 @dataclass
 class AppSessionState:
+    sales_span_days: Optional[int] = None
+    sales_window_start: str = ""
+    sales_window_end: str = ""
     sales_items: list = field(default_factory=list)
     po_items: list = field(default_factory=list)
     suspended_items: list = field(default_factory=list)

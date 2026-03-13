@@ -52,6 +52,8 @@ class AssignmentFlowTests(unittest.TestCase):
         self.assertEqual(len(session.filtered_items), 1)
         self.assertEqual(session.filtered_items[0]["vendor"], "MOTION")
         self.assertEqual(session.filtered_items[0]["qty_on_po"], 2)
+        self.assertEqual(session.filtered_items[0]["performance_profile"], "legacy")
+        self.assertEqual(session.filtered_items[0]["sales_health_signal"], "unknown")
         self.assertIn("GH781-4", session.duplicate_ic_lookup)
         self.assertEqual(session.recent_orders[("AER-", "GH781-4")][0]["qty"], 1)
 

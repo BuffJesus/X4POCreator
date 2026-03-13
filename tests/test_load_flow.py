@@ -77,6 +77,9 @@ class LoadFlowTests(unittest.TestCase):
     def test_apply_load_result_populates_session_fields(self):
         session = AppSessionState()
         result = {
+            "sales_span_days": 31,
+            "sales_window_start": "2026-02-01",
+            "sales_window_end": "2026-03-03",
             "sales_items": [{"line_code": "AER-", "item_code": "GH781-4"}],
             "all_line_codes": ["AER-"],
             "po_items": [{"line_code": "AER-", "item_code": "GH781-4", "qty": 2}],
@@ -91,6 +94,9 @@ class LoadFlowTests(unittest.TestCase):
         }))
 
         self.assertEqual(session.sales_items, result["sales_items"])
+        self.assertEqual(session.sales_span_days, 31)
+        self.assertEqual(session.sales_window_start, "2026-02-01")
+        self.assertEqual(session.sales_window_end, "2026-03-03")
         self.assertEqual(session.inventory_source_lookup, result["inventory_lookup"])
         self.assertEqual(session.pack_size_by_item, {"GH781-4": 6})
         self.assertEqual(session.pack_size_conflicts, {"DUP-1"})
@@ -179,6 +185,56 @@ class LoadFlowTests(unittest.TestCase):
         self.assertEqual(inventory["repl_cost"], 12.5)
         self.assertEqual(inventory["min"], 2)
         self.assertEqual(inventory["max"], 6)
+
+    def test_parse_all_files_annotates_sales_items_with_loaded_window_metrics(self):
+        with patch("load_flow.parsers.parse_part_sales_csv", return_value=[{
+            "line_code": "AER-",
+            "item_code": "GH781-4",
+            "description": "HOSE",
+            "qty_received": 12,
+            "qty_sold": 52,
+        }]), patch(
+            "load_flow.parsers.parse_sales_date_range",
+            return_value=(datetime(2025, 3, 1), datetime(2026, 2, 28)),
+        ), patch(
+            "load_flow.parsers.parse_on_hand_min_max",
+            return_value={("AER-", "GH781-4"): {
+                "qoh": 9.0,
+                "repl_cost": 12.5,
+                "min": 2,
+                "max": 6,
+                "ytd_sales": 11,
+                "mo12_sales": 22,
+                "supplier": "MOTION",
+                "last_receipt": "01-Mar-2026",
+                "last_sale": "05-Mar-2026",
+            }},
+        ):
+            result = load_flow.parse_all_files(
+                {
+                    "sales": "sales.csv",
+                    "po": "",
+                    "susp": "",
+                    "onhand": "",
+                    "minmax": "minmax.csv",
+                    "packsize": "",
+                },
+                old_po_warning_days=90,
+                short_sales_window_days=7,
+                now=datetime(2026, 3, 12),
+            )
+
+        item = result["sales_items"][0]
+        self.assertEqual(result["sales_window_start"], "2025-03-01")
+        self.assertEqual(result["sales_window_end"], "2026-02-28")
+        self.assertEqual(item["sales_span_days"], 365)
+        self.assertAlmostEqual(item["avg_weekly_sales_loaded"], 0.9973, places=3)
+        self.assertAlmostEqual(item["annualized_sales_loaded"], 52.0356, places=3)
+        self.assertEqual(item["last_sale_date"], "2026-03-05")
+        self.assertEqual(item["days_since_last_sale"], 7)
+        self.assertEqual(item["performance_profile"], "steady")
+        self.assertEqual(item["sales_health_signal"], "active")
+        self.assertFalse(item["possible_missed_reorder"])
 
 
 if __name__ == "__main__":
