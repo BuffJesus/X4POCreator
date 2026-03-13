@@ -5,7 +5,7 @@ a = Analysis(
     ['po_builder.py'],
     pathex=[],
     binaries=[],
-    datas=[('loading.gif', '.'), ('loading.wav', '.'), ('VERSION', '.')],
+    datas=[('loading.gif', '.'), ('loading.wav', '.')],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},

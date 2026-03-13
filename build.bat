@@ -31,8 +31,7 @@ if /i "%BUILD_MODE%"=="debug" (
     python -m PyInstaller -y --onefile --name "PO Builder Debug" po_builder.py ^
       --specpath . ^
       --hidden-import openpyxl ^
-      --collect-all openpyxl ^
-      --add-data "VERSION;."
+      --collect-all openpyxl
 ) else (
     echo   Using PO_Builder.spec for reliable openpyxl bundling...
     python -m PyInstaller -y PO_Builder.spec
@@ -48,13 +47,6 @@ if errorlevel 1 (
 
 echo.
 echo ========================================
-if exist "VERSION" (
-    if /i "%BUILD_MODE%"=="debug" (
-        copy /Y "VERSION" "dist\VERSION" >nul
-    ) else (
-        copy /Y "VERSION" "dist\VERSION" >nul
-    )
-)
 if /i "%BUILD_MODE%"=="debug" (
     if exist "dist\PO Builder Debug.exe" (
         echo   DEBUG BUILD SUCCESSFUL!

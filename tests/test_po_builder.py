@@ -115,12 +115,12 @@ class POBuilderTests(unittest.TestCase):
 
         self.assertEqual(version, "0.1.8")
 
-    def test_load_app_version_returns_dev_when_no_version_file_exists(self):
+    def test_load_app_version_returns_internal_version_when_no_version_file_exists(self):
         with tempfile.TemporaryDirectory() as tmp:
             with patch("po_builder._BUNDLE_DIR", tmp):
                 version = po_builder.load_app_version(path=str(Path(tmp) / "missing-version"))
 
-        self.assertEqual(version, "dev")
+        self.assertEqual(version, po_builder.INTERNAL_APP_VERSION)
 
     def test_default_vendor_for_key_uses_supplier(self):
         fake_app = SimpleNamespace(

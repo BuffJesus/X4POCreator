@@ -19,6 +19,7 @@ import tkinter as tk
 from tkinter import ttk, filedialog, messagebox, simpledialog
 from datetime import datetime
 import json
+from app_version import APP_VERSION as INTERNAL_APP_VERSION
 import app_runtime_flow
 import assignment_flow
 import bulk_context_flow
@@ -149,7 +150,7 @@ def get_rule_key(line_code, item_code):
     return f"{line_code}:{item_code}"
 
 
-def load_app_version(path=VERSION_FILE):
+def load_app_version(path=VERSION_FILE, default=INTERNAL_APP_VERSION):
     candidate_paths = [path]
     bundled_path = os.path.join(_BUNDLE_DIR, "VERSION")
     if bundled_path not in candidate_paths:
@@ -162,7 +163,7 @@ def load_app_version(path=VERSION_FILE):
                     return value
         except Exception:
             continue
-    return "dev"
+    return default
 
 
 APP_VERSION = load_app_version()

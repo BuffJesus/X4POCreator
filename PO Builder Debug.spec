@@ -1,7 +1,7 @@
 # -*- mode: python ; coding: utf-8 -*-
 from PyInstaller.utils.hooks import collect_all
 
-datas = [('loading.gif', '.'), ('loading.wav', '.'), ('VERSION', '.')]
+datas = [('loading.gif', '.'), ('loading.wav', '.')]
 binaries = []
 hiddenimports = ['openpyxl', 'openpyxl.styles', 'openpyxl.styles.fills', 'openpyxl.styles.fonts', 'openpyxl.styles.borders', 'openpyxl.styles.alignment', 'openpyxl.cell', 'openpyxl.utils', 'openpyxl.workbook', 'openpyxl.worksheet']
 tmp_ret = collect_all('openpyxl')

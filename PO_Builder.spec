@@ -7,7 +7,7 @@ openpyxl_datas, openpyxl_binaries, openpyxl_hiddenimports = collect_all('openpyx
 
 # ── Optional bundled assets ──
 extra_datas = []
-for asset in ('loading.gif', 'loading.wav', 'icon.ico', 'VERSION'):
+for asset in ('loading.gif', 'loading.wav', 'icon.ico'):
     if os.path.exists(asset):
         extra_datas.append((asset, '.'))
 
