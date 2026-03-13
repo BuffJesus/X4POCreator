@@ -470,16 +470,36 @@ def can_incremental_refresh(app):
 
 
 def _changed_columns_require_rebuild(app, changed_cols):
-    if getattr(app, "_bulk_sort_col", None):
-        return True
     changed = {col for col in (changed_cols or ()) if col}
     if not changed:
         return not can_incremental_refresh(app)
+    sort_col = getattr(app, "_bulk_sort_col", None)
+    if sort_col and _sort_column_depends_on_changes(sort_col, changed):
+        return True
     if _filter_value(app, "var_bulk_status_filter") != "ALL" and "vendor" in changed:
         return True
     if _filter_value(app, "var_bulk_item_status") != "ALL" and changed.intersection({"final_qty", "qoh", "cur_min", "cur_max", "pack_size"}):
         return True
     return False
+
+
+def _sort_column_depends_on_changes(sort_col, changed_cols):
+    dependencies = {
+        "vendor": {"vendor"},
+        "final_qty": {"final_qty", "qoh", "cur_min", "cur_max", "pack_size"},
+        "status": {"final_qty", "qoh", "cur_min", "cur_max", "pack_size"},
+        "why": {"final_qty", "qoh", "cur_min", "cur_max", "pack_size"},
+        "raw_need": {"qoh", "cur_min", "cur_max", "pack_size"},
+        "suggested_qty": {"qoh", "cur_min", "cur_max", "pack_size"},
+        "buy_rule": {"pack_size"},
+        "qoh": {"qoh"},
+        "cur_min": {"cur_min"},
+        "cur_max": {"cur_max"},
+        "sug_min": {"qoh", "cur_min", "cur_max", "pack_size"},
+        "sug_max": {"qoh", "cur_min", "cur_max", "pack_size"},
+        "pack_size": {"pack_size"},
+    }
+    return bool(dependencies.get(sort_col, {sort_col}) & set(changed_cols))
 
 
 def refresh_bulk_view_after_edit(app, row_ids, changed_cols=None):

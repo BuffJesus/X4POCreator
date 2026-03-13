@@ -125,6 +125,56 @@ class UIBulkTests(unittest.TestCase):
         self.assertTrue(result)
         self.assertEqual(events, [("0", ("GH781-4", 6))])
 
+    def test_refresh_bulk_view_after_edit_keeps_sorted_refresh_incremental_when_column_cannot_affect_sort(self):
+        events = []
+        fake_app = SimpleNamespace(
+            bulk_sheet=SimpleNamespace(
+                refresh_row=lambda row_id, values: events.append((row_id, values)),
+                row_lookup={"0": 0},
+            ),
+            filtered_items=[{"line_code": "AER-", "item_code": "GH781-4", "pack_size": 6, "description": ""}],
+            _bulk_row_values=lambda item: (item["item_code"], item.get("pack_size", "")),
+            _apply_bulk_filter=lambda: events.append("filter"),
+            _bulk_sort_col="item_code",
+            var_bulk_lc_filter=SimpleNamespace(get=lambda: "ALL"),
+            var_bulk_status_filter=SimpleNamespace(get=lambda: "ALL"),
+            var_bulk_source_filter=SimpleNamespace(get=lambda: "ALL"),
+            var_bulk_item_status=SimpleNamespace(get=lambda: "ALL"),
+            var_bulk_performance_filter=SimpleNamespace(get=lambda: "ALL"),
+            var_bulk_sales_health_filter=SimpleNamespace(get=lambda: "ALL"),
+            var_bulk_attention_filter=SimpleNamespace(get=lambda: "ALL"),
+        )
+
+        result = ui_bulk.refresh_bulk_view_after_edit(fake_app, ("0",), changed_cols=("pack_size",))
+
+        self.assertTrue(result)
+        self.assertEqual(events, [("0", ("GH781-4", 6))])
+
+    def test_refresh_bulk_view_after_edit_rebuilds_sorted_view_when_column_can_affect_sort(self):
+        events = []
+        fake_app = SimpleNamespace(
+            bulk_sheet=SimpleNamespace(
+                refresh_row=lambda row_id, values: events.append((row_id, values)),
+                row_lookup={"0": 0},
+            ),
+            filtered_items=[{"line_code": "AER-", "item_code": "GH781-4", "pack_size": 6, "description": ""}],
+            _bulk_row_values=lambda item: (item["item_code"], item.get("pack_size", "")),
+            _apply_bulk_filter=lambda: events.append("filter"),
+            _bulk_sort_col="vendor",
+            var_bulk_lc_filter=SimpleNamespace(get=lambda: "ALL"),
+            var_bulk_status_filter=SimpleNamespace(get=lambda: "ALL"),
+            var_bulk_source_filter=SimpleNamespace(get=lambda: "ALL"),
+            var_bulk_item_status=SimpleNamespace(get=lambda: "ALL"),
+            var_bulk_performance_filter=SimpleNamespace(get=lambda: "ALL"),
+            var_bulk_sales_health_filter=SimpleNamespace(get=lambda: "ALL"),
+            var_bulk_attention_filter=SimpleNamespace(get=lambda: "ALL"),
+        )
+
+        result = ui_bulk.refresh_bulk_view_after_edit(fake_app, ("0",), changed_cols=("vendor",))
+
+        self.assertFalse(result)
+        self.assertEqual(events, ["filter"])
+
     def test_can_incremental_refresh_requires_new_signal_filters_to_be_all(self):
         fake_app = SimpleNamespace(
             bulk_sheet=object(),
