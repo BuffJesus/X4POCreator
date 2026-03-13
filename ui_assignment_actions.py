@@ -1,6 +1,12 @@
 from tkinter import messagebox
 
 
+def flush_pending_bulk_sheet_edit(app):
+    bulk_sheet = getattr(app, "bulk_sheet", None)
+    if bulk_sheet and hasattr(bulk_sheet, "flush_pending_edit"):
+        bulk_sheet.flush_pending_edit()
+
+
 def bulk_vendor_autocomplete(app, event):
     if event.keysym in ("Return", "Escape", "Tab", "Up", "Down"):
         return
@@ -15,6 +21,7 @@ def bulk_vendor_autocomplete(app, event):
 
 
 def bulk_apply_selected(app):
+    flush_pending_bulk_sheet_edit(app)
     vendor = app.var_bulk_vendor.get().strip().upper()
     if not vendor:
         messagebox.showinfo("Vendor Required", "Enter a vendor code first.")
@@ -41,6 +48,7 @@ def bulk_apply_selected(app):
 
 
 def bulk_apply_visible(app):
+    flush_pending_bulk_sheet_edit(app)
     vendor = app.var_bulk_vendor.get().strip().upper()
     if not vendor:
         messagebox.showinfo("Vendor Required", "Enter a vendor code first.")
@@ -67,6 +75,7 @@ def bulk_apply_visible(app):
 
 
 def undo_last_bulk_removal(app):
+    flush_pending_bulk_sheet_edit(app)
     if not app.last_removed_bulk_items:
         messagebox.showinfo("Nothing to Undo", "No recent bulk removal to undo.")
         return
@@ -84,6 +93,7 @@ def undo_last_bulk_removal(app):
 
 
 def go_to_individual(app):
+    flush_pending_bulk_sheet_edit(app)
     if not app._check_stock_warnings():
         return
     unassigned = [item for item in app.filtered_items if not item.get("vendor")]

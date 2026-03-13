@@ -11,6 +11,16 @@ import ui_bulk_dialogs
 
 
 class BulkDialogTests(unittest.TestCase):
+    def test_flush_pending_bulk_sheet_edit_calls_sheet_hook(self):
+        calls = []
+        app = SimpleNamespace(
+            bulk_sheet=SimpleNamespace(flush_pending_edit=lambda: calls.append("flush")),
+        )
+
+        ui_bulk_dialogs.flush_pending_bulk_sheet_edit(app)
+
+        self.assertEqual(calls, ["flush"])
+
     def test_not_needed_reason_treats_none_qoh_as_zero(self):
         app = SimpleNamespace(
             inventory_lookup={("AER-", "GH781-4"): {"qoh": None, "max": 20}},

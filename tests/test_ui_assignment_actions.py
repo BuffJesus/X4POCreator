@@ -39,6 +39,16 @@ class DummyTree:
 
 
 class AssignmentActionTests(unittest.TestCase):
+    def test_flush_pending_bulk_sheet_edit_calls_sheet_hook(self):
+        calls = []
+        app = SimpleNamespace(
+            bulk_sheet=SimpleNamespace(flush_pending_edit=lambda: calls.append("flush")),
+        )
+
+        ui_assignment_actions.flush_pending_bulk_sheet_edit(app)
+
+        self.assertEqual(calls, ["flush"])
+
     def test_bulk_apply_selected_updates_items_and_summary(self):
         calls = []
         app = SimpleNamespace(
@@ -62,7 +72,10 @@ class AssignmentActionTests(unittest.TestCase):
         calls = []
         app = SimpleNamespace(
             var_bulk_vendor=DummyVar("gregdist"),
-            bulk_sheet=SimpleNamespace(selected_row_ids=lambda: ("0", "1")),
+            bulk_sheet=SimpleNamespace(
+                flush_pending_edit=lambda: calls.append("flush"),
+                selected_row_ids=lambda: ("0", "1"),
+            ),
             filtered_items=[{"vendor": ""}, {"vendor": ""}],
             vendor_codes_used=[],
             _capture_bulk_history_state=lambda: {"before": True},
@@ -76,13 +89,16 @@ class AssignmentActionTests(unittest.TestCase):
         self.assertEqual(app.filtered_items[0]["vendor"], "GREGDIST")
         self.assertEqual(app.filtered_items[1]["vendor"], "GREGDIST")
         self.assertIn("GREGDIST", app.vendor_codes_used)
-        self.assertEqual(calls, [("refresh", ("0", "1")), "summary", ("vendor:selected", {"before": True})])
+        self.assertEqual(calls, ["flush", ("refresh", ("0", "1")), "summary", ("vendor:selected", {"before": True})])
 
     def test_bulk_apply_visible_with_bulk_sheet_refreshes_rows_once(self):
         calls = []
         app = SimpleNamespace(
             var_bulk_vendor=DummyVar("motion"),
-            bulk_sheet=SimpleNamespace(visible_row_ids=lambda: ("0", "1", "2")),
+            bulk_sheet=SimpleNamespace(
+                flush_pending_edit=lambda: calls.append("flush"),
+                visible_row_ids=lambda: ("0", "1", "2"),
+            ),
             filtered_items=[{"vendor": ""}, {"vendor": ""}, {"vendor": ""}],
             vendor_codes_used=[],
             _capture_bulk_history_state=lambda: {"before": True},
@@ -95,7 +111,26 @@ class AssignmentActionTests(unittest.TestCase):
 
         self.assertEqual([item["vendor"] for item in app.filtered_items], ["MOTION", "MOTION", "MOTION"])
         self.assertIn("MOTION", app.vendor_codes_used)
-        self.assertEqual(calls, [("refresh", ("0", "1", "2")), "summary", ("vendor:visible", {"before": True})])
+        self.assertEqual(calls, ["flush", ("refresh", ("0", "1", "2")), "summary", ("vendor:visible", {"before": True})])
+
+    def test_go_to_individual_flushes_pending_sheet_edit_before_switching_tabs(self):
+        calls = []
+        app = SimpleNamespace(
+            bulk_sheet=SimpleNamespace(flush_pending_edit=lambda: calls.append("flush")),
+            filtered_items=[{"vendor": ""}, {"vendor": "MOTION"}],
+            _check_stock_warnings=lambda: calls.append("warnings") or True,
+            _populate_assign_item=lambda: calls.append("populate"),
+            notebook=SimpleNamespace(
+                tab=lambda idx, state=None: calls.append(("tab", idx, state)),
+                select=lambda idx: calls.append(("select", idx)),
+            ),
+        )
+
+        ui_assignment_actions.go_to_individual(app)
+
+        self.assertEqual(app.assign_index, 0)
+        self.assertEqual(app.individual_items, [{"vendor": ""}])
+        self.assertEqual(calls, ["flush", "warnings", "populate", ("tab", 4, "normal"), ("select", 4)])
 
     def test_assign_current_advances_until_finish(self):
         populate_calls = []

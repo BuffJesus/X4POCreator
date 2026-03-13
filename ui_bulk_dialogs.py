@@ -9,6 +9,12 @@ from rules import enrich_item, evaluate_item_status, get_rule_pack_size, infer_d
 from ui_scroll import attach_vertical_mousewheel, sync_canvas_window
 
 
+def flush_pending_bulk_sheet_edit(app):
+    bulk_sheet = getattr(app, "bulk_sheet", None)
+    if bulk_sheet and hasattr(bulk_sheet, "flush_pending_edit"):
+        bulk_sheet.flush_pending_edit()
+
+
 def not_needed_reason(app, item, max_exceed_abs_buffer):
     reasons = []
     auto_remove = False
@@ -135,6 +141,7 @@ def not_needed_reason(app, item, max_exceed_abs_buffer):
 
 
 def bulk_remove_not_needed(app, scope, max_exceed_abs_buffer):
+    flush_pending_bulk_sheet_edit(app)
     if scope == "screen":
         row_ids = list(app.bulk_sheet.visible_row_ids()) if getattr(app, "bulk_sheet", None) else [
             iid for iid in app.bulk_tree.get_children() if app.bulk_tree.bbox(iid)
@@ -323,6 +330,7 @@ def bulk_remove_not_needed(app, scope, max_exceed_abs_buffer):
 
 
 def open_buy_rule_editor(app, idx, order_rules_file):
+    flush_pending_bulk_sheet_edit(app)
     item = app.filtered_items[idx]
     key = (item["line_code"], item["item_code"])
     rule_key = f"{item['line_code']}:{item['item_code']}"
@@ -492,6 +500,7 @@ def open_buy_rule_editor(app, idx, order_rules_file):
 
 
 def view_item_details(app):
+    flush_pending_bulk_sheet_edit(app)
     row_id = getattr(app, "_right_click_row_id", None) or (
         app.bulk_sheet.current_row_id() if getattr(app, "bulk_sheet", None) else None
     )
@@ -595,6 +604,7 @@ def _sales_window_label(item):
 
 
 def edit_buy_rule_from_bulk(app):
+    flush_pending_bulk_sheet_edit(app)
     right_click_context = getattr(app, "_right_click_bulk_context", None) or {}
     row_id = right_click_context.get("row_id")
     if row_id is None:
@@ -612,6 +622,7 @@ def edit_buy_rule_from_bulk(app):
 
 
 def resolve_review_from_bulk(app):
+    flush_pending_bulk_sheet_edit(app)
     row_id = getattr(app, "_right_click_row_id", None) or (
         app.bulk_sheet.current_row_id() if getattr(app, "bulk_sheet", None) else None
     )
@@ -631,6 +642,7 @@ def resolve_review_from_bulk(app):
 
 
 def dismiss_duplicate_from_bulk(app):
+    flush_pending_bulk_sheet_edit(app)
     row_id = getattr(app, "_right_click_row_id", None) or (
         app.bulk_sheet.current_row_id() if getattr(app, "bulk_sheet", None) else None
     )
@@ -642,6 +654,7 @@ def dismiss_duplicate_from_bulk(app):
 
 
 def check_stock_warnings(app):
+    flush_pending_bulk_sheet_edit(app)
     flagged = []
     for item in app.filtered_items:
         if not item.get("vendor"):
@@ -727,6 +740,7 @@ def check_stock_warnings(app):
 
 
 def finish_bulk_final(app):
+    flush_pending_bulk_sheet_edit(app)
     unresolved = [
         item for item in app.filtered_items
         if item.get("vendor") and item.get("review_required") and not item.get("review_resolved")
