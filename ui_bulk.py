@@ -475,16 +475,6 @@ def _changed_columns_require_rebuild(app, changed_cols):
     changed = {col for col in (changed_cols or ()) if col}
     if not changed:
         return not can_incremental_refresh(app)
-    if _filter_value(app, "var_bulk_lc_filter") != "ALL":
-        return True
-    if _filter_value(app, "var_bulk_source_filter") != "ALL":
-        return True
-    if _filter_value(app, "var_bulk_performance_filter") != "ALL":
-        return True
-    if _filter_value(app, "var_bulk_sales_health_filter") != "ALL":
-        return True
-    if _filter_value(app, "var_bulk_attention_filter") != "ALL":
-        return True
     if _filter_value(app, "var_bulk_status_filter") != "ALL" and "vendor" in changed:
         return True
     if _filter_value(app, "var_bulk_item_status") != "ALL" and changed.intersection({"final_qty", "qoh", "cur_min", "cur_max", "pack_size"}):

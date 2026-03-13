@@ -1057,8 +1057,8 @@ class POBuilderApp:
     def _update_bulk_summary(self):
         ui_bulk.update_bulk_summary(self)
 
-    def _refresh_bulk_view_after_edit(self, row_ids):
-        return ui_bulk.refresh_bulk_view_after_edit(self, row_ids)
+    def _refresh_bulk_view_after_edit(self, row_ids, changed_cols=None):
+        return ui_bulk.refresh_bulk_view_after_edit(self, row_ids, changed_cols=changed_cols)
 
     def _apply_bulk_filter(self):
         ui_bulk.apply_bulk_filter(self)
