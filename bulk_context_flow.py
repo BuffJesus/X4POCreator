@@ -23,7 +23,13 @@ def dismiss_duplicate(app, item_code):
 def ignore_from_bulk(app, askyesno, showinfo):
     right_click_context = getattr(app, "_right_click_bulk_context", None) or {}
     row_id = right_click_context.get("row_id")
-    if row_id is not None:
+    if row_id is not None and app.bulk_sheet and hasattr(app.bulk_sheet, "snapshot_row_ids"):
+        snapshot_row_ids = list(app.bulk_sheet.snapshot_row_ids())
+        if snapshot_row_ids and row_id in snapshot_row_ids:
+            row_ids = snapshot_row_ids
+        else:
+            row_ids = [row_id]
+    elif row_id is not None:
         row_ids = [row_id]
     elif app.bulk_sheet and app.bulk_sheet.explicit_selected_row_ids():
         row_ids = list(app.bulk_sheet.explicit_selected_row_ids())

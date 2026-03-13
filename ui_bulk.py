@@ -66,6 +66,7 @@ def build_bulk_tab(app, editable_cols):
     removal_buttons = [
         ttk.Button(removal_row, text="Remove Not Needed (On Screen)", command=app._bulk_remove_not_needed_visible),
         ttk.Button(removal_row, text="Remove Not Needed (Filtered)", command=app._bulk_remove_not_needed_filtered),
+        ttk.Button(removal_row, text="Add to Ignore List", command=app._ignore_from_bulk),
         ttk.Button(removal_row, text="Undo Last Remove", command=app._undo_last_bulk_removal),
     ]
     for idx, button in enumerate(removal_buttons):

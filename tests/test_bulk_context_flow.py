@@ -26,11 +26,12 @@ class BulkContextFlowTests(unittest.TestCase):
         self.assertNotIn("ABC123", fake_app.duplicate_ic_lookup)
         self.assertEqual(events, ["save", "filter"])
 
-    def test_ignore_from_bulk_prefers_right_click_row(self):
+    def test_ignore_from_bulk_uses_right_click_snapshot_selection_when_available(self):
         events = []
         fake_app = SimpleNamespace(
             _right_click_bulk_context={"row_id": "1"},
             bulk_sheet=SimpleNamespace(
+                snapshot_row_ids=lambda: ("0", "1"),
                 explicit_selected_row_ids=lambda: ("0",),
                 selected_row_ids=lambda: ("0",),
                 current_row_id=lambda: "0",
@@ -50,8 +51,34 @@ class BulkContextFlowTests(unittest.TestCase):
         )
 
         self.assertEqual(events[0], ("ask", "Ignore Item"))
+        self.assertEqual(events[1], ("ignore", {"AER-:GH781-4", "MOT-:ABC123"}))
+        self.assertEqual(events[2], ("info", "Ignored", "Ignored 2 item(s)."))
+
+    def test_ignore_from_bulk_falls_back_to_single_right_click_row_when_outside_snapshot(self):
+        events = []
+        fake_app = SimpleNamespace(
+            _right_click_bulk_context={"row_id": "1"},
+            bulk_sheet=SimpleNamespace(
+                snapshot_row_ids=lambda: ("0",),
+                explicit_selected_row_ids=lambda: ("0",),
+                selected_row_ids=lambda: ("0",),
+                current_row_id=lambda: "0",
+            ),
+            filtered_items=[
+                {"line_code": "AER-", "item_code": "GH781-4"},
+                {"line_code": "MOT-", "item_code": "ABC123"},
+            ],
+            _ignore_key=lambda lc, ic: f"{lc}:{ic}",
+            _ignore_items_by_keys=lambda keys: events.append(("ignore", keys)) or len(keys),
+        )
+
+        bulk_context_flow.ignore_from_bulk(
+            fake_app,
+            lambda title, message: events.append(("ask", title)) or True,
+            lambda title, message: events.append(("info", title, message)),
+        )
+
         self.assertEqual(events[1], ("ignore", {"MOT-:ABC123"}))
-        self.assertEqual(events[2], ("info", "Ignored", "Ignored 1 item(s)."))
 
 
 if __name__ == "__main__":
