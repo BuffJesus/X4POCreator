@@ -52,7 +52,7 @@ def bulk_apply_selected(app):
     elif vendor not in app.vendor_codes_used:
         app.vendor_codes_used.append(vendor)
     if getattr(app, "bulk_sheet", None) and hasattr(app, "_refresh_bulk_view_after_edit"):
-        app._refresh_bulk_view_after_edit(selected)
+        app._refresh_bulk_view_after_edit(selected, changed_cols=("vendor",))
     app._update_bulk_summary()
     if hasattr(app, "_finalize_bulk_history_action"):
         app._finalize_bulk_history_action("vendor:selected", before_state)
@@ -88,7 +88,7 @@ def bulk_apply_visible(app):
     elif vendor not in app.vendor_codes_used:
         app.vendor_codes_used.append(vendor)
     if getattr(app, "bulk_sheet", None) and hasattr(app, "_refresh_bulk_view_after_edit"):
-        app._refresh_bulk_view_after_edit(visible)
+        app._refresh_bulk_view_after_edit(visible, changed_cols=("vendor",))
     app._update_bulk_summary()
     if hasattr(app, "_finalize_bulk_history_action"):
         app._finalize_bulk_history_action("vendor:visible", before_state)

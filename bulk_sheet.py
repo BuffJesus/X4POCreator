@@ -249,7 +249,10 @@ class BulkSheetView:
             elif row_id is not None:
                 self.refresh_row(row_id, self.app._bulk_row_values(self.app.filtered_items[int(row_id)]))
         if pending and pending.get("editable"):
-            refreshed = self.app._refresh_bulk_view_after_edit(pending.get("target_row_ids", ()))
+            refreshed = self.app._refresh_bulk_view_after_edit(
+                pending.get("target_row_ids", ()),
+                changed_cols=(pending.get("col_name"),),
+            )
         else:
             refreshed = True
         write_debug("bulk_sheet.post_edit.filtered", incremental=bool(refreshed))
@@ -852,7 +855,7 @@ class BulkSheetView:
                 self.app._bulk_apply_editor_value(row_id, target_col, value)
             refreshed = False
             if hasattr(self.app, "_refresh_bulk_view_after_edit"):
-                refreshed = bool(self.app._refresh_bulk_view_after_edit(row_ids))
+                refreshed = bool(self.app._refresh_bulk_view_after_edit(row_ids, changed_cols=(target_col,)))
             if not refreshed:
                 self.app._apply_bulk_filter()
             self.clear_selection()
@@ -880,8 +883,13 @@ class BulkSheetView:
                     continue
                 self.app._bulk_apply_editor_value(row_id, col_name, value)
         refreshed = False
+        changed_cols = tuple(
+            col_name
+            for col_name in self.columns[current_col:current_col + max((len(row) for row in matrix), default=0)]
+            if col_name in self.editable_cols
+        )
         if hasattr(self.app, "_refresh_bulk_view_after_edit"):
-            refreshed = bool(self.app._refresh_bulk_view_after_edit(touched_row_ids))
+            refreshed = bool(self.app._refresh_bulk_view_after_edit(touched_row_ids, changed_cols=changed_cols))
         if not refreshed:
             self.app._apply_bulk_filter()
         self.clear_selection()

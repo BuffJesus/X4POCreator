@@ -469,8 +469,31 @@ def can_incremental_refresh(app):
     )
 
 
-def refresh_bulk_view_after_edit(app, row_ids):
-    if not can_incremental_refresh(app):
+def _changed_columns_require_rebuild(app, changed_cols):
+    if getattr(app, "_bulk_sort_col", None):
+        return True
+    changed = {col for col in (changed_cols or ()) if col}
+    if not changed:
+        return not can_incremental_refresh(app)
+    if _filter_value(app, "var_bulk_lc_filter") != "ALL":
+        return True
+    if _filter_value(app, "var_bulk_source_filter") != "ALL":
+        return True
+    if _filter_value(app, "var_bulk_performance_filter") != "ALL":
+        return True
+    if _filter_value(app, "var_bulk_sales_health_filter") != "ALL":
+        return True
+    if _filter_value(app, "var_bulk_attention_filter") != "ALL":
+        return True
+    if _filter_value(app, "var_bulk_status_filter") != "ALL" and "vendor" in changed:
+        return True
+    if _filter_value(app, "var_bulk_item_status") != "ALL" and changed.intersection({"final_qty", "qoh", "cur_min", "cur_max", "pack_size"}):
+        return True
+    return False
+
+
+def refresh_bulk_view_after_edit(app, row_ids, changed_cols=None):
+    if _changed_columns_require_rebuild(app, changed_cols):
         app._apply_bulk_filter()
         return False
     if not getattr(app, "bulk_sheet", None):
@@ -480,7 +503,7 @@ def refresh_bulk_view_after_edit(app, row_ids):
             idx = int(row_id)
         except (TypeError, ValueError):
             continue
-        if 0 <= idx < len(app.filtered_items):
+        if 0 <= idx < len(app.filtered_items) and str(row_id) in getattr(app.bulk_sheet, "row_lookup", {}):
             app.bulk_sheet.refresh_row(str(row_id), app._bulk_row_values(app.filtered_items[idx]))
     return True
 

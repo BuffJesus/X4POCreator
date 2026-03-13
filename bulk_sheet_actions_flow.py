@@ -106,7 +106,7 @@ def bulk_fill_selection_with_current_value(app, editable_cols, write_debug, even
     )
     for row_id in row_ids:
         app._bulk_apply_editor_value(row_id, col_name, value)
-    app._refresh_bulk_view_after_edit(row_ids)
+    app._refresh_bulk_view_after_edit(row_ids, changed_cols=(col_name,))
     app.bulk_sheet.clear_selection()
     app._update_bulk_summary()
     app._update_bulk_cell_status()
@@ -180,7 +180,7 @@ def bulk_begin_edit(app, editable_cols, askstring, write_debug, event=None):
     )
     for row_id in row_ids:
         app._bulk_apply_editor_value(row_id, col_name, value)
-    app._refresh_bulk_view_after_edit(row_ids)
+    app._refresh_bulk_view_after_edit(row_ids, changed_cols=(col_name,))
     for row_id in row_ids[:12]:
         try:
             rendered = app._bulk_row_values(app.filtered_items[int(row_id)])
@@ -250,7 +250,7 @@ def bulk_fill_selected_cells(app, editable_cols, askstring, showinfo):
     before_state = app._capture_bulk_history_state() if hasattr(app, "_capture_bulk_history_state") else None
     for row_id in row_ids:
         app._bulk_apply_editor_value(row_id, col_name, value.strip())
-    app._refresh_bulk_view_after_edit(row_ids)
+    app._refresh_bulk_view_after_edit(row_ids, changed_cols=(col_name,))
     if app.bulk_sheet:
         app.bulk_sheet.clear_selection()
     app._update_bulk_summary()
@@ -275,7 +275,7 @@ def bulk_clear_selected_cells(app, editable_cols, showinfo):
     before_state = app._capture_bulk_history_state() if hasattr(app, "_capture_bulk_history_state") else None
     for row_id in row_ids:
         app._bulk_apply_editor_value(row_id, col_name, "")
-    app._refresh_bulk_view_after_edit(row_ids)
+    app._refresh_bulk_view_after_edit(row_ids, changed_cols=(col_name,))
     if app.bulk_sheet:
         app.bulk_sheet.clear_selection()
     app._update_bulk_summary()
