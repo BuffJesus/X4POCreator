@@ -77,6 +77,7 @@ class AssignmentActionTests(unittest.TestCase):
                 selected_row_ids=lambda: ("0", "1"),
             ),
             filtered_items=[{"vendor": ""}, {"vendor": ""}],
+            _bulk_summary_counts={"total": 2, "assigned": 0, "review": 0, "warning": 0},
             vendor_codes_used=[],
             _capture_bulk_history_state=lambda: {"before": True},
             _refresh_bulk_view_after_edit=lambda row_ids: calls.append(("refresh", tuple(row_ids))),
@@ -90,6 +91,7 @@ class AssignmentActionTests(unittest.TestCase):
         self.assertEqual(app.filtered_items[1]["vendor"], "GREGDIST")
         self.assertIn("GREGDIST", app.vendor_codes_used)
         self.assertEqual(calls, ["flush", ("refresh", ("0", "1")), "summary", ("vendor:selected", {"before": True})])
+        self.assertEqual(app._bulk_summary_counts, {"total": 2, "assigned": 2, "review": 0, "warning": 0})
 
     def test_bulk_apply_visible_with_bulk_sheet_refreshes_rows_once(self):
         calls = []

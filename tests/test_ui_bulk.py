@@ -11,6 +11,35 @@ import ui_bulk
 
 
 class UIBulkTests(unittest.TestCase):
+    def test_update_bulk_summary_uses_cached_counts_when_available(self):
+        label = SimpleNamespace(config=lambda **kwargs: setattr(label, "text", kwargs.get("text", "")))
+        fake_app = SimpleNamespace(
+            filtered_items=[{"vendor": ""}, {"vendor": "MOTION"}],
+            _bulk_summary_counts={"total": 2, "assigned": 1, "review": 0, "warning": 1},
+            lbl_bulk_summary=label,
+        )
+
+        ui_bulk.update_bulk_summary(fake_app)
+
+        self.assertIn("2 total", label.text)
+        self.assertIn("1 assigned", label.text)
+        self.assertIn("1 warning", label.text)
+
+    def test_adjust_bulk_summary_for_item_change_updates_cached_counts(self):
+        fake_app = SimpleNamespace(
+            filtered_items=[{"vendor": "OLD", "status": "review"}],
+            _bulk_summary_counts={"total": 1, "assigned": 1, "review": 1, "warning": 0},
+        )
+
+        result = ui_bulk.adjust_bulk_summary_for_item_change(
+            fake_app,
+            {"vendor": "OLD", "status": "review"},
+            {"vendor": "", "status": "warning"},
+        )
+
+        self.assertTrue(result)
+        self.assertEqual(fake_app._bulk_summary_counts, {"total": 1, "assigned": 0, "review": 0, "warning": 1})
+
     def test_flush_pending_bulk_sheet_edit_calls_sheet_hook(self):
         events = []
         fake_app = SimpleNamespace(
@@ -85,6 +114,7 @@ class UIBulkTests(unittest.TestCase):
 
     def test_apply_bulk_filter_honors_performance_health_and_attention_filters(self):
         captured = []
+        label = SimpleNamespace(config=lambda **kwargs: setattr(label, "text", kwargs.get("text", "")))
         fake_app = SimpleNamespace(
             filtered_items=[
                 {
@@ -128,6 +158,7 @@ class UIBulkTests(unittest.TestCase):
             order_rules={},
             bulk_tree_columns=(),
             bulk_tree_labels={},
+            lbl_bulk_summary=label,
         )
 
         ui_bulk.apply_bulk_filter(fake_app)
@@ -135,9 +166,11 @@ class UIBulkTests(unittest.TestCase):
         self.assertEqual(captured[0], ("flush",))
         self.assertEqual(captured[1][1], ["0"])
         self.assertEqual(captured[1][0][0][2], "A")
+        self.assertEqual(fake_app._bulk_summary_counts, {"total": 2, "assigned": 2, "review": 0, "warning": 0})
 
     def test_sort_bulk_tree_flushes_pending_edit_before_sorting(self):
         events = []
+        label = SimpleNamespace(config=lambda **kwargs: setattr(label, "text", kwargs.get("text", "")))
         fake_app = SimpleNamespace(
             bulk_sheet=SimpleNamespace(
                 flush_pending_edit=lambda: events.append("flush"),
@@ -165,6 +198,7 @@ class UIBulkTests(unittest.TestCase):
             var_bulk_performance_filter=SimpleNamespace(get=lambda: "ALL"),
             var_bulk_sales_health_filter=SimpleNamespace(get=lambda: "ALL"),
             var_bulk_attention_filter=SimpleNamespace(get=lambda: "ALL"),
+            lbl_bulk_summary=label,
         )
 
         ui_bulk.sort_bulk_tree(fake_app, "item_code")

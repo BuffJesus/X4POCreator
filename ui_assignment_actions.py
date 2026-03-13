@@ -1,5 +1,7 @@
 from tkinter import messagebox
 
+import ui_bulk
+
 
 def flush_pending_bulk_sheet_edit(app):
     bulk_sheet = getattr(app, "bulk_sheet", None)
@@ -33,7 +35,16 @@ def bulk_apply_selected(app):
     before_state = app._capture_bulk_history_state() if hasattr(app, "_capture_bulk_history_state") else None
     for item_id in selected:
         idx = int(item_id)
+        before_summary_item = {
+            "vendor": app.filtered_items[idx].get("vendor", ""),
+            "status": app.filtered_items[idx].get("status", ""),
+        }
         app.filtered_items[idx]["vendor"] = vendor
+        ui_bulk.adjust_bulk_summary_for_item_change(
+            app,
+            before_summary_item,
+            {"vendor": app.filtered_items[idx].get("vendor", ""), "status": app.filtered_items[idx].get("status", "")},
+        )
         if not getattr(app, "bulk_sheet", None):
             app.bulk_tree.set(item_id, "vendor", vendor)
     if hasattr(app, "_remember_vendor_code"):
@@ -60,7 +71,16 @@ def bulk_apply_visible(app):
     before_state = app._capture_bulk_history_state() if hasattr(app, "_capture_bulk_history_state") else None
     for item_id in visible:
         idx = int(item_id)
+        before_summary_item = {
+            "vendor": app.filtered_items[idx].get("vendor", ""),
+            "status": app.filtered_items[idx].get("status", ""),
+        }
         app.filtered_items[idx]["vendor"] = vendor
+        ui_bulk.adjust_bulk_summary_for_item_change(
+            app,
+            before_summary_item,
+            {"vendor": app.filtered_items[idx].get("vendor", ""), "status": app.filtered_items[idx].get("status", "")},
+        )
         if not getattr(app, "bulk_sheet", None):
             app.bulk_tree.set(item_id, "vendor", vendor)
     if hasattr(app, "_remember_vendor_code"):

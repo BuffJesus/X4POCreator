@@ -64,6 +64,22 @@ That means the app still needs a stronger concept of edit-target integrity:
 - the next click or active-cell change must not be wiped out by cleanup from the previous edit
 - delayed refresh work must not reuse stale row, column, or selection state
 
+## Bulk editor large-session performance risk
+
+The bulk editor is now safer, but very large active sessions can still feel sluggish because some post-edit work still scales with the full active list instead of just the touched rows.
+
+Current pressure points:
+
+- bulk summary updates can still rescan the full active session after simple edits
+- any fallback to full filter rebuild still walks all active items
+- large sessions that have been visually narrowed down can still pay for hidden items if they remain in `filtered_items`
+
+This matters most when:
+
+- the active session still contains tens of thousands of items
+- the user is editing a much smaller working subset
+- edits are frequent enough that summary/filter work dominates the actual row mutation cost
+
 ## Likely failure modes to eliminate
 
 These are the main edge cases the `0.2.5` line should explicitly harden.
@@ -353,6 +369,7 @@ Checklist:
 - [ ] add explainable `why` text for trigger-driven reorders
 - [ ] add regression tests for rapid consecutive bulk-sheet edits across different rows and editable columns
 - [ ] verify that vendor -> pack size, pack size -> vendor, and qty -> vendor edit sequences never apply to the previous cell
+- [ ] stop rescanning the full active session for simple bulk-summary updates after common edits
 
 ## `0.2.4`
 
@@ -388,6 +405,7 @@ Checklist:
 - [ ] guarantee bulk-editor edit-target integrity under rapid click-edit, keyboard-edit, filtered, sorted, and multi-selection workflows
 - [ ] document the expected precedence between current cell, selected cells, selected rows, and right-click snapshot state
 - [ ] ensure undo/history boundaries still match what the user perceives as one edit
+- [ ] separate full-session, active-filtered, and visible-row performance paths so very large sessions do not penalize small working subsets unnecessarily
 
 ## Concrete algorithm ideas to test
 

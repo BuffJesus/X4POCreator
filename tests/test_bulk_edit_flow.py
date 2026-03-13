@@ -19,6 +19,7 @@ class BulkEditFlowTests(unittest.TestCase):
             inventory_lookup={},
             order_rules={},
             _remember_vendor_code=lambda value: events.append(("remember", value)),
+            _bulk_summary_counts={"total": 1, "assigned": 0, "review": 0, "warning": 0},
         )
 
         bulk_edit_flow.apply_editor_value(
@@ -34,6 +35,7 @@ class BulkEditFlowTests(unittest.TestCase):
         self.assertEqual(fake_app.filtered_items[0]["vendor"], "SOURCE")
         self.assertIn(("remember", "SOURCE"), events)
         self.assertNotIn(("summary", None), events)
+        self.assertEqual(fake_app._bulk_summary_counts, {"total": 1, "assigned": 1, "review": 0, "warning": 0})
 
     def test_apply_editor_value_cur_max_creates_inventory_stub_and_recalculates(self):
         events = []

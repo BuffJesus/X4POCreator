@@ -321,14 +321,16 @@ def populate_bulk_tree(app):
     lc_set = set()
     row_ids = []
     rows = []
+    counts = {"total": len(app.filtered_items), "assigned": 0, "review": 0, "warning": 0}
     for i, item in enumerate(app.filtered_items):
         lc_set.add(item["line_code"])
         row_ids.append(str(i))
         rows.append(list(bulk_row_values(app, item)))
+        _accumulate_summary_counts(counts, item)
 
     app.combo_bulk_lc["values"] = ["ALL"] + sorted(lc_set)
     app.combo_bulk_vendor["values"] = app.vendor_codes_used
-    update_bulk_summary(app)
+    update_bulk_summary(app, counts=counts)
     if app.bulk_sheet:
         app.bulk_sheet.set_rows(rows, row_ids)
 
@@ -379,18 +381,60 @@ def bulk_row_values(app, item):
     )
 
 
-def update_bulk_summary(app):
-    total = len(app.filtered_items)
-    assigned = sum(1 for item in app.filtered_items if item.get("vendor"))
+def _blank_summary_counts(total=0):
+    return {"total": total, "assigned": 0, "review": 0, "warning": 0}
+
+
+def _accumulate_summary_counts(counts, item, sign=1):
+    if item.get("vendor"):
+        counts["assigned"] += sign
+    if item.get("status") == "review":
+        counts["review"] += sign
+    if item.get("status") == "warning":
+        counts["warning"] += sign
+
+
+def _recompute_summary_counts(items):
+    counts = _blank_summary_counts(total=len(items))
+    for item in items:
+        _accumulate_summary_counts(counts, item)
+    return counts
+
+
+def update_bulk_summary(app, counts=None):
+    if counts is None:
+        cached = getattr(app, "_bulk_summary_counts", None)
+        if cached and cached.get("total") == len(app.filtered_items):
+            counts = dict(cached)
+        else:
+            counts = _recompute_summary_counts(app.filtered_items)
+    else:
+        counts = dict(counts)
+    app._bulk_summary_counts = counts
+    total = counts["total"]
+    assigned = counts["assigned"]
+    review_count = counts["review"]
+    warning_count = counts["warning"]
     unassigned = total - assigned
-    review_count = sum(1 for item in app.filtered_items if item.get("status") == "review")
-    warning_count = sum(1 for item in app.filtered_items if item.get("status") == "warning")
     parts = [f"{total} total", f"{assigned} assigned", f"{unassigned} unassigned"]
     if review_count:
         parts.append(f"{review_count} review")
     if warning_count:
         parts.append(f"{warning_count} warning")
-    app.lbl_bulk_summary.config(text="  ·  ".join(parts))
+    label = getattr(app, "lbl_bulk_summary", None)
+    if label is not None and hasattr(label, "config"):
+        label.config(text="  ·  ".join(parts))
+
+
+def adjust_bulk_summary_for_item_change(app, before_item, after_item):
+    cached = getattr(app, "_bulk_summary_counts", None)
+    if not cached or cached.get("total") != len(app.filtered_items):
+        return False
+    counts = dict(cached)
+    _accumulate_summary_counts(counts, before_item, sign=-1)
+    _accumulate_summary_counts(counts, after_item, sign=1)
+    app._bulk_summary_counts = counts
+    return True
 
 
 def _filter_value(app, attr_name, default="ALL"):
@@ -453,7 +497,9 @@ def apply_bulk_filter(app):
 
     rows = []
     row_ids = []
+    counts = {"total": len(app.filtered_items), "assigned": 0, "review": 0, "warning": 0}
     for i, item in enumerate(app.filtered_items):
+        _accumulate_summary_counts(counts, item)
         if lc_filter != "ALL" and item["line_code"] != lc_filter:
             continue
         if status_filter == "Assigned" and not item.get("vendor"):
@@ -500,6 +546,7 @@ def apply_bulk_filter(app):
                 continue
         row_ids.append(str(i))
         rows.append(list(bulk_row_values(app, item)))
+    update_bulk_summary(app, counts=counts)
     if app.bulk_sheet:
         app.bulk_sheet.set_rows(rows, row_ids)
 

@@ -6,6 +6,12 @@ from ui_grid_edit import TreeGridEditor
 from ui_scroll import attach_vertical_mousewheel
 
 
+def flush_pending_bulk_sheet_edit(app):
+    bulk_sheet = getattr(app, "bulk_sheet", None)
+    if bulk_sheet and hasattr(bulk_sheet, "flush_pending_edit"):
+        bulk_sheet.flush_pending_edit()
+
+
 def build_review_tab(app):
     frame = ttk.Frame(app.notebook, padding=16)
     app.notebook.add(frame, text="  6. Review & Export  ")
@@ -145,6 +151,7 @@ def review_row_values(item):
 
 
 def populate_review_tab(app):
+    flush_pending_bulk_sheet_edit(app)
     for item in app.tree.get_children():
         app.tree.delete(item)
     for i, item in enumerate(app.assigned_items):
@@ -168,6 +175,7 @@ def update_review_summary(app):
 
 
 def apply_review_filter(app):
+    flush_pending_bulk_sheet_edit(app)
     vendor_filter = app.var_vendor_filter.get()
     performance_filter = app.var_review_performance_filter.get()
     attention_filter = app.var_review_attention_filter.get()
@@ -198,6 +206,7 @@ def apply_review_filter(app):
 
 
 def sort_tree(app, col):
+    flush_pending_bulk_sheet_edit(app)
     items = [(app.tree.set(k, col), k) for k in app.tree.get_children("")]
     try:
         items.sort(key=lambda t: float(t[0]))

@@ -1,6 +1,7 @@
 import json
 
 import item_workflow
+import ui_bulk
 
 
 def apply_editor_value(app, row_id, col_name, raw, editable_cols, get_rule_key, write_debug):
@@ -14,6 +15,7 @@ def apply_editor_value(app, row_id, col_name, raw, editable_cols, get_rule_key, 
         write_debug("bulk_apply_editor_value.skip", row_id=row_id, col_name=col_name, reason="not_editable")
         return
     item = app.filtered_items[idx]
+    before_summary_item = {"vendor": item.get("vendor", ""), "status": item.get("status", "")}
     key = (item["line_code"], item["item_code"])
     inv = app.inventory_lookup.get(key, {})
     if col_name == "vendor":
@@ -110,3 +112,8 @@ def apply_editor_value(app, row_id, col_name, raw, editable_cols, get_rule_key, 
             )
         except ValueError:
             write_debug("bulk_apply_editor_value.error", row_id=row_id, col_name=col_name, raw=str(raw), reason="value_error")
+    ui_bulk.adjust_bulk_summary_for_item_change(
+        app,
+        before_summary_item,
+        {"vendor": item.get("vendor", ""), "status": item.get("status", "")},
+    )
