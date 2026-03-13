@@ -9,6 +9,9 @@ This release is the strongest `0.1.x` stepping stone toward `v0.2.0` so far. It 
 ## Highlights
 
 - Continued decomposing `po_builder.py` into focused helper modules without changing user-facing workflow behavior.
+- Normalized demand to the effective report span so long sales windows do not inflate reorder suggestions unrealistically.
+- Improved bulk right-click and removal behavior so context-menu actions better respect the intended row selection.
+- Added a clearer release/debug build path in `build.bat` and aligned packaging specs around the current asset set.
 - Added direct regression coverage for shared-data refresh, persistence helpers, runtime/update behavior, loading helpers, reorder calculations, UI state helpers, review editing, and bulk-sheet actions.
 - Kept the full automated suite green while increasing coverage from `175` passing tests at the start of this work to `205`.
 
@@ -37,8 +40,15 @@ These extractions keep `POBuilderApp` method names stable while moving logic beh
 ## Workflow Reliability
 
 - Reorder-cycle and recent-order refresh behavior now live in dedicated helpers with direct tests.
+- Demand signals are now normalized against the detected sales report span before suggestion logic is applied, reducing over-ordering risk from long export windows.
 - Review edit application for vendor, quantity, and pack-size paths is extracted and covered directly.
 - Bulk-sheet selection, shortcut fill, navigation, and begin-edit helper paths continue to behave the same while living outside the main controller.
+- Bulk right-click selection handling now preserves in-selection context more reliably before the menu command fires.
+
+## Build And Packaging
+
+- `build.bat` now supports a `debug` mode for console-visible troubleshooting and a clearer release build path.
+- Packaging specs were adjusted to match the current bundled assets and openpyxl build flow.
 
 ## Verification
 

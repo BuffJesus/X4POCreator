@@ -22,6 +22,7 @@ def parse_all_files(paths, *, old_po_warning_days, short_sales_window_days, now=
     sales_start, sales_end = parsers.parse_sales_date_range(paths["sales"])
     if sales_start and sales_end:
         span_days = (sales_end.date() - sales_start.date()).days + 1
+        result["sales_span_days"] = span_days
         if span_days < short_sales_window_days:
             warnings.append((
                 "Sales Window Warning",

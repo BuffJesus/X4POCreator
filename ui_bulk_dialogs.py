@@ -171,7 +171,7 @@ def bulk_remove_not_needed(app, scope, max_exceed_abs_buffer):
     ).pack(anchor="w", padx=16, pady=(16, 4))
     ttk.Label(
         dlg,
-        text="Uncheck any item you want to keep. Checked items will be removed from this session.",
+        text="Click the Remove column to toggle. Checked items (☑) will be removed from this session.",
         style="SubHeader.TLabel",
         wraplength=900,
     ).pack(anchor="w", padx=16, pady=(0, 12))
@@ -179,77 +179,111 @@ def bulk_remove_not_needed(app, scope, max_exceed_abs_buffer):
     container = ttk.Frame(dlg)
     container.pack(fill=tk.BOTH, expand=True, padx=16)
 
-    canvas = tk.Canvas(container, highlightthickness=0, bg="#1e1e2e")
-    scrollbar = ttk.Scrollbar(container, orient="vertical", command=canvas.yview)
-    inner = ttk.Frame(canvas)
-    inner.bind("<Configure>", lambda e: sync_canvas_window(canvas, content_window))
-    content_window = canvas.create_window((0, 0), window=inner, anchor="nw")
-    canvas.configure(yscrollcommand=scrollbar.set)
-    canvas.bind("<Configure>", lambda e: sync_canvas_window(canvas, content_window, width=e.width))
-    canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-    scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+    columns = ("remove", "lc", "item_code", "description", "final_qty", "qoh", "max", "sug_max", "reason")
+    tree = ttk.Treeview(container, columns=columns, show="headings", selectmode="extended")
 
-    headers = ["Remove", "LC", "Item Code", "Description", "Final Qty", "QOH", "Max", "Sug Max", "Why This Qty"]
-    widths = [7, 6, 14, 24, 7, 7, 6, 8, 18]
-    for c, (hdr, width) in enumerate(zip(headers, widths)):
-        ttk.Label(inner, text=hdr, width=width, font=("Segoe UI", 9, "bold"), foreground="#c9a0dc").grid(
-            row=0, column=c, sticky="w", padx=2, pady=4
-        )
-    inner.grid_columnconfigure(8, weight=1)
+    col_cfg = [
+        ("remove",      "Remove",    52,  "center"),
+        ("lc",          "LC",        52,  "w"),
+        ("item_code",   "Item Code", 110, "w"),
+        ("description", "Desc",      200, "w"),
+        ("final_qty",   "Qty",       52,  "center"),
+        ("qoh",         "QOH",       52,  "center"),
+        ("max",         "Max",       52,  "center"),
+        ("sug_max",     "Sug Max",   64,  "center"),
+        ("reason",      "Why This Qty", 400, "w"),
+    ]
+    for col, heading, width, anchor in col_cfg:
+        tree.heading(col, text=heading)
+        tree.column(col, width=width, anchor=anchor, stretch=(col == "reason"))
 
-    checks = []
-    for r, (idx, item, reason, auto_remove) in enumerate(candidates, 1):
+    vsb = ttk.Scrollbar(container, orient="vertical", command=tree.yview)
+    hsb = ttk.Scrollbar(container, orient="horizontal", command=tree.xview)
+    tree.configure(yscrollcommand=vsb.set, xscrollcommand=hsb.set)
+    tree.grid(row=0, column=0, sticky="nsew")
+    vsb.grid(row=0, column=1, sticky="ns")
+    hsb.grid(row=1, column=0, sticky="ew")
+    container.grid_rowconfigure(0, weight=1)
+    container.grid_columnconfigure(0, weight=1)
+
+    # checked_set holds the tree iid strings of rows marked for removal
+    checked_set = set()
+
+    for r, (idx, item, reason, auto_remove) in enumerate(candidates):
         key = (item["line_code"], item["item_code"])
         inv = app.inventory_lookup.get(key, {})
         qoh = inv.get("qoh", 0)
-        qoh_display = "" if qoh is None else f"{qoh:g}"
         cur_max = inv.get("max")
         _, sug_max = app._suggest_min_max(key)
         final_qty = item.get("final_qty", item.get("order_qty", 0))
-
-        var = tk.BooleanVar(value=auto_remove)
-        checks.append((var, idx))
-        ttk.Checkbutton(inner, variable=var).grid(row=r, column=0, sticky="w", padx=2, pady=1)
-        ttk.Label(inner, text=item["line_code"], width=6).grid(row=r, column=1, sticky="w", padx=2)
-        ttk.Label(inner, text=item["item_code"], width=14).grid(row=r, column=2, sticky="w", padx=2)
-        ttk.Label(
-            inner,
-            text=item.get("description", "")[:64],
-            width=24,
-            wraplength=240,
-            justify="left",
-        ).grid(row=r, column=3, sticky="w", padx=2)
-        ttk.Label(inner, text=str(final_qty), width=7).grid(row=r, column=4, sticky="w", padx=2)
-        ttk.Label(inner, text=qoh_display, width=7).grid(row=r, column=5, sticky="w", padx=2)
-        ttk.Label(inner, text=str(cur_max) if cur_max is not None else "", width=6).grid(row=r, column=6, sticky="w", padx=2)
-        ttk.Label(inner, text=str(sug_max) if sug_max is not None else "", width=8).grid(row=r, column=7, sticky="w", padx=2)
-        ttk.Label(inner, text=reason, foreground="#f0c060", wraplength=560, justify="left").grid(
-            row=r, column=8, sticky="ew", padx=2
+        iid = str(r)
+        mark = "☑" if auto_remove else "☐"
+        tree.insert(
+            "", "end", iid=iid,
+            values=(
+                mark,
+                item["line_code"],
+                item["item_code"],
+                item.get("description", "")[:80],
+                f"{final_qty:g}",
+                f"{qoh:g}",
+                str(cur_max) if cur_max is not None else "",
+                str(sug_max) if sug_max is not None else "",
+                reason,
+            ),
         )
+        if auto_remove:
+            checked_set.add(iid)
 
     result = {"removed": 0}
+
     footer = ttk.Frame(dlg)
     footer.pack(fill=tk.X, padx=16, pady=(4, 0))
     lbl_selected = ttk.Label(footer, text="", style="Info.TLabel")
     lbl_selected.pack(side=tk.LEFT)
 
-    def _update_selected_count():
-        selected = sum(1 for var, _ in checks if var.get())
-        lbl_selected.config(text=f"{selected} selected for removal")
+    def _update_count():
+        lbl_selected.config(text=f"{len(checked_set)} selected for removal")
+
+    def _toggle(event):
+        region = tree.identify_region(event.x, event.y)
+        col = tree.identify_column(event.x)
+        iid = tree.identify_row(event.y)
+        if not iid:
+            return
+        # toggle on click anywhere in the Remove column, or on double-click anywhere
+        if region == "cell" and (col == "#1" or event.type == tk.EventType.Double):
+            if iid in checked_set:
+                checked_set.discard(iid)
+                tree.set(iid, "remove", "☐")
+            else:
+                checked_set.add(iid)
+                tree.set(iid, "remove", "☑")
+            _update_count()
+
+    tree.bind("<ButtonRelease-1>", _toggle)
 
     def _set_all(state):
-        for var, _ in checks:
-            var.set(state)
-        _update_selected_count()
+        for r in range(len(candidates)):
+            iid = str(r)
+            if state:
+                checked_set.add(iid)
+                tree.set(iid, "remove", "☑")
+            else:
+                checked_set.discard(iid)
+                tree.set(iid, "remove", "☐")
+        _update_count()
 
-    ttk.Button(footer, text="Select All", command=lambda: _set_all(True)).pack(side=tk.RIGHT, padx=4)
+    ttk.Button(footer, text="Select All",   command=lambda: _set_all(True)).pack(side=tk.RIGHT, padx=4)
     ttk.Button(footer, text="Deselect All", command=lambda: _set_all(False)).pack(side=tk.RIGHT, padx=4)
-    for var, _ in checks:
-        var.trace_add("write", lambda *_: _update_selected_count())
-    _update_selected_count()
+    _update_count()
 
     def _confirm():
-        remove_indices = sorted([idx for var, idx in checks if var.get()], reverse=True)
+        # map tree iid -> original candidate index
+        remove_indices = sorted(
+            [candidates[int(iid)][0] for iid in checked_set],
+            reverse=True,
+        )
         removed_payload = []
         for idx in remove_indices:
             if 0 <= idx < len(app.filtered_items):
@@ -261,10 +295,10 @@ def bulk_remove_not_needed(app, scope, max_exceed_abs_buffer):
 
     btn_frame = ttk.Frame(dlg)
     btn_frame.pack(fill=tk.X, padx=16, pady=12)
-    ttk.Button(btn_frame, text="Cancel", command=dlg.destroy).pack(side=tk.LEFT, padx=4)
+    ttk.Button(btn_frame, text="Cancel",         command=dlg.destroy).pack(side=tk.LEFT,  padx=4)
     ttk.Button(btn_frame, text="Remove Checked", style="Big.TButton", command=_confirm).pack(side=tk.RIGHT, padx=4)
 
-    attach_vertical_mousewheel(canvas, canvas, inner)
+    attach_vertical_mousewheel(tree)
     app._autosize_dialog(dlg, min_w=1120, min_h=560, max_w_ratio=0.98, max_h_ratio=0.92)
     dlg.wait_window()
 

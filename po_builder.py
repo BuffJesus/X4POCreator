@@ -8,7 +8,6 @@ quantities, and exports one .xlsx file per vendor in the X4 import format.
 """
 
 import csv
-import math
 import os
 import sys
 import threading
@@ -22,6 +21,8 @@ from datetime import datetime
 import json
 import app_runtime_flow
 import assignment_flow
+import bulk_context_flow
+import bulk_edit_flow
 import bulk_sheet_actions_flow
 import data_folder_flow
 import export_flow
@@ -100,6 +101,7 @@ MIN_ANNUAL_SALES_FOR_SUGGESTIONS = 3
 MAX_EXCEED_MARGIN = 1.5
 MAX_EXCEED_ABS_BUFFER = 5
 MAX_LOADING_GIF_FRAMES = 90
+CORNER_LOADING_GIF_SIZE = (52, 52)
 BULK_EDITABLE_COLS = ("vendor", "final_qty", "qoh", "cur_min", "cur_max", "pack_size")
 REVIEW_EDITABLE_COLS = ("vendor", "order_qty", "pack_size")
 BULK_SHORTCUTS_TEXT = """Current bulk-sheet shortcuts
@@ -148,12 +150,19 @@ def get_rule_key(line_code, item_code):
 
 
 def load_app_version(path=VERSION_FILE):
-    try:
-        with open(path, "r", encoding="utf-8") as handle:
-            value = handle.read().strip()
-            return value or "dev"
-    except Exception:
-        return "dev"
+    candidate_paths = [path]
+    bundled_path = os.path.join(_BUNDLE_DIR, "VERSION")
+    if bundled_path not in candidate_paths:
+        candidate_paths.append(bundled_path)
+    for candidate in candidate_paths:
+        try:
+            with open(candidate, "r", encoding="utf-8") as handle:
+                value = handle.read().strip()
+                if value:
+                    return value
+        except Exception:
+            continue
+    return "dev"
 
 
 APP_VERSION = load_app_version()
@@ -378,6 +387,11 @@ class POBuilderApp:
         self._loading_frame_idx = 0
         self._loading_after_id = None
         self._loading_frames_loaded = False
+        self._corner_loading_label = None
+        self._corner_loading_frames = []
+        self._corner_loading_frame_idx = 0
+        self._corner_loading_after_id = None
+        self._corner_loading_frames_loaded = False
 
         self._build_tab_load()
         self._build_tab_exclude()
@@ -386,6 +400,7 @@ class POBuilderApp:
         self._build_tab_individual_assign()
         self._build_tab_review()
         self._build_tab_help()
+        self._show_corner_loading_gif()
 
         # Disable tabs 2-6 until data is loaded
         for i in (1, 2, 3, 4, 5):
@@ -472,46 +487,42 @@ class POBuilderApp:
         if self._loading_frames_loaded:
             return
         self._loading_frames_loaded = True
-        gif_path = LOADING_GIF_FILE
-        if not os.path.exists(gif_path):
+        self._loading_frames = loading_flow.load_gif_frames(
+            LOADING_GIF_FILE,
+            target_size=(200, 200),
+            max_frames=MAX_LOADING_GIF_FRAMES,
+            has_pil=HAS_PIL,
+            image_module=Image if HAS_PIL else None,
+            image_tk_module=ImageTk if HAS_PIL else None,
+            tk_module=tk,
+        )
+
+    def _load_corner_gif_frames(self):
+        """Load small animated GIF frames for the notebook corner."""
+        if self._corner_loading_frames_loaded:
             return
+        self._corner_loading_frames_loaded = True
+        self._corner_loading_frames = loading_flow.load_gif_frames(
+            LOADING_GIF_FILE,
+            target_size=CORNER_LOADING_GIF_SIZE,
+            max_frames=MAX_LOADING_GIF_FRAMES,
+            has_pil=HAS_PIL,
+            image_module=Image if HAS_PIL else None,
+            image_tk_module=ImageTk if HAS_PIL else None,
+            tk_module=tk,
+        )
 
-        # Preferred path: Pillow (supports resizing and smooth animation).
-        if HAS_PIL:
-            try:
-                img = Image.open(gif_path)
-                target_size = (200, 200)
-                frame_count = max(1, int(getattr(img, "n_frames", 1)))
-                step = max(1, math.ceil(frame_count / MAX_LOADING_GIF_FRAMES))
-                for i in range(0, frame_count, step):
-                    img.seek(i)
-                    frame = img.copy().convert("RGBA").resize(target_size, Image.LANCZOS)
-                    self._loading_frames.append(ImageTk.PhotoImage(frame))
-                if self._loading_frames:
-                    return
-            except Exception:
-                self._loading_frames = []
-
-        # Fallback path: Tk PhotoImage frame extraction (helps in debug env issues).
-        try:
-            target_w, target_h = 200, 200
-            i = 0
-            while True:
-                if i >= MAX_LOADING_GIF_FRAMES:
-                    break
-                frame = tk.PhotoImage(file=gif_path, format=f"gif -index {i}")
-                fw = max(1, frame.width())
-                fh = max(1, frame.height())
-                # Resize fallback frames toward the same target size used by PIL path.
-                sx = max(1, round(fw / target_w))
-                sy = max(1, round(fh / target_h))
-                if sx > 1 or sy > 1:
-                    frame = frame.subsample(sx, sy)
-                self._loading_frames.append(frame)
-                i += 1
-        except Exception:
-            # Stop when no more frames; keep whatever loaded.
-            pass
+    def _show_corner_loading_gif(self):
+        if not self._corner_loading_frames_loaded:
+            self._load_corner_gif_frames()
+        label = loading_flow.ensure_corner_loading_gif(
+            self,
+            lambda parent: tk.Label(parent, bg="#1e1e2e", borderwidth=0, highlightthickness=0),
+        )
+        if label is None or self._corner_loading_after_id is not None:
+            return
+        self._corner_loading_frame_idx = 0
+        self._animate_corner_loading()
 
     def _show_loading(self, text="Loading..."):
         """Show the dancing cat loading overlay."""
@@ -562,6 +573,10 @@ class POBuilderApp:
     def _animate_loading(self):
         """Cycle through gif frames at native speed."""
         loading_flow.animate_loading(self)
+
+    def _animate_corner_loading(self):
+        """Cycle through gif frames in the notebook corner."""
+        loading_flow.animate_corner_loading(self)
 
     def _autosize_dialog(self, dlg, min_w=420, min_h=280, max_w_ratio=0.9, max_h_ratio=0.9):
         """Size a popup to its content while keeping it inside the screen."""
@@ -666,6 +681,7 @@ class POBuilderApp:
             return
 
         load_flow.apply_load_result(self.session, result)
+        self.sales_span_days = result.get("sales_span_days")
 
         if not self.sales_items:
             messagebox.showwarning("No Data", "No items found in the Part Sales CSV. Check the file format.")
@@ -899,6 +915,12 @@ class POBuilderApp:
 
 
         # ── Enrich items with ordering logic ──
+        # Normalize demand_signal to the current reorder cycle period.
+        # assignment_flow sets demand_signal as a raw total over the full sales
+        # export window; divide it down to one cycle's worth so that e.g.
+        # 40 bearings sold over a year on a weekly cycle suggests ~1, not 40.
+        reorder_flow.normalize_items_to_cycle(self)
+
         self._loaded_vendor_codes = list(self.vendor_codes_used)
         self.last_removed_bulk_items = []
         try:
@@ -1202,214 +1224,33 @@ class POBuilderApp:
             self.bulk_sheet.fit_columns_to_window()
 
     def _bulk_remove_selected_rows(self, event=None):
-        selected = []
-        if self.bulk_sheet:
-            selected = list(self.bulk_sheet.explicit_selected_row_ids())
-            if not selected:
-                current_row_id = self.bulk_sheet.current_row_id()
-                if current_row_id is not None:
-                    selected = [current_row_id]
-        else:
-            selected = list(self.bulk_tree.selection())
-        if not selected:
-            return "break" if event is not None else None
-        if not messagebox.askyesno("Confirm Remove", f"Remove {len(selected)} item(s) from this session?"):
-            return "break" if event is not None else None
-        before_state = self._capture_bulk_history_state() if hasattr(self, "_capture_bulk_history_state") else None
-        removed_payload = []
-        for idx in sorted((int(row_id) for row_id in selected), reverse=True):
-            if 0 <= idx < len(self.filtered_items):
-                removed_payload.append((idx, copy.deepcopy(self.filtered_items[idx])))
-                self.filtered_items.pop(idx)
-        self.last_removed_bulk_items = removed_payload
-        if self.bulk_sheet:
-            self.bulk_sheet.clear_selection()
-        self._apply_bulk_filter()
-        self._update_bulk_summary()
-        if hasattr(self, "_finalize_bulk_history_action"):
-            self._finalize_bulk_history_action("remove_rows", before_state)
-        return "break" if event is not None else None
+        return bulk_sheet_actions_flow.bulk_remove_selected_rows(
+            self,
+            copy.deepcopy,
+            messagebox.askyesno,
+            event,
+        )
 
     def _bulk_fill_selected_cells(self):
-        col_name = (
-            (self.bulk_sheet.selected_editable_column_name() if self.bulk_sheet else "")
-            or (self.bulk_sheet.current_editable_column_name() if self.bulk_sheet else "")
+        bulk_sheet_actions_flow.bulk_fill_selected_cells(
+            self,
+            BULK_EDITABLE_COLS,
+            simpledialog.askstring,
+            messagebox.showinfo,
         )
-        if self.bulk_sheet:
-            row_ids = list(self.bulk_sheet.selected_target_row_ids(col_name))
-        else:
-            row_ids = list(self.bulk_tree.selection())
-        if col_name not in BULK_EDITABLE_COLS or not row_ids:
-            messagebox.showinfo("No Cell Selection", "Select one or more rows or cells in a single editable column first.")
-            return
-        value = simpledialog.askstring("Fill Selected Cells", f"Enter a value for {col_name}:", parent=self.root)
-        if value is None:
-            return
-        before_state = self._capture_bulk_history_state() if hasattr(self, "_capture_bulk_history_state") else None
-        if self.bulk_sheet:
-            for row_id in row_ids:
-                self._bulk_apply_editor_value(row_id, col_name, value.strip())
-            self._apply_bulk_filter()
-            self.bulk_sheet.clear_selection()
-        else:
-            for row_id in row_ids:
-                self._bulk_apply_editor_value(row_id, col_name, value.strip())
-            self._apply_bulk_filter()
-        self._update_bulk_summary()
-        self._update_bulk_cell_status()
-        if hasattr(self, "_finalize_bulk_history_action"):
-            self._finalize_bulk_history_action(f"fill:{col_name}", before_state)
 
     def _bulk_clear_selected_cells(self):
-        col_name = (
-            (self.bulk_sheet.selected_editable_column_name() if self.bulk_sheet else "")
-            or (self.bulk_sheet.current_editable_column_name() if self.bulk_sheet else "")
+        bulk_sheet_actions_flow.bulk_clear_selected_cells(
+            self,
+            BULK_EDITABLE_COLS,
+            messagebox.showinfo,
         )
-        if self.bulk_sheet:
-            row_ids = list(self.bulk_sheet.selected_target_row_ids(col_name))
-        else:
-            row_ids = list(self.bulk_tree.selection())
-        if col_name not in BULK_EDITABLE_COLS or not row_ids:
-            messagebox.showinfo("No Cell Selection", "Select one or more rows or cells in a single editable column first.")
-            return
-        before_state = self._capture_bulk_history_state() if hasattr(self, "_capture_bulk_history_state") else None
-        if self.bulk_sheet:
-            for row_id in row_ids:
-                self._bulk_apply_editor_value(row_id, col_name, "")
-            self._apply_bulk_filter()
-            self.bulk_sheet.clear_selection()
-        else:
-            for row_id in row_ids:
-                self._bulk_apply_editor_value(row_id, col_name, "")
-            self._apply_bulk_filter()
-        self._update_bulk_summary()
-        self._update_bulk_cell_status()
-        if hasattr(self, "_finalize_bulk_history_action"):
-            self._finalize_bulk_history_action(f"clear:{col_name}", before_state)
 
     def _bulk_delete_selected(self, event=None):
-        if self.bulk_sheet and self.bulk_sheet.explicit_selected_row_ids():
-            return self._bulk_remove_selected_rows(event)
-        elif self.bulk_sheet and self.bulk_sheet.selected_cells():
-            self._bulk_clear_selected_cells()
-            return "break"
-        else:
-            return self._bulk_remove_selected_rows(event)
+        return bulk_sheet_actions_flow.bulk_delete_selected(self, event)
 
     def _bulk_apply_editor_value(self, row_id, col_name, raw):
-        idx = int(row_id)
-        write_debug("bulk_apply_editor_value.begin", row_id=row_id, col_name=col_name, raw=str(raw))
-        if col_name == "buy_rule":
-            self._open_buy_rule_editor(idx)
-            write_debug("bulk_apply_editor_value.buy_rule_editor", row_id=row_id)
-            return
-        if col_name not in BULK_EDITABLE_COLS:
-            write_debug("bulk_apply_editor_value.skip", row_id=row_id, col_name=col_name, reason="not_editable")
-            return
-        item = self.filtered_items[idx]
-        key = (item["line_code"], item["item_code"])
-        inv = self.inventory_lookup.get(key, {})
-        rule_key = get_rule_key(item["line_code"], item["item_code"])
-        rule = self.order_rules.get(rule_key)
-        if col_name == "vendor":
-            new_val = raw.upper()
-            if new_val:
-                item["vendor"] = new_val
-                self._remember_vendor_code(new_val)
-                self._update_bulk_summary()
-                write_debug("bulk_apply_editor_value.vendor", row_id=row_id, vendor=new_val)
-        elif col_name == "final_qty":
-            try:
-                qty = int(float(raw))
-                self._set_effective_order_qty(item, qty, manual_override=True)
-                self._recalculate_item(item)
-                write_debug(
-                    "bulk_apply_editor_value.final_qty",
-                    row_id=row_id,
-                    qty=qty,
-                    suggested=item.get("suggested_qty"),
-                    final=item.get("final_qty"),
-                    why=item.get("why", ""),
-                )
-            except ValueError:
-                write_debug("bulk_apply_editor_value.error", row_id=row_id, col_name=col_name, raw=str(raw), reason="value_error")
-                pass
-        elif col_name == "qoh":
-            try:
-                new_qoh = float(raw)
-                old_qoh = inv.get("qoh", 0)
-                if new_qoh != old_qoh:
-                    self.qoh_adjustments[key] = {"old": old_qoh, "new": new_qoh}
-                    if key in self.inventory_lookup:
-                        self.inventory_lookup[key]["qoh"] = new_qoh
-                    self._recalculate_item(item)
-                write_debug(
-                    "bulk_apply_editor_value.qoh",
-                    row_id=row_id,
-                    old_qoh=old_qoh,
-                    new_qoh=new_qoh,
-                    raw_need=item.get("raw_need"),
-                    suggested=item.get("suggested_qty"),
-                    final=item.get("final_qty"),
-                )
-            except ValueError:
-                write_debug("bulk_apply_editor_value.error", row_id=row_id, col_name=col_name, raw=str(raw), reason="value_error")
-                pass
-        elif col_name in ("cur_min", "cur_max"):
-            if key not in self.inventory_lookup:
-                self.inventory_lookup[key] = {
-                    "qoh": 0, "repl_cost": 0, "min": None, "max": None,
-                    "ytd_sales": 0, "mo12_sales": 0, "supplier": "",
-                    "last_receipt": "", "last_sale": "",
-                }
-            try:
-                parsed = None if raw == "" else int(float(raw))
-                if col_name == "cur_min":
-                    self.inventory_lookup[key]["min"] = parsed
-                else:
-                    self.inventory_lookup[key]["max"] = parsed
-                self._recalculate_item(item)
-                write_debug(
-                    "bulk_apply_editor_value.minmax",
-                    row_id=row_id,
-                    col_name=col_name,
-                    parsed=parsed,
-                    raw_need=item.get("raw_need"),
-                    suggested=item.get("suggested_qty"),
-                    final=item.get("final_qty"),
-                )
-            except ValueError:
-                write_debug("bulk_apply_editor_value.error", row_id=row_id, col_name=col_name, raw=str(raw), reason="value_error")
-                pass
-        elif col_name == "pack_size":
-            try:
-                old_pack = item.get("pack_size")
-                old_policy = item.get("order_policy", "")
-                old_suggested = item.get("suggested_qty")
-                old_final = item.get("final_qty")
-                rule_key, rule = item_workflow.apply_pack_size_edit(item, raw, self.order_rules, get_rule_key)
-                self._save_order_rules()
-                self._clear_manual_override(item)
-                self._recalculate_item(item)
-                write_debug(
-                    "bulk_apply_editor_value.pack_size",
-                    row_id=row_id,
-                    line_code=item.get("line_code", ""),
-                    item_code=item.get("item_code", ""),
-                    old_pack=old_pack,
-                    new_pack=item.get("pack_size"),
-                    old_policy=old_policy,
-                    new_policy=item.get("order_policy", ""),
-                    old_suggested=old_suggested,
-                    new_suggested=item.get("suggested_qty"),
-                    old_final=old_final,
-                    new_final=item.get("final_qty"),
-                    rule=json.dumps(self.order_rules.get(rule_key, {}), sort_keys=True),
-                    why=item.get("why", ""),
-                )
-            except ValueError:
-                write_debug("bulk_apply_editor_value.error", row_id=row_id, col_name=col_name, raw=str(raw), reason="value_error")
-                pass
+        bulk_edit_flow.apply_editor_value(self, row_id, col_name, raw, BULK_EDITABLE_COLS, get_rule_key, write_debug)
 
     def _apply_bulk_filter(self):
         ui_bulk.apply_bulk_filter(self)
@@ -1420,15 +1261,7 @@ class POBuilderApp:
         write_debug("bulk_filter.applied", total=len(self.filtered_items), sample=sample)
 
     def _open_buy_rule_editor(self, idx):
-        item = self.filtered_items[idx] if 0 <= idx < len(self.filtered_items) else {}
-        write_debug(
-            "bulk_open_buy_rule_editor",
-            idx=idx,
-            line_code=item.get("line_code", ""),
-            item_code=item.get("item_code", ""),
-            right_click_context=repr(getattr(self, "_right_click_bulk_context", None)),
-        )
-        ui_bulk_dialogs.open_buy_rule_editor(self, idx, self._data_path("order_rules"))
+        bulk_context_flow.open_buy_rule_editor(self, idx, write_debug)
 
     def _view_item_details(self):
         ui_bulk_dialogs.view_item_details(self)
@@ -1444,12 +1277,7 @@ class POBuilderApp:
 
     def _dismiss_duplicate(self, item_code):
         """Add an item code to the persistent duplicate whitelist."""
-        self.dup_whitelist.add(item_code)
-        self._save_duplicate_whitelist()
-        # Remove from the active lookup
-        self.duplicate_ic_lookup.pop(item_code, None)
-        # Refresh the tree to clear the Also Under column
-        self._apply_bulk_filter()
+        bulk_context_flow.dismiss_duplicate(self, item_code)
 
     @staticmethod
     def _ignore_key(line_code, item_code):
@@ -1459,36 +1287,7 @@ class POBuilderApp:
         return session_state_flow.ignore_items_by_keys(self, ignore_keys)
 
     def _ignore_from_bulk(self):
-        right_click_context = getattr(self, "_right_click_bulk_context", None) or {}
-        row_id = right_click_context.get("row_id")
-        if row_id is not None:
-            row_ids = [row_id]
-        elif self.bulk_sheet and self.bulk_sheet.explicit_selected_row_ids():
-            row_ids = list(self.bulk_sheet.explicit_selected_row_ids())
-        elif self.bulk_sheet and self.bulk_sheet.selected_row_ids():
-            row_ids = list(self.bulk_sheet.selected_row_ids())
-        elif self.bulk_sheet and self.bulk_sheet.current_row_id() is not None:
-            row_ids = [self.bulk_sheet.current_row_id()]
-        else:
-            row_ids = []
-        if not row_ids:
-            messagebox.showinfo("No Selection", "Select a row to ignore first.")
-            return
-        ignore_keys = set()
-        for row_id in row_ids:
-            idx = int(row_id)
-            if 0 <= idx < len(self.filtered_items):
-                item = self.filtered_items[idx]
-                ignore_keys.add(self._ignore_key(item["line_code"], item["item_code"]))
-        if not ignore_keys:
-            return
-        if not messagebox.askyesno(
-            "Ignore Item",
-            f"Ignore {len(ignore_keys)} item(s) for future ordering and remove them from this session?",
-        ):
-            return
-        removed = self._ignore_items_by_keys(ignore_keys)
-        messagebox.showinfo("Ignored", f"Ignored {removed} item(s).")
+        bulk_context_flow.ignore_from_bulk(self, messagebox.askyesno, messagebox.showinfo)
 
     def _go_to_individual(self):
         ui_assignment_actions.go_to_individual(self)

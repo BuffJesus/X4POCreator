@@ -1,6 +1,7 @@
 import sys
 import unittest
 import json
+import tempfile
 from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
@@ -103,6 +104,23 @@ class POBuilderTests(unittest.TestCase):
 
         self.assertEqual(release["tag_name"], "v1.2.3")
         self.assertEqual(release["name"], "PO Builder 1.2.3")
+
+    def test_load_app_version_falls_back_to_bundled_version_file(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            bundled = Path(tmp) / "VERSION"
+            bundled.write_text("0.1.8\n", encoding="utf-8")
+
+            with patch("po_builder._BUNDLE_DIR", tmp):
+                version = po_builder.load_app_version(path=str(Path(tmp) / "missing-version"))
+
+        self.assertEqual(version, "0.1.8")
+
+    def test_load_app_version_returns_dev_when_no_version_file_exists(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with patch("po_builder._BUNDLE_DIR", tmp):
+                version = po_builder.load_app_version(path=str(Path(tmp) / "missing-version"))
+
+        self.assertEqual(version, "dev")
 
     def test_default_vendor_for_key_uses_supplier(self):
         fake_app = SimpleNamespace(

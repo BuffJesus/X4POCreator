@@ -1,3 +1,4 @@
+import math
 import os
 import threading
 import time
@@ -26,6 +27,52 @@ def stop_loading_audio(*, has_winsound, winsound_module):
         pass
 
 
+def load_gif_frames(
+    gif_path,
+    *,
+    target_size,
+    max_frames,
+    has_pil,
+    image_module,
+    image_tk_module,
+    tk_module,
+):
+    frames = []
+    if not os.path.exists(gif_path):
+        return frames
+
+    if has_pil:
+        try:
+            img = image_module.open(gif_path)
+            frame_count = max(1, int(getattr(img, "n_frames", 1)))
+            step = max(1, math.ceil(frame_count / max_frames))
+            for i in range(0, frame_count, step):
+                img.seek(i)
+                frame = img.copy().convert("RGBA").resize(target_size, image_module.LANCZOS)
+                frames.append(image_tk_module.PhotoImage(frame))
+            if frames:
+                return frames
+        except Exception:
+            frames = []
+
+    try:
+        target_w, target_h = target_size
+        i = 0
+        while i < max_frames:
+            frame = tk_module.PhotoImage(file=gif_path, format=f"gif -index {i}")
+            fw = max(1, frame.width())
+            fh = max(1, frame.height())
+            sx = max(1, round(fw / target_w))
+            sy = max(1, round(fh / target_h))
+            if sx > 1 or sy > 1:
+                frame = frame.subsample(sx, sy)
+            frames.append(frame)
+            i += 1
+    except Exception:
+        pass
+    return frames
+
+
 def animate_loading(app):
     if not app._loading_overlay or not app._loading_frames:
         return
@@ -33,6 +80,38 @@ def animate_loading(app):
     app._loading_img_label.configure(image=frame)
     app._loading_frame_idx += 1
     app._loading_after_id = app.root.after(50, app._animate_loading)
+
+
+def ensure_corner_loading_gif(app, label_factory):
+    if getattr(app, "_corner_loading_label", None) is not None:
+        return app._corner_loading_label
+    if not getattr(app, "_corner_loading_frames", None):
+        return None
+
+    label = label_factory(app.notebook)
+    label.place(relx=1.0, x=-12, y=6, anchor="ne")
+    try:
+        label.lift()
+    except Exception:
+        pass
+    app._corner_loading_label = label
+    app._corner_loading_frame_idx = 0
+    return label
+
+
+def animate_corner_loading(app):
+    label = getattr(app, "_corner_loading_label", None)
+    frames = getattr(app, "_corner_loading_frames", None)
+    if label is None or not frames:
+        return
+    try:
+        frame = frames[app._corner_loading_frame_idx % len(frames)]
+        label.configure(image=frame)
+    except Exception:
+        app._corner_loading_after_id = None
+        return
+    app._corner_loading_frame_idx += 1
+    app._corner_loading_after_id = app.root.after(50, app._animate_corner_loading)
 
 
 def autosize_dialog(dlg, min_w=420, min_h=280, max_w_ratio=0.9, max_h_ratio=0.9):

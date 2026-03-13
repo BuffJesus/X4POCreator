@@ -5,7 +5,7 @@ a = Analysis(
     ['po_builder.py'],
     pathex=[],
     binaries=[],
-    datas=[('loading.gif', '.'), ('loading.wav', '.'), ('icon.ico', '.')],
+    datas=[('loading.gif', '.'), ('loading.wav', '.'), ('VERSION', '.')],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},
@@ -35,5 +35,4 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon=['icon.ico'],
 )

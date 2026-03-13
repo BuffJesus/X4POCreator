@@ -96,10 +96,17 @@ class BulkSheetView:
             return None
         if row < 0 or row >= len(self.row_ids) or col < 0 or col >= len(self.columns):
             return None
-        try:
-            self.sheet.set_currently_selected(row=row, column=col)
-        except Exception:
-            pass
+
+        # Snapshot the selection BEFORE set_currently_selected() can clear it.
+        # If the right-clicked row is already part of the selection, keep the
+        # whole selection intact.  Only move focus if clicking outside it.
+        current_selected_rows = set(self.sheet.get_selected_rows())
+        if row not in current_selected_rows:
+            try:
+                self.sheet.set_currently_selected(row=row, column=col)
+            except Exception:
+                pass
+
         self.app._right_click_bulk_context = {
             "row_id": str(self.row_ids[row]),
             "col_name": self.columns[col],
@@ -339,6 +346,13 @@ class BulkSheetView:
     def explicit_selected_row_ids(self):
         rows = set(self.sheet.get_selected_rows())
         return tuple(str(self.row_ids[r]) for r in sorted(rows) if 0 <= r < len(self.row_ids))
+
+    def snapshot_row_ids(self):
+        """Return row ids from the selection snapshot taken at right-click time.
+        Use this instead of explicit_selected_row_ids() inside context menu
+        commands, because tksheet clears the live selection before the command fires."""
+        rows = self._selection_snapshot.get("rows", ())
+        return tuple(str(self.row_ids[r]) for r in rows if 0 <= r < len(self.row_ids))
 
     def selected_row_ids(self):
         rows = set(self.sheet.get_selected_rows())

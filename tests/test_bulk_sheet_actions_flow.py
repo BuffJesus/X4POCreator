@@ -122,6 +122,155 @@ class BulkSheetActionsFlowTests(unittest.TestCase):
         self.assertIn("bulk_begin_edit.open_cell", [entry[0] for entry in events if isinstance(entry, tuple)])
         self.assertIsNone(fake_app._right_click_bulk_context)
 
+    def test_bulk_remove_selected_rows_prefers_right_click_context_row(self):
+        events = []
+        fake_app = SimpleNamespace(
+            bulk_sheet=SimpleNamespace(
+                explicit_selected_row_ids=lambda: (),
+                current_row_id=lambda: "0",
+                clear_selection=lambda: events.append("clear"),
+            ),
+            _right_click_bulk_context={"row_id": "1"},
+            filtered_items=[{"item_code": "A"}, {"item_code": "B"}],
+            last_removed_bulk_items=[],
+            _apply_bulk_filter=lambda: events.append("filter"),
+            _update_bulk_summary=lambda: events.append("summary"),
+        )
+
+        result = bulk_sheet_actions_flow.bulk_remove_selected_rows(
+            fake_app,
+            lambda value: dict(value),
+            lambda title, message: True,
+        )
+
+        self.assertIsNone(result)
+        self.assertEqual(fake_app.filtered_items, [{"item_code": "A"}])
+        self.assertEqual(fake_app.last_removed_bulk_items, [(1, {"item_code": "B"})])
+        self.assertEqual(events, ["clear", "filter", "summary"])
+
+    def test_bulk_remove_selected_rows_returns_break_when_nothing_selected_from_event(self):
+        fake_app = SimpleNamespace(
+            bulk_sheet=SimpleNamespace(
+                explicit_selected_row_ids=lambda: (),
+                current_row_id=lambda: None,
+            ),
+            _right_click_bulk_context=None,
+        )
+
+        result = bulk_sheet_actions_flow.bulk_remove_selected_rows(
+            fake_app,
+            lambda value: value,
+            lambda title, message: True,
+            event=object(),
+        )
+
+        self.assertEqual(result, "break")
+
+    def test_bulk_fill_selected_cells_applies_value_and_finalizes_history(self):
+        events = []
+        fake_app = SimpleNamespace(
+            bulk_sheet=SimpleNamespace(
+                selected_editable_column_name=lambda: "pack_size",
+                current_editable_column_name=lambda: "pack_size",
+                selected_target_row_ids=lambda col_name: ("0", "1"),
+                clear_selection=lambda: events.append("clear"),
+            ),
+            root=None,
+            _capture_bulk_history_state=lambda: {"before": True},
+            _bulk_apply_editor_value=lambda row_id, col_name, value: events.append((row_id, col_name, value)),
+            _apply_bulk_filter=lambda: events.append("filter"),
+            _update_bulk_summary=lambda: events.append("summary"),
+            _update_bulk_cell_status=lambda: events.append("status"),
+            _finalize_bulk_history_action=lambda label, before: events.append((label, before)),
+        )
+
+        bulk_sheet_actions_flow.bulk_fill_selected_cells(
+            fake_app,
+            ("pack_size",),
+            lambda title, prompt, parent=None: " 6 ",
+            lambda title, message: events.append((title, message)),
+        )
+
+        self.assertEqual(
+            events,
+            [
+                ("0", "pack_size", "6"),
+                ("1", "pack_size", "6"),
+                "filter",
+                "clear",
+                "summary",
+                "status",
+                ("fill:pack_size", {"before": True}),
+            ],
+        )
+
+    def test_bulk_clear_selected_cells_clears_values_and_finalizes_history(self):
+        events = []
+        fake_app = SimpleNamespace(
+            bulk_sheet=SimpleNamespace(
+                selected_editable_column_name=lambda: "vendor",
+                current_editable_column_name=lambda: "vendor",
+                selected_target_row_ids=lambda col_name: ("0",),
+                clear_selection=lambda: events.append("clear"),
+            ),
+            _capture_bulk_history_state=lambda: {"before": True},
+            _bulk_apply_editor_value=lambda row_id, col_name, value: events.append((row_id, col_name, value)),
+            _apply_bulk_filter=lambda: events.append("filter"),
+            _update_bulk_summary=lambda: events.append("summary"),
+            _update_bulk_cell_status=lambda: events.append("status"),
+            _finalize_bulk_history_action=lambda label, before: events.append((label, before)),
+        )
+
+        bulk_sheet_actions_flow.bulk_clear_selected_cells(
+            fake_app,
+            ("vendor",),
+            lambda title, message: events.append((title, message)),
+        )
+
+        self.assertEqual(
+            events,
+            [
+                ("0", "vendor", ""),
+                "filter",
+                "clear",
+                "summary",
+                "status",
+                ("clear:vendor", {"before": True}),
+            ],
+        )
+
+    def test_bulk_delete_selected_clears_cells_when_cells_are_selected(self):
+        events = []
+        fake_app = SimpleNamespace(
+            bulk_sheet=SimpleNamespace(
+                explicit_selected_row_ids=lambda: (),
+                selected_cells=lambda: [(0, 1)],
+            ),
+            _bulk_clear_selected_cells=lambda: events.append("clear_cells"),
+            _bulk_remove_selected_rows=lambda event=None: events.append(("remove_rows", event)),
+        )
+
+        result = bulk_sheet_actions_flow.bulk_delete_selected(fake_app)
+
+        self.assertEqual(result, "break")
+        self.assertEqual(events, ["clear_cells"])
+
+    def test_bulk_delete_selected_falls_back_to_remove_rows(self):
+        events = []
+        fake_app = SimpleNamespace(
+            bulk_sheet=SimpleNamespace(
+                explicit_selected_row_ids=lambda: (),
+                selected_cells=lambda: [],
+            ),
+            _bulk_clear_selected_cells=lambda: events.append("clear_cells"),
+            _bulk_remove_selected_rows=lambda event=None: events.append(("remove_rows", event)) or "break",
+        )
+
+        result = bulk_sheet_actions_flow.bulk_delete_selected(fake_app, event="evt")
+
+        self.assertEqual(result, "break")
+        self.assertEqual(events, [("remove_rows", "evt")])
+
 
 if __name__ == "__main__":
     unittest.main()

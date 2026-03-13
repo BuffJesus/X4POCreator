@@ -5,6 +5,9 @@ echo   PO Builder - Build Executable
 echo ========================================
 echo.
 
+set BUILD_MODE=release
+if /i "%1"=="debug" set BUILD_MODE=debug
+
 echo Installing dependencies...
 python -m pip install -r requirements.txt pyinstaller
 
@@ -19,33 +22,22 @@ if errorlevel 1 (
 )
 
 echo.
-echo Building executable...
-if exist "loading.gif" (
-    echo   Found loading.gif - bundling loading animation...
+echo Building executable (%BUILD_MODE% mode)...
+
+if /i "%BUILD_MODE%"=="debug" (
+    echo   [DEBUG MODE] Building with console window so errors are visible.
+    echo   Run "dist\PO Builder Debug.exe" and check the console for any errors.
+    echo.
+    python -m PyInstaller -y --onefile --name "PO Builder Debug" po_builder.py ^
+      --specpath . ^
+      --hidden-import openpyxl ^
+      --collect-all openpyxl ^
+      --add-data "VERSION;."
 ) else (
-    echo   loading.gif not found - continuing without loading animation asset.
+    echo   Using PO_Builder.spec for reliable openpyxl bundling...
+    python -m PyInstaller -y PO_Builder.spec
 )
 
-if exist "loading.wav" (
-    echo   Found loading.wav - bundling loading audio...
-) else (
-    echo   loading.wav not found - continuing without loading audio asset.
-)
-
-if exist "icon.ico" (
-    echo   Found icon.ico - building with custom icon...
-) else (
-    echo   icon.ico not found - building without custom icon...
-)
-
-powershell -NoProfile -Command ^
-  "$args = @('-y', '--onefile', '--windowed', '--name', 'PO Builder');" ^
-  "if (Test-Path 'loading.gif') { $args += @('--add-data', 'loading.gif;.') };" ^
-  "if (Test-Path 'loading.wav') { $args += @('--add-data', 'loading.wav;.') };" ^
-  "if (Test-Path 'icon.ico') { $args += @('--add-data', 'icon.ico;.', '--icon', 'icon.ico') };" ^
-  "$args += 'po_builder.py';" ^
-  "& pyinstaller @args;" ^
-  "exit $LASTEXITCODE"
 if errorlevel 1 (
     echo.
     echo   BUILD FAILED - check errors above
@@ -56,19 +48,37 @@ if errorlevel 1 (
 
 echo.
 echo ========================================
-if exist "dist\PO Builder.exe" (
-    echo   BUILD SUCCESSFUL!
-    echo   Executable: dist\PO Builder.exe
-    echo.
-    echo   Just share "PO Builder.exe" with your coworker.
-    echo   The dancing cat is bundled inside.
-    echo.
-    echo   These files are created automatically next
-    echo   to the .exe on first use:
-    echo     - duplicate_whitelist.txt
-    echo     - order_history.json
+if exist "VERSION" (
+    if /i "%BUILD_MODE%"=="debug" (
+        copy /Y "VERSION" "dist\VERSION" >nul
+    ) else (
+        copy /Y "VERSION" "dist\VERSION" >nul
+    )
+)
+if /i "%BUILD_MODE%"=="debug" (
+    if exist "dist\PO Builder Debug.exe" (
+        echo   DEBUG BUILD SUCCESSFUL!
+        echo   Executable: dist\PO Builder Debug.exe
+        echo.
+        echo   Run it and read the console output to find any remaining errors.
+        echo   Then run "build.bat" ^(no argument^) for the final release build.
+    ) else (
+        echo   BUILD FAILED - check errors above
+    )
 ) else (
-    echo   BUILD FAILED - check errors above
+    if exist "dist\PO Builder.exe" (
+        echo   BUILD SUCCESSFUL!
+        echo   Executable: dist\PO Builder.exe
+        echo.
+        echo   Just share "PO Builder.exe" with your coworker.
+        echo.
+        echo   These files are created automatically next
+        echo   to the .exe on first use:
+        echo     - duplicate_whitelist.txt
+        echo     - order_history.json
+    ) else (
+        echo   BUILD FAILED - check errors above
+    )
 )
 echo ========================================
 pause
