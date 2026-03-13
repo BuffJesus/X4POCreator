@@ -27,14 +27,14 @@ def bulk_apply_selected(app):
     for item_id in selected:
         idx = int(item_id)
         app.filtered_items[idx]["vendor"] = vendor
-        if getattr(app, "bulk_sheet", None):
-            app.bulk_sheet.set_cell(item_id, "vendor", vendor)
-        else:
+        if not getattr(app, "bulk_sheet", None):
             app.bulk_tree.set(item_id, "vendor", vendor)
     if hasattr(app, "_remember_vendor_code"):
         app._remember_vendor_code(vendor)
     elif vendor not in app.vendor_codes_used:
         app.vendor_codes_used.append(vendor)
+    if getattr(app, "bulk_sheet", None) and hasattr(app, "_refresh_bulk_view_after_edit"):
+        app._refresh_bulk_view_after_edit(selected)
     app._update_bulk_summary()
     if hasattr(app, "_finalize_bulk_history_action"):
         app._finalize_bulk_history_action("vendor:selected", before_state)
@@ -53,14 +53,14 @@ def bulk_apply_visible(app):
     for item_id in visible:
         idx = int(item_id)
         app.filtered_items[idx]["vendor"] = vendor
-        if getattr(app, "bulk_sheet", None):
-            app.bulk_sheet.set_cell(item_id, "vendor", vendor)
-        else:
+        if not getattr(app, "bulk_sheet", None):
             app.bulk_tree.set(item_id, "vendor", vendor)
     if hasattr(app, "_remember_vendor_code"):
         app._remember_vendor_code(vendor)
     elif vendor not in app.vendor_codes_used:
         app.vendor_codes_used.append(vendor)
+    if getattr(app, "bulk_sheet", None) and hasattr(app, "_refresh_bulk_view_after_edit"):
+        app._refresh_bulk_view_after_edit(visible)
     app._update_bulk_summary()
     if hasattr(app, "_finalize_bulk_history_action"):
         app._finalize_bulk_history_action("vendor:visible", before_state)

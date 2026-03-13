@@ -12,14 +12,13 @@ import po_builder
 
 
 class BulkEditFlowTests(unittest.TestCase):
-    def test_apply_editor_value_vendor_remembers_code_and_updates_summary(self):
+    def test_apply_editor_value_vendor_remembers_code_without_forcing_summary(self):
         events = []
         fake_app = SimpleNamespace(
             filtered_items=[{"line_code": "AER-", "item_code": "GH781-4", "vendor": ""}],
             inventory_lookup={},
             order_rules={},
             _remember_vendor_code=lambda value: events.append(("remember", value)),
-            _update_bulk_summary=lambda: events.append(("summary", None)),
         )
 
         bulk_edit_flow.apply_editor_value(
@@ -34,7 +33,7 @@ class BulkEditFlowTests(unittest.TestCase):
 
         self.assertEqual(fake_app.filtered_items[0]["vendor"], "SOURCE")
         self.assertIn(("remember", "SOURCE"), events)
-        self.assertIn(("summary", None), events)
+        self.assertNotIn(("summary", None), events)
 
     def test_apply_editor_value_cur_max_creates_inventory_stub_and_recalculates(self):
         events = []

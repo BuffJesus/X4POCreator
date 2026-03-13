@@ -58,6 +58,45 @@ class AssignmentActionTests(unittest.TestCase):
         self.assertIn("GREGDIST", app.vendor_codes_used)
         self.assertEqual(calls, ["summary", ("vendor:selected", {"before": True})])
 
+    def test_bulk_apply_selected_with_bulk_sheet_refreshes_rows_once(self):
+        calls = []
+        app = SimpleNamespace(
+            var_bulk_vendor=DummyVar("gregdist"),
+            bulk_sheet=SimpleNamespace(selected_row_ids=lambda: ("0", "1")),
+            filtered_items=[{"vendor": ""}, {"vendor": ""}],
+            vendor_codes_used=[],
+            _capture_bulk_history_state=lambda: {"before": True},
+            _refresh_bulk_view_after_edit=lambda row_ids: calls.append(("refresh", tuple(row_ids))),
+            _finalize_bulk_history_action=lambda label, before: calls.append((label, before)),
+            _update_bulk_summary=lambda: calls.append("summary"),
+        )
+
+        ui_assignment_actions.bulk_apply_selected(app)
+
+        self.assertEqual(app.filtered_items[0]["vendor"], "GREGDIST")
+        self.assertEqual(app.filtered_items[1]["vendor"], "GREGDIST")
+        self.assertIn("GREGDIST", app.vendor_codes_used)
+        self.assertEqual(calls, [("refresh", ("0", "1")), "summary", ("vendor:selected", {"before": True})])
+
+    def test_bulk_apply_visible_with_bulk_sheet_refreshes_rows_once(self):
+        calls = []
+        app = SimpleNamespace(
+            var_bulk_vendor=DummyVar("motion"),
+            bulk_sheet=SimpleNamespace(visible_row_ids=lambda: ("0", "1", "2")),
+            filtered_items=[{"vendor": ""}, {"vendor": ""}, {"vendor": ""}],
+            vendor_codes_used=[],
+            _capture_bulk_history_state=lambda: {"before": True},
+            _refresh_bulk_view_after_edit=lambda row_ids: calls.append(("refresh", tuple(row_ids))),
+            _finalize_bulk_history_action=lambda label, before: calls.append((label, before)),
+            _update_bulk_summary=lambda: calls.append("summary"),
+        )
+
+        ui_assignment_actions.bulk_apply_visible(app)
+
+        self.assertEqual([item["vendor"] for item in app.filtered_items], ["MOTION", "MOTION", "MOTION"])
+        self.assertIn("MOTION", app.vendor_codes_used)
+        self.assertEqual(calls, [("refresh", ("0", "1", "2")), "summary", ("vendor:visible", {"before": True})])
+
     def test_assign_current_advances_until_finish(self):
         populate_calls = []
         finish_calls = []

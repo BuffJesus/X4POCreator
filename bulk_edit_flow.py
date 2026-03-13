@@ -21,7 +21,6 @@ def apply_editor_value(app, row_id, col_name, raw, editable_cols, get_rule_key, 
         if new_val:
             item["vendor"] = new_val
             app._remember_vendor_code(new_val)
-            app._update_bulk_summary()
             write_debug("bulk_apply_editor_value.vendor", row_id=row_id, vendor=new_val)
     elif col_name == "final_qty":
         try:
