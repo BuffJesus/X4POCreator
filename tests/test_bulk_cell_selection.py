@@ -431,6 +431,27 @@ class BulkSheetStatusTests(unittest.TestCase):
 
 
 class BulkSheetViewTests(unittest.TestCase):
+    def test_set_rows_clears_stale_right_click_context(self):
+        calls = []
+        view = BulkSheetView.__new__(BulkSheetView)
+        view.labels = {"vendor": "Vendor", "pack_size": "Pack"}
+        view.columns = ("vendor", "pack_size")
+        view.app = SimpleNamespace(
+            _right_click_bulk_context={"row_id": "7", "col_name": "vendor"},
+            _update_bulk_sheet_status=lambda: calls.append(("status",)),
+        )
+        view.sheet = SimpleNamespace(
+            set_sheet_data=lambda rows, reset_col_positions=False, reset_row_positions=True: calls.append(("set_rows", rows)),
+            headers=lambda headers, redraw=False: calls.append(("headers", tuple(headers))),
+            display_rows=lambda value, redraw=True: calls.append(("display", value, redraw)),
+        )
+
+        view.set_rows([["A", "5"]], ["0"])
+
+        self.assertIsNone(view.app._right_click_bulk_context)
+        self.assertEqual(view.row_ids, [0])
+        self.assertEqual(calls[-1], ("status",))
+
     def test_handle_select_clears_stale_right_click_context(self):
         calls = []
         view = BulkSheetView.__new__(BulkSheetView)

@@ -316,6 +316,9 @@ class BulkSheetView:
     def set_rows(self, rows, row_ids):
         self.row_ids = [int(row_id) for row_id in row_ids]
         self.row_lookup = {str(row_id): idx for idx, row_id in enumerate(self.row_ids)}
+        if getattr(self.app, "_right_click_bulk_context", None):
+            self.app._right_click_bulk_context = None
+            write_debug("bulk_sheet.set_rows.clear_right_click_context")
         self._selection_snapshot = {"cells": (), "rows": (), "columns": (), "current": (None, None)}
         self.sheet.set_sheet_data(rows, reset_col_positions=False, reset_row_positions=True)
         self.sheet.headers([self.labels[col] for col in self.columns], redraw=False)
