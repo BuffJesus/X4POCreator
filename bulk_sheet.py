@@ -241,8 +241,11 @@ class BulkSheetView:
                     self.app._bulk_apply_editor_value(target_row_id, col_name, value)
             elif row_id is not None:
                 self.refresh_row(row_id, self.app._bulk_row_values(self.app.filtered_items[int(row_id)]))
-        self.app._apply_bulk_filter()
-        write_debug("bulk_sheet.post_edit.filtered")
+        if pending and pending.get("editable"):
+            refreshed = self.app._refresh_bulk_view_after_edit(pending.get("target_row_ids", ()))
+        else:
+            refreshed = True
+        write_debug("bulk_sheet.post_edit.filtered", incremental=bool(refreshed))
         if pending and pending.get("row_id") is not None:
             try:
                 rendered = self.app._bulk_row_values(self.app.filtered_items[int(pending["row_id"])])

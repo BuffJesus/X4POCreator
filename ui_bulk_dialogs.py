@@ -28,6 +28,9 @@ def not_needed_reason(app, item, max_exceed_abs_buffer):
     demand_signal = item.get("demand_signal", gross_need)
     effective_susp = item.get("effective_qty_suspended", item.get("qty_suspended", 0))
     effective_sales = item.get("effective_qty_sold", item.get("qty_sold", 0))
+    performance_profile = item.get("performance_profile", "")
+    sales_health_signal = item.get("sales_health_signal", "")
+    possible_missed_reorder = bool(item.get("possible_missed_reorder"))
 
     if item.get("status") == "skip" or final_qty <= 0:
         reasons.append("No net need (skip/zero final qty)")
@@ -116,6 +119,17 @@ def not_needed_reason(app, item, max_exceed_abs_buffer):
         reasons.append(
             f"Review: order pushes stock above target despite zero suggestion (stock {resulting_stock:g} vs target {target_stock:g})"
         )
+
+    protect_from_auto_remove = False
+    if possible_missed_reorder:
+        reasons.append("Review: likely missed reorder candidate based on historical sales and stale recency")
+        protect_from_auto_remove = True
+    elif performance_profile in ("top_performer", "steady") and sales_health_signal == "dormant":
+        reasons.append("Review: historically meaningful item is dormant, so removal should be confirmed manually")
+        protect_from_auto_remove = True
+
+    if protect_from_auto_remove:
+        auto_remove = False
 
     return "; ".join(reasons), auto_remove
 
@@ -501,6 +515,21 @@ def view_item_details(app):
     grid.pack(fill=tk.BOTH, expand=True)
     grid.grid_columnconfigure(1, weight=1)
 
+    details = item_details_rows(app, item, inv, key)
+
+    for r, (label, value) in enumerate(details):
+        if label == "":
+            ttk.Separator(grid, orient="horizontal").grid(row=r, column=0, columnspan=2, sticky="ew", pady=4)
+            continue
+        ttk.Label(grid, text=f"{label}:", font=("Segoe UI", 9, "bold")).grid(row=r, column=0, sticky="w", padx=(0, 12), pady=1)
+        ttk.Label(grid, text=value, font=("Segoe UI", 9), wraplength=640, justify="left").grid(row=r, column=1, sticky="ew", pady=1)
+
+    ttk.Button(dlg, text="Close", command=dlg.destroy).pack(pady=12)
+    app._autosize_dialog(dlg, min_w=560, min_h=420, max_w_ratio=0.8, max_h_ratio=0.9)
+    dlg.wait_window()
+
+
+def item_details_rows(app, item, inv, key):
     details = [
         ("QOH", f"{inv.get('qoh', 0):g}"),
         ("On PO", f"{app.on_po_qty.get(key, 0):g}"),
@@ -509,8 +538,16 @@ def view_item_details(app):
         ("Supplier", inv.get("supplier", "-")),
         ("Last Receipt", inv.get("last_receipt", "-")),
         ("Last Sale", inv.get("last_sale", "-")),
+        ("Days Since Last Sale", str(item.get("days_since_last_sale", "-") if item.get("days_since_last_sale") is not None else "-")),
         ("YTD Sales", str(inv.get("ytd_sales", "-"))),
         ("12 Mo Sales", str(inv.get("mo12_sales", "-"))),
+        ("Sales Window", _sales_window_label(item)),
+        ("Avg Weekly Sales", _format_metric(item.get("avg_weekly_sales_loaded"))),
+        ("Avg Monthly Sales", _format_metric(item.get("avg_monthly_sales_loaded"))),
+        ("Annualized Sales", _format_metric(item.get("annualized_sales_loaded"))),
+        ("Performance", item.get("performance_profile") or "-"),
+        ("Sales Health", item.get("sales_health_signal") or "-"),
+        ("Attention", item.get("reorder_attention_signal") or "-"),
         ("", ""),
         ("Qty Sold", str(item.get("qty_sold", 0))),
         ("Qty Suspended", str(item.get("qty_suspended", 0))),
@@ -534,17 +571,27 @@ def view_item_details(app):
     others = sorted(lc for lc in other_lcs if lc != item["line_code"])
     if others:
         details.append(("Also Under", ", ".join(others)))
+    return details
 
-    for r, (label, value) in enumerate(details):
-        if label == "":
-            ttk.Separator(grid, orient="horizontal").grid(row=r, column=0, columnspan=2, sticky="ew", pady=4)
-            continue
-        ttk.Label(grid, text=f"{label}:", font=("Segoe UI", 9, "bold")).grid(row=r, column=0, sticky="w", padx=(0, 12), pady=1)
-        ttk.Label(grid, text=value, font=("Segoe UI", 9), wraplength=640, justify="left").grid(row=r, column=1, sticky="ew", pady=1)
 
-    ttk.Button(dlg, text="Close", command=dlg.destroy).pack(pady=12)
-    app._autosize_dialog(dlg, min_w=560, min_h=420, max_w_ratio=0.8, max_h_ratio=0.9)
-    dlg.wait_window()
+def _format_metric(value):
+    if value is None:
+        return "-"
+    try:
+        return f"{float(value):.2f}"
+    except (TypeError, ValueError):
+        return str(value)
+
+
+def _sales_window_label(item):
+    start = item.get("sales_window_start", "") or ""
+    end = item.get("sales_window_end", "") or ""
+    span_days = item.get("sales_span_days")
+    if start and end and span_days:
+        return f"{start} to {end} ({span_days} days)"
+    if span_days:
+        return f"{span_days} days"
+    return "-"
 
 
 def edit_buy_rule_from_bulk(app):

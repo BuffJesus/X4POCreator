@@ -353,6 +353,35 @@ def update_bulk_summary(app):
     app.lbl_bulk_summary.config(text="  ·  ".join(parts))
 
 
+def can_incremental_refresh(app):
+    if not getattr(app, "bulk_sheet", None):
+        return False
+    if getattr(app, "_bulk_sort_col", None):
+        return False
+    return (
+        app.var_bulk_lc_filter.get() == "ALL"
+        and app.var_bulk_status_filter.get() == "ALL"
+        and app.var_bulk_source_filter.get() == "ALL"
+        and app.var_bulk_item_status.get() == "ALL"
+    )
+
+
+def refresh_bulk_view_after_edit(app, row_ids):
+    if not can_incremental_refresh(app):
+        app._apply_bulk_filter()
+        return False
+    if not getattr(app, "bulk_sheet", None):
+        return False
+    for row_id in row_ids:
+        try:
+            idx = int(row_id)
+        except (TypeError, ValueError):
+            continue
+        if 0 <= idx < len(app.filtered_items):
+            app.bulk_sheet.refresh_row(str(row_id), app._bulk_row_values(app.filtered_items[idx]))
+    return True
+
+
 def apply_bulk_filter(app):
     lc_filter = app.var_bulk_lc_filter.get()
     status_filter = app.var_bulk_status_filter.get()

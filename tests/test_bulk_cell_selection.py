@@ -108,7 +108,7 @@ class BulkSheetStatusTests(unittest.TestCase):
             ),
             root=None,
             _bulk_apply_editor_value=lambda row_id, col_name, value: calls.append((row_id, col_name, value)),
-            _apply_bulk_filter=lambda: calls.append(("filter",)),
+            _refresh_bulk_view_after_edit=lambda row_ids: calls.append(("refresh", tuple(row_ids))),
             _update_bulk_summary=lambda: calls.append(("summary",)),
             _update_bulk_cell_status=lambda: calls.append(("status",)),
         )
@@ -117,7 +117,7 @@ class BulkSheetStatusTests(unittest.TestCase):
             result = po_builder.POBuilderApp._bulk_begin_edit(fake_app)
 
         self.assertEqual(result, "break")
-        self.assertEqual(calls[:6], [("0", "pack_size", "750"), ("1", "pack_size", "750"), ("filter",), ("cleared",), ("summary",), ("status",)])
+        self.assertEqual(calls[:6], [("0", "pack_size", "750"), ("1", "pack_size", "750"), ("refresh", ("0", "1")), ("cleared",), ("summary",), ("status",)])
 
     def test_bulk_begin_edit_uses_selected_rows_when_column_is_active(self):
         calls = []
@@ -132,7 +132,7 @@ class BulkSheetStatusTests(unittest.TestCase):
             ),
             root=None,
             _bulk_apply_editor_value=lambda row_id, col_name, value: calls.append((row_id, col_name, value)),
-            _apply_bulk_filter=lambda: calls.append(("filter",)),
+            _refresh_bulk_view_after_edit=lambda row_ids: calls.append(("refresh", tuple(row_ids))),
             _update_bulk_summary=lambda: calls.append(("summary",)),
             _update_bulk_cell_status=lambda: calls.append(("status",)),
         )
@@ -141,7 +141,7 @@ class BulkSheetStatusTests(unittest.TestCase):
             result = po_builder.POBuilderApp._bulk_begin_edit(fake_app)
 
         self.assertEqual(result, "break")
-        self.assertEqual(calls[:6], [("0", "pack_size", "750"), ("1", "pack_size", "750"), ("filter",), ("cleared",), ("summary",), ("status",)])
+        self.assertEqual(calls[:6], [("0", "pack_size", "750"), ("1", "pack_size", "750"), ("refresh", ("0", "1")), ("cleared",), ("summary",), ("status",)])
 
     def test_bulk_begin_edit_single_row_uses_prompt_path(self):
         calls = []
@@ -158,7 +158,7 @@ class BulkSheetStatusTests(unittest.TestCase):
             root=None,
             _right_click_bulk_context=None,
             _bulk_apply_editor_value=lambda row_id, col_name, value: calls.append((row_id, col_name, value)),
-            _apply_bulk_filter=lambda: calls.append(("filter",)),
+            _refresh_bulk_view_after_edit=lambda row_ids: calls.append(("refresh", tuple(row_ids))),
             _update_bulk_summary=lambda: calls.append(("summary",)),
             _update_bulk_cell_status=lambda: calls.append(("status",)),
         )
@@ -167,7 +167,7 @@ class BulkSheetStatusTests(unittest.TestCase):
             result = po_builder.POBuilderApp._bulk_begin_edit(fake_app)
 
         self.assertEqual(result, "break")
-        self.assertEqual(calls[:5], [("8", "pack_size", "3"), ("filter",), ("cleared",), ("summary",), ("status",)])
+        self.assertEqual(calls[:5], [("8", "pack_size", "3"), ("refresh", ("8",)), ("cleared",), ("summary",), ("status",)])
         self.assertNotIn(("open_cell",), calls)
 
     def test_bulk_begin_edit_prefers_right_click_context(self):
@@ -185,7 +185,7 @@ class BulkSheetStatusTests(unittest.TestCase):
             root=None,
             _right_click_bulk_context={"row_id": "8", "col_name": "pack_size"},
             _bulk_apply_editor_value=lambda row_id, col_name, value: calls.append((row_id, col_name, value)),
-            _apply_bulk_filter=lambda: calls.append(("filter",)),
+            _refresh_bulk_view_after_edit=lambda row_ids: calls.append(("refresh", tuple(row_ids))),
             _update_bulk_summary=lambda: calls.append(("summary",)),
             _update_bulk_cell_status=lambda: calls.append(("status",)),
         )
@@ -194,7 +194,7 @@ class BulkSheetStatusTests(unittest.TestCase):
             result = po_builder.POBuilderApp._bulk_begin_edit(fake_app)
 
         self.assertEqual(result, "break")
-        self.assertEqual(calls[:5], [("8", "pack_size", "3"), ("filter",), ("cleared",), ("summary",), ("status",)])
+        self.assertEqual(calls[:5], [("8", "pack_size", "3"), ("refresh", ("8",)), ("cleared",), ("summary",), ("status",)])
 
     def test_bulk_begin_edit_right_click_context_overrides_existing_selection(self):
         calls = []
@@ -211,7 +211,7 @@ class BulkSheetStatusTests(unittest.TestCase):
             root=None,
             _right_click_bulk_context={"row_id": "5", "col_name": "pack_size"},
             _bulk_apply_editor_value=lambda row_id, col_name, value: calls.append((row_id, col_name, value)),
-            _apply_bulk_filter=lambda: calls.append(("filter",)),
+            _refresh_bulk_view_after_edit=lambda row_ids: calls.append(("refresh", tuple(row_ids))),
             _update_bulk_summary=lambda: calls.append(("summary",)),
             _update_bulk_cell_status=lambda: calls.append(("status",)),
         )
@@ -220,7 +220,7 @@ class BulkSheetStatusTests(unittest.TestCase):
             result = po_builder.POBuilderApp._bulk_begin_edit(fake_app)
 
         self.assertEqual(result, "break")
-        self.assertEqual(calls[:5], [("5", "pack_size", "5"), ("filter",), ("cleared",), ("summary",), ("status",)])
+        self.assertEqual(calls[:5], [("5", "pack_size", "5"), ("refresh", ("5",)), ("cleared",), ("summary",), ("status",)])
 
     def test_bulk_begin_edit_right_click_within_selection_keeps_selected_rows(self):
         calls = []
@@ -237,7 +237,7 @@ class BulkSheetStatusTests(unittest.TestCase):
             root=None,
             _right_click_bulk_context={"row_id": "3", "col_name": "pack_size"},
             _bulk_apply_editor_value=lambda row_id, col_name, value: calls.append((row_id, col_name, value)),
-            _apply_bulk_filter=lambda: calls.append(("filter",)),
+            _refresh_bulk_view_after_edit=lambda row_ids: calls.append(("refresh", tuple(row_ids))),
             _update_bulk_summary=lambda: calls.append(("summary",)),
             _update_bulk_cell_status=lambda: calls.append(("status",)),
         )
@@ -248,7 +248,7 @@ class BulkSheetStatusTests(unittest.TestCase):
         self.assertEqual(result, "break")
         self.assertEqual(
             calls[:7],
-            [("2", "pack_size", "5"), ("3", "pack_size", "5"), ("4", "pack_size", "5"), ("filter",), ("cleared",), ("summary",), ("status",)],
+            [("2", "pack_size", "5"), ("3", "pack_size", "5"), ("4", "pack_size", "5"), ("refresh", ("2", "3", "4")), ("cleared",), ("summary",), ("status",)],
         )
 
     def test_bulk_begin_edit_right_click_buy_rule_opens_editor(self):
@@ -307,7 +307,7 @@ class BulkSheetStatusTests(unittest.TestCase):
                 clear_selection=lambda: calls.append(("cleared",)),
             ),
             _bulk_apply_editor_value=lambda row_id, col_name, value: calls.append((row_id, col_name, value)),
-            _apply_bulk_filter=lambda: calls.append(("filter",)),
+            _refresh_bulk_view_after_edit=lambda row_ids: calls.append(("refresh", tuple(row_ids))),
             _update_bulk_summary=lambda: calls.append(("summary",)),
             _update_bulk_cell_status=lambda: calls.append(("status",)),
         )
@@ -322,7 +322,7 @@ class BulkSheetStatusTests(unittest.TestCase):
         self.assertEqual(result, "break")
         self.assertEqual(
             calls,
-            [("0", "pack_size", "500"), ("1", "pack_size", "500"), ("filter",), ("cleared",), ("summary",), ("status",)],
+            [("0", "pack_size", "500"), ("1", "pack_size", "500"), ("refresh", ("0", "1")), ("cleared",), ("summary",), ("status",)],
         )
 
     def test_bulk_apply_current_value_to_selection_reuses_fill_helper(self):
@@ -419,7 +419,7 @@ class BulkSheetViewTests(unittest.TestCase):
         view.selected_target_row_ids = lambda col_name: ("4",)
         view.app = SimpleNamespace(
             _bulk_apply_editor_value=lambda row_id, col_name, value: calls.append((row_id, col_name, value)),
-            _apply_bulk_filter=lambda: calls.append(("filter",)),
+            _refresh_bulk_view_after_edit=lambda row_ids: calls.append(("refresh", tuple(row_ids))) or True,
             _update_bulk_summary=lambda: calls.append(("summary",)),
             _update_bulk_sheet_status=lambda: calls.append(("status",)),
         )
@@ -438,7 +438,7 @@ class BulkSheetViewTests(unittest.TestCase):
                 ("after", 1),
                 ("4", "pack_size", "500"),
                 ("8", "pack_size", "500"),
-                ("filter",),
+                ("refresh", ("4", "8")),
                 ("cleared",),
                 ("summary",),
                 ("status",),

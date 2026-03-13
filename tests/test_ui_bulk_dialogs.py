@@ -91,6 +91,157 @@ class BulkDialogTests(unittest.TestCase):
         self.assertIn("No uncovered demand signal", reason)
         self.assertTrue(auto_remove)
 
+    def test_not_needed_reason_does_not_auto_remove_dormant_steady_item(self):
+        app = SimpleNamespace(
+            inventory_lookup={("AER-", "GH781-4"): {"qoh": 18, "max": 20, "min": 2}},
+            on_po_qty={("AER-", "GH781-4"): 4},
+            _suggest_min_max=lambda key: (10, 18),
+        )
+        item = {
+            "line_code": "AER-",
+            "item_code": "GH781-4",
+            "pack_size": 6,
+            "final_qty": 6,
+            "order_qty": 6,
+            "suggested_qty": 0,
+            "gross_need": 0,
+            "raw_need": 0,
+            "inventory_position": 22,
+            "target_stock": 20,
+            "demand_signal": 0,
+            "effective_qty_sold": 0,
+            "effective_qty_suspended": 0,
+            "performance_profile": "steady",
+            "sales_health_signal": "dormant",
+            "possible_missed_reorder": False,
+            "status": "ok",
+        }
+
+        reason, auto_remove = ui_bulk_dialogs.not_needed_reason(app, item, max_exceed_abs_buffer=5)
+
+        self.assertIn("Inventory position already meets target", reason)
+        self.assertIn("historically meaningful item is dormant", reason)
+        self.assertFalse(auto_remove)
+
+    def test_not_needed_reason_does_not_auto_remove_possible_missed_reorder(self):
+        app = SimpleNamespace(
+            inventory_lookup={("AER-", "GH781-4"): {"qoh": 0, "max": 20, "min": 2}},
+            on_po_qty={("AER-", "GH781-4"): 0},
+            _suggest_min_max=lambda key: (10, 18),
+        )
+        item = {
+            "line_code": "AER-",
+            "item_code": "GH781-4",
+            "pack_size": 6,
+            "final_qty": 0,
+            "order_qty": 0,
+            "suggested_qty": 0,
+            "gross_need": 0,
+            "raw_need": 0,
+            "inventory_position": 0,
+            "target_stock": 20,
+            "demand_signal": 0,
+            "effective_qty_sold": 0,
+            "effective_qty_suspended": 0,
+            "performance_profile": "steady",
+            "sales_health_signal": "dormant",
+            "possible_missed_reorder": True,
+            "status": "skip",
+        }
+
+        reason, auto_remove = ui_bulk_dialogs.not_needed_reason(app, item, max_exceed_abs_buffer=5)
+
+        self.assertIn("No net need", reason)
+        self.assertIn("likely missed reorder candidate", reason)
+        self.assertFalse(auto_remove)
+
+    def test_item_details_rows_include_sales_history_and_attention_signals(self):
+        app = SimpleNamespace(
+            on_po_qty={("AER-", "GH781-4"): 4},
+            recent_orders={("AER-", "GH781-4"): [{"qty": 2, "vendor": "MOTION", "date": "2026-03-10"}]},
+            duplicate_ic_lookup={"GH781-4": {"AER-", "ALT-"}},
+            _suggest_min_max=lambda key: (10, 18),
+        )
+        item = {
+            "line_code": "AER-",
+            "item_code": "GH781-4",
+            "qty_sold": 52,
+            "qty_suspended": 0,
+            "qty_received": 12,
+            "qty_on_po": 4,
+            "raw_need": 6,
+            "suggested_qty": 6,
+            "final_qty": 6,
+            "order_policy": "standard",
+            "status": "ok",
+            "data_flags": ["target_suggested_max"],
+            "sales_span_days": 365,
+            "sales_window_start": "2025-03-01",
+            "sales_window_end": "2026-02-28",
+            "avg_weekly_sales_loaded": 1.0,
+            "avg_monthly_sales_loaded": 4.33,
+            "annualized_sales_loaded": 52.03,
+            "days_since_last_sale": 7,
+            "performance_profile": "steady",
+            "sales_health_signal": "active",
+            "reorder_attention_signal": "normal",
+        }
+        inv = {
+            "qoh": 9,
+            "min": 2,
+            "max": 6,
+            "supplier": "MOTION",
+            "last_receipt": "01-Mar-2026",
+            "last_sale": "05-Mar-2026",
+            "ytd_sales": 11,
+            "mo12_sales": 22,
+        }
+
+        rows = ui_bulk_dialogs.item_details_rows(app, item, inv, ("AER-", "GH781-4"))
+        row_lookup = dict(row for row in rows if row[0])
+
+        self.assertEqual(row_lookup["Sales Window"], "2025-03-01 to 2026-02-28 (365 days)")
+        self.assertEqual(row_lookup["Avg Weekly Sales"], "1.00")
+        self.assertEqual(row_lookup["Annualized Sales"], "52.03")
+        self.assertEqual(row_lookup["Days Since Last Sale"], "7")
+        self.assertEqual(row_lookup["Performance"], "steady")
+        self.assertEqual(row_lookup["Sales Health"], "active")
+        self.assertEqual(row_lookup["Attention"], "normal")
+        self.assertIn("2 total: 2x via MOTION (2026-03-10)", row_lookup["Recent Orders"])
+        self.assertEqual(row_lookup["Also Under"], "ALT-")
+
+    def test_item_details_rows_handle_missing_sales_window_metrics(self):
+        app = SimpleNamespace(
+            on_po_qty={("AER-", "GH781-4"): 0},
+            recent_orders={},
+            duplicate_ic_lookup={},
+            _suggest_min_max=lambda key: (None, None),
+        )
+        item = {
+            "line_code": "AER-",
+            "item_code": "GH781-4",
+            "qty_sold": 0,
+            "qty_suspended": 2,
+            "qty_received": 0,
+            "qty_on_po": 0,
+            "raw_need": 2,
+            "suggested_qty": 2,
+            "final_qty": 2,
+            "order_policy": "exact_qty",
+            "status": "review",
+            "data_flags": [],
+        }
+        inv = {"qoh": 0, "min": None, "max": None}
+
+        rows = ui_bulk_dialogs.item_details_rows(app, item, inv, ("AER-", "GH781-4"))
+        row_lookup = dict(row for row in rows if row[0])
+
+        self.assertEqual(row_lookup["Sales Window"], "-")
+        self.assertEqual(row_lookup["Avg Weekly Sales"], "-")
+        self.assertEqual(row_lookup["Days Since Last Sale"], "-")
+        self.assertEqual(row_lookup["Performance"], "-")
+        self.assertEqual(row_lookup["Attention"], "-")
+
 
 if __name__ == "__main__":
     unittest.main()
