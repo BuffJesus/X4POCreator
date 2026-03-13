@@ -30,6 +30,7 @@ class BulkSheetView:
         self._resize_after_id = None
         self._edit_refresh_after_id = None
         self._pending_edit = None
+        self._selection_serial = 0
         self.context_menu = tk.Menu(parent, tearoff=0)
 
         headers = [self.labels[col] for col in self.columns]
@@ -80,6 +81,9 @@ class BulkSheetView:
         return [row.split("\t") for row in normalized.split("\n")]
 
     def _handle_select(self, event_data):
+        if getattr(self.app, "_right_click_bulk_context", None):
+            self.app._right_click_bulk_context = None
+            write_debug("bulk_sheet.select.clear_right_click_context")
         self._remember_selection()
         self.app._update_bulk_sheet_status()
 
@@ -160,6 +164,7 @@ class BulkSheetView:
                 pass
 
     def _handle_edit(self, event_data):
+        self._drain_pending_edit()
         row = event_data.get("row")
         col = event_data.get("column")
         write_debug("bulk_sheet.handle_edit.begin", row=row, col=col, event_value=str(event_data.get("value", "")))
@@ -178,6 +183,7 @@ class BulkSheetView:
                 "editable": False,
                 "target_row_ids": (),
                 "committed_value": event_data.get("value", ""),
+                "selection_serial": getattr(self, "_selection_serial", 0),
             }
             write_debug("bulk_sheet.handle_edit.readonly", row_id=row_id, col_name=col_name)
             self._queue_post_edit_refresh()
@@ -194,6 +200,7 @@ class BulkSheetView:
             "editable": True,
             "target_row_ids": tuple(target_row_ids),
             "committed_value": event_data.get("value", ""),
+            "selection_serial": getattr(self, "_selection_serial", 0),
         }
         self._queue_post_edit_refresh()
 
@@ -257,11 +264,40 @@ class BulkSheetView:
                 )
             except Exception as exc:
                 write_debug("bulk_sheet.post_edit.rendered_row_error", row_id=pending["row_id"], error=str(exc))
-        self.clear_selection()
+        if self._should_clear_selection_after_edit(pending):
+            self.clear_selection()
+        else:
+            write_debug(
+                "bulk_sheet.post_edit.keep_selection",
+                pending_serial=pending.get("selection_serial"),
+                current_serial=getattr(self, "_selection_serial", 0),
+            )
         self.app._update_bulk_summary()
         self.app._update_bulk_sheet_status()
         if pending and pending.get("editable") and hasattr(self.app, "_finalize_bulk_history_action"):
             self.app._finalize_bulk_history_action(f"sheet_edit:{pending.get('col_name', '')}", before_state)
+
+    def _drain_pending_edit(self):
+        pending = getattr(self, "_pending_edit", None)
+        if not pending:
+            return False
+        after_id = getattr(self, "_edit_refresh_after_id", None)
+        if after_id is not None:
+            try:
+                self.sheet.after_cancel(after_id)
+            except Exception:
+                pass
+            self._edit_refresh_after_id = None
+        write_debug(
+            "bulk_sheet.post_edit.drain",
+            row_id=pending.get("row_id"),
+            col_name=pending.get("col_name"),
+        )
+        self._run_post_edit_refresh()
+        return True
+
+    def flush_pending_edit(self):
+        return self._drain_pending_edit()
 
     def _queue_post_edit_refresh(self):
         if self._edit_refresh_after_id is not None:
@@ -291,6 +327,7 @@ class BulkSheetView:
             self.sheet.deselect("all", redraw=True)
         except Exception:
             pass
+        self._selection_serial = getattr(self, "_selection_serial", 0) + 1
         self._selection_snapshot = {"cells": (), "rows": (), "columns": (), "current": (None, None)}
         self._selection_anchor = None
         self.app._update_bulk_sheet_status()
@@ -320,6 +357,7 @@ class BulkSheetView:
         return True
 
     def _remember_selection(self):
+        self._selection_serial = getattr(self, "_selection_serial", 0) + 1
         self._selection_snapshot = {
             "cells": tuple(sorted(self.sheet.get_selected_cells())),
             "rows": tuple(sorted(self.sheet.get_selected_rows())),
@@ -329,6 +367,11 @@ class BulkSheetView:
         current = self._selection_snapshot.get("current")
         if current and current != (None, None):
             self._selection_anchor = current
+
+    def _should_clear_selection_after_edit(self, pending):
+        if not pending:
+            return True
+        return pending.get("selection_serial") == getattr(self, "_selection_serial", 0)
 
     def _snapshot_target_row_ids(self, col_name):
         col_idx = self.col_index.get(col_name)
@@ -775,6 +818,7 @@ class BulkSheetView:
         return True
 
     def paste_from_clipboard(self):
+        self.flush_pending_edit()
         try:
             text = self.sheet.clipboard_get()
         except Exception:
@@ -803,7 +847,11 @@ class BulkSheetView:
                 values = values[:len(row_ids)]
             for row_id, value in zip(row_ids, values):
                 self.app._bulk_apply_editor_value(row_id, target_col, value)
-            self.app._apply_bulk_filter()
+            refreshed = False
+            if hasattr(self.app, "_refresh_bulk_view_after_edit"):
+                refreshed = bool(self.app._refresh_bulk_view_after_edit(row_ids))
+            if not refreshed:
+                self.app._apply_bulk_filter()
             self.clear_selection()
             self.app._update_bulk_summary()
             self.app._update_bulk_sheet_status()
@@ -813,11 +861,13 @@ class BulkSheetView:
 
         if current_row is None or current_col is None:
             return False
+        touched_row_ids = []
         for row_offset, row_values in enumerate(matrix):
             row_pos = current_row + row_offset
             if row_pos >= len(self.row_ids):
                 break
             row_id = str(self.row_ids[row_pos])
+            touched_row_ids.append(row_id)
             for col_offset, value in enumerate(row_values):
                 col_pos = current_col + col_offset
                 if col_pos >= len(self.columns):
@@ -826,7 +876,11 @@ class BulkSheetView:
                 if col_name not in self.editable_cols:
                     continue
                 self.app._bulk_apply_editor_value(row_id, col_name, value)
-        self.app._apply_bulk_filter()
+        refreshed = False
+        if hasattr(self.app, "_refresh_bulk_view_after_edit"):
+            refreshed = bool(self.app._refresh_bulk_view_after_edit(touched_row_ids))
+        if not refreshed:
+            self.app._apply_bulk_filter()
         self.clear_selection()
         self.app._update_bulk_summary()
         self.app._update_bulk_sheet_status()

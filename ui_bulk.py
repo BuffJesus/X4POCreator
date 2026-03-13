@@ -403,6 +403,12 @@ def _filter_value(app, attr_name, default="ALL"):
         return default
 
 
+def flush_pending_bulk_sheet_edit(app):
+    bulk_sheet = getattr(app, "bulk_sheet", None)
+    if bulk_sheet and hasattr(bulk_sheet, "flush_pending_edit"):
+        bulk_sheet.flush_pending_edit()
+
+
 def can_incremental_refresh(app):
     if not getattr(app, "bulk_sheet", None):
         return False
@@ -436,6 +442,7 @@ def refresh_bulk_view_after_edit(app, row_ids):
 
 
 def apply_bulk_filter(app):
+    flush_pending_bulk_sheet_edit(app)
     lc_filter = _filter_value(app, "var_bulk_lc_filter")
     status_filter = _filter_value(app, "var_bulk_status_filter")
     source_filter = _filter_value(app, "var_bulk_source_filter")
@@ -504,6 +511,7 @@ def autosize_bulk_tree(app):
 
 
 def sort_bulk_tree(app, col):
+    flush_pending_bulk_sheet_edit(app)
     reverse = getattr(app, "_bulk_sort_reverse", False)
     if getattr(app, "_bulk_sort_col", None) == col:
         reverse = not reverse

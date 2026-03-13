@@ -2,6 +2,12 @@ def maybe_break(result):
     return "break" if result else None
 
 
+def flush_pending_bulk_sheet_edit(app):
+    bulk_sheet = getattr(app, "bulk_sheet", None)
+    if bulk_sheet and hasattr(bulk_sheet, "flush_pending_edit"):
+        bulk_sheet.flush_pending_edit()
+
+
 def bulk_select_all(app):
     return maybe_break(app.bulk_sheet and app.bulk_sheet.select_all_visible())
 
@@ -81,6 +87,7 @@ def bulk_jump_ctrl_down(app):
 def bulk_fill_selection_with_current_value(app, editable_cols, write_debug, event=None, *, alias="fill"):
     if not app.bulk_sheet:
         return None
+    flush_pending_bulk_sheet_edit(app)
     col_name = (
         app.bulk_sheet.selected_editable_column_name()
         or app.bulk_sheet.current_editable_column_name()
@@ -111,6 +118,7 @@ def bulk_fill_selection_with_current_value(app, editable_cols, write_debug, even
 def bulk_begin_edit(app, editable_cols, askstring, write_debug, event=None):
     if not app.bulk_sheet:
         return None
+    flush_pending_bulk_sheet_edit(app)
     right_click_context = getattr(app, "_right_click_bulk_context", None) or {}
     col_name = (
         right_click_context.get("col_name", "")
@@ -195,6 +203,7 @@ def bulk_begin_edit(app, editable_cols, askstring, write_debug, event=None):
 
 
 def bulk_remove_selected_rows(app, deepcopy, askyesno, event=None):
+    flush_pending_bulk_sheet_edit(app)
     selected = []
     if app.bulk_sheet:
         selected = list(app.bulk_sheet.explicit_selected_row_ids())
@@ -223,6 +232,7 @@ def bulk_remove_selected_rows(app, deepcopy, askyesno, event=None):
 
 
 def bulk_fill_selected_cells(app, editable_cols, askstring, showinfo):
+    flush_pending_bulk_sheet_edit(app)
     col_name = (
         (app.bulk_sheet.selected_editable_column_name() if app.bulk_sheet else "")
         or (app.bulk_sheet.current_editable_column_name() if app.bulk_sheet else "")
@@ -250,6 +260,7 @@ def bulk_fill_selected_cells(app, editable_cols, askstring, showinfo):
 
 
 def bulk_clear_selected_cells(app, editable_cols, showinfo):
+    flush_pending_bulk_sheet_edit(app)
     col_name = (
         (app.bulk_sheet.selected_editable_column_name() if app.bulk_sheet else "")
         or (app.bulk_sheet.current_editable_column_name() if app.bulk_sheet else "")

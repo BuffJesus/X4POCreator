@@ -1,6 +1,12 @@
 import ui_bulk_dialogs
 
 
+def flush_pending_bulk_sheet_edit(app):
+    bulk_sheet = getattr(app, "bulk_sheet", None)
+    if bulk_sheet and hasattr(bulk_sheet, "flush_pending_edit"):
+        bulk_sheet.flush_pending_edit()
+
+
 def open_buy_rule_editor(app, idx, write_debug):
     item = app.filtered_items[idx] if 0 <= idx < len(app.filtered_items) else {}
     write_debug(
@@ -14,6 +20,7 @@ def open_buy_rule_editor(app, idx, write_debug):
 
 
 def dismiss_duplicate(app, item_code):
+    flush_pending_bulk_sheet_edit(app)
     app.dup_whitelist.add(item_code)
     app._save_duplicate_whitelist()
     app.duplicate_ic_lookup.pop(item_code, None)
@@ -21,6 +28,7 @@ def dismiss_duplicate(app, item_code):
 
 
 def ignore_from_bulk(app, askyesno, showinfo):
+    flush_pending_bulk_sheet_edit(app)
     right_click_context = getattr(app, "_right_click_bulk_context", None) or {}
     row_id = right_click_context.get("row_id")
     if row_id is not None and app.bulk_sheet and hasattr(app.bulk_sheet, "snapshot_row_ids"):

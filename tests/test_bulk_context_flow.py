@@ -14,6 +14,7 @@ class BulkContextFlowTests(unittest.TestCase):
     def test_dismiss_duplicate_persists_and_refreshes(self):
         events = []
         fake_app = SimpleNamespace(
+            bulk_sheet=SimpleNamespace(flush_pending_edit=lambda: events.append("flush")),
             dup_whitelist=set(),
             duplicate_ic_lookup={"ABC123": {"AER-", "MOT-"}},
             _save_duplicate_whitelist=lambda: events.append("save"),
@@ -24,13 +25,14 @@ class BulkContextFlowTests(unittest.TestCase):
 
         self.assertIn("ABC123", fake_app.dup_whitelist)
         self.assertNotIn("ABC123", fake_app.duplicate_ic_lookup)
-        self.assertEqual(events, ["save", "filter"])
+        self.assertEqual(events, ["flush", "save", "filter"])
 
     def test_ignore_from_bulk_uses_right_click_snapshot_selection_when_available(self):
         events = []
         fake_app = SimpleNamespace(
             _right_click_bulk_context={"row_id": "1"},
             bulk_sheet=SimpleNamespace(
+                flush_pending_edit=lambda: events.append("flush"),
                 snapshot_row_ids=lambda: ("0", "1"),
                 explicit_selected_row_ids=lambda: ("0",),
                 selected_row_ids=lambda: ("0",),
@@ -50,15 +52,17 @@ class BulkContextFlowTests(unittest.TestCase):
             lambda title, message: events.append(("info", title, message)),
         )
 
-        self.assertEqual(events[0], ("ask", "Ignore Item"))
-        self.assertEqual(events[1], ("ignore", {"AER-:GH781-4", "MOT-:ABC123"}))
-        self.assertEqual(events[2], ("info", "Ignored", "Ignored 2 item(s)."))
+        self.assertEqual(events[0], "flush")
+        self.assertEqual(events[1], ("ask", "Ignore Item"))
+        self.assertEqual(events[2], ("ignore", {"AER-:GH781-4", "MOT-:ABC123"}))
+        self.assertEqual(events[3], ("info", "Ignored", "Ignored 2 item(s)."))
 
     def test_ignore_from_bulk_falls_back_to_single_right_click_row_when_outside_snapshot(self):
         events = []
         fake_app = SimpleNamespace(
             _right_click_bulk_context={"row_id": "1"},
             bulk_sheet=SimpleNamespace(
+                flush_pending_edit=lambda: events.append("flush"),
                 snapshot_row_ids=lambda: ("0",),
                 explicit_selected_row_ids=lambda: ("0",),
                 selected_row_ids=lambda: ("0",),
@@ -78,7 +82,8 @@ class BulkContextFlowTests(unittest.TestCase):
             lambda title, message: events.append(("info", title, message)),
         )
 
-        self.assertEqual(events[1], ("ignore", {"MOT-:ABC123"}))
+        self.assertEqual(events[0], "flush")
+        self.assertEqual(events[2], ("ignore", {"MOT-:ABC123"}))
 
 
 if __name__ == "__main__":

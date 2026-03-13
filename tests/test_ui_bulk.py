@@ -11,6 +11,16 @@ import ui_bulk
 
 
 class UIBulkTests(unittest.TestCase):
+    def test_flush_pending_bulk_sheet_edit_calls_sheet_hook(self):
+        events = []
+        fake_app = SimpleNamespace(
+            bulk_sheet=SimpleNamespace(flush_pending_edit=lambda: events.append("flush")),
+        )
+
+        ui_bulk.flush_pending_bulk_sheet_edit(fake_app)
+
+        self.assertEqual(events, ["flush"])
+
     def test_refresh_bulk_view_after_edit_refreshes_rows_when_unfiltered_unsorted(self):
         events = []
         fake_app = SimpleNamespace(
@@ -102,7 +112,10 @@ class UIBulkTests(unittest.TestCase):
                     "reorder_attention_signal": "normal",
                 },
             ],
-            bulk_sheet=SimpleNamespace(set_rows=lambda rows, row_ids: captured.append((rows, row_ids))),
+            bulk_sheet=SimpleNamespace(
+                flush_pending_edit=lambda: captured.append(("flush",)),
+                set_rows=lambda rows, row_ids: captured.append((rows, row_ids)),
+            ),
             var_bulk_lc_filter=SimpleNamespace(get=lambda: "ALL"),
             var_bulk_status_filter=SimpleNamespace(get=lambda: "ALL"),
             var_bulk_source_filter=SimpleNamespace(get=lambda: "ALL"),
@@ -119,8 +132,45 @@ class UIBulkTests(unittest.TestCase):
 
         ui_bulk.apply_bulk_filter(fake_app)
 
-        self.assertEqual(captured[0][1], ["0"])
-        self.assertEqual(captured[0][0][0][2], "A")
+        self.assertEqual(captured[0], ("flush",))
+        self.assertEqual(captured[1][1], ["0"])
+        self.assertEqual(captured[1][0][0][2], "A")
+
+    def test_sort_bulk_tree_flushes_pending_edit_before_sorting(self):
+        events = []
+        fake_app = SimpleNamespace(
+            bulk_sheet=SimpleNamespace(
+                flush_pending_edit=lambda: events.append("flush"),
+                set_rows=lambda rows, row_ids: events.append(("rows", row_ids)),
+            ),
+            filtered_items=[
+                {"line_code": "AER-", "item_code": "B", "description": "", "vendor": "", "qty_sold": 0, "qty_suspended": 0},
+                {"line_code": "AER-", "item_code": "A", "description": "", "vendor": "", "qty_sold": 0, "qty_suspended": 0},
+            ],
+            bulk_tree_columns=(
+                "vendor", "line_code", "item_code", "description", "source",
+                "status", "raw_need", "suggested_qty", "final_qty", "buy_rule",
+                "qoh", "cur_min", "cur_max", "sug_min", "sug_max",
+                "pack_size", "supplier", "why",
+            ),
+            _bulk_sort_col=None,
+            _bulk_sort_reverse=False,
+            _suggest_min_max=lambda key: (None, None),
+            inventory_lookup={},
+            order_rules={},
+            var_bulk_lc_filter=SimpleNamespace(get=lambda: "ALL"),
+            var_bulk_status_filter=SimpleNamespace(get=lambda: "ALL"),
+            var_bulk_source_filter=SimpleNamespace(get=lambda: "ALL"),
+            var_bulk_item_status=SimpleNamespace(get=lambda: "ALL"),
+            var_bulk_performance_filter=SimpleNamespace(get=lambda: "ALL"),
+            var_bulk_sales_health_filter=SimpleNamespace(get=lambda: "ALL"),
+            var_bulk_attention_filter=SimpleNamespace(get=lambda: "ALL"),
+        )
+
+        ui_bulk.sort_bulk_tree(fake_app, "item_code")
+
+        self.assertEqual(events[0], "flush")
+        self.assertEqual([item["item_code"] for item in fake_app.filtered_items], ["A", "B"])
 
 
 if __name__ == "__main__":

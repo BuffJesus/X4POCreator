@@ -251,6 +251,31 @@ class BulkSheetStatusTests(unittest.TestCase):
             [("2", "pack_size", "5"), ("3", "pack_size", "5"), ("4", "pack_size", "5"), ("refresh", ("2", "3", "4")), ("cleared",), ("summary",), ("status",)],
         )
 
+    def test_bulk_begin_edit_uses_new_selection_after_right_click_context_is_cleared(self):
+        calls = []
+        fake_app = SimpleNamespace(
+            bulk_sheet=SimpleNamespace(
+                selected_editable_column_name=lambda: "pack_size",
+                current_editable_column_name=lambda: "pack_size",
+                selected_target_row_ids=lambda col_name: ("2",),
+                selected_row_ids=lambda: ("2",),
+                current_cell_value=lambda: "2",
+                clear_selection=lambda: calls.append(("cleared",)),
+            ),
+            root=None,
+            _right_click_bulk_context=None,
+            _bulk_apply_editor_value=lambda row_id, col_name, value: calls.append((row_id, col_name, value)),
+            _refresh_bulk_view_after_edit=lambda row_ids: calls.append(("refresh", tuple(row_ids))),
+            _update_bulk_summary=lambda: calls.append(("summary",)),
+            _update_bulk_cell_status=lambda: calls.append(("status",)),
+        )
+
+        with patch("po_builder.simpledialog.askstring", return_value="5"):
+            result = po_builder.POBuilderApp._bulk_begin_edit(fake_app)
+
+        self.assertEqual(result, "break")
+        self.assertEqual(calls[:5], [("2", "pack_size", "5"), ("refresh", ("2",)), ("cleared",), ("summary",), ("status",)])
+
     def test_bulk_begin_edit_right_click_buy_rule_opens_editor(self):
         calls = []
         fake_app = SimpleNamespace(
@@ -406,6 +431,20 @@ class BulkSheetStatusTests(unittest.TestCase):
 
 
 class BulkSheetViewTests(unittest.TestCase):
+    def test_handle_select_clears_stale_right_click_context(self):
+        calls = []
+        view = BulkSheetView.__new__(BulkSheetView)
+        view.app = SimpleNamespace(
+            _right_click_bulk_context={"row_id": "7", "col_name": "vendor"},
+            _update_bulk_sheet_status=lambda: calls.append(("status",)),
+        )
+        view._remember_selection = lambda: calls.append(("remember",))
+
+        view._handle_select({})
+
+        self.assertIsNone(view.app._right_click_bulk_context)
+        self.assertEqual(calls, [("remember",), ("status",)])
+
     def test_handle_edit_applies_value_to_selected_target_rows(self):
         calls = []
         view = BulkSheetView.__new__(BulkSheetView)
@@ -416,6 +455,7 @@ class BulkSheetViewTests(unittest.TestCase):
         view.col_index = {"vendor": 0, "pack_size": 1, "why": 2}
         view._edit_refresh_after_id = None
         view._pending_edit = None
+        view._selection_serial = 0
         view.selected_target_row_ids = lambda col_name: ("4",)
         view.app = SimpleNamespace(
             _bulk_apply_editor_value=lambda row_id, col_name, value: calls.append((row_id, col_name, value)),
@@ -444,6 +484,94 @@ class BulkSheetViewTests(unittest.TestCase):
                 ("status",),
             ],
         )
+
+    def test_handle_edit_drains_older_pending_edit_before_queueing_new_one(self):
+        calls = []
+        view = BulkSheetView.__new__(BulkSheetView)
+        view.row_ids = [4, 8]
+        view.columns = ("vendor", "pack_size", "why")
+        view.editable_cols = {"vendor", "pack_size"}
+        view._selection_snapshot = {"cells": (), "rows": (), "columns": (), "current": (1, 1)}
+        view.col_index = {"vendor": 0, "pack_size": 1, "why": 2}
+        view._selection_serial = 1
+        view._edit_refresh_after_id = "old-after"
+        view._pending_edit = {
+            "row": 0,
+            "col": 0,
+            "row_id": "4",
+            "col_name": "vendor",
+            "editable": True,
+            "target_row_ids": ("4",),
+            "committed_value": "OLDV",
+            "selection_serial": 0,
+        }
+        view.selected_target_row_ids = lambda col_name: ("8",)
+        view.app = SimpleNamespace(
+            _bulk_apply_editor_value=lambda row_id, col_name, value: calls.append((row_id, col_name, value)),
+            _refresh_bulk_view_after_edit=lambda row_ids: calls.append(("refresh", tuple(row_ids))) or True,
+            _update_bulk_summary=lambda: calls.append(("summary",)),
+            _update_bulk_sheet_status=lambda: calls.append(("status",)),
+        )
+        view.clear_selection = lambda: calls.append(("cleared",))
+        view.sheet = SimpleNamespace(
+            get_cell_data=lambda row, col: "VALUE",
+            after=lambda delay, callback: (calls.append(("after", delay)), "new-after")[1],
+            after_cancel=lambda after_id: calls.append(("cancel", after_id)),
+        )
+
+        view._handle_edit({"row": 1, "column": 1, "value": "12"})
+
+        self.assertEqual(
+            calls[:6],
+            [
+                ("cancel", "old-after"),
+                ("4", "vendor", "OLDV"),
+                ("refresh", ("4",)),
+                ("summary",),
+                ("status",),
+                ("after", 1),
+            ],
+        )
+        self.assertEqual(view._pending_edit["row_id"], "8")
+        self.assertEqual(view._pending_edit["col_name"], "pack_size")
+        self.assertEqual(view._pending_edit["committed_value"], "12")
+
+    def test_run_post_edit_refresh_keeps_newer_selection_intact(self):
+        calls = []
+        view = BulkSheetView.__new__(BulkSheetView)
+        view.row_ids = [4, 8]
+        view.columns = ("vendor", "pack_size")
+        view.editable_cols = {"vendor", "pack_size"}
+        view._selection_serial = 2
+        view._edit_refresh_after_id = None
+        view._pending_edit = {
+            "row": 0,
+            "col": 0,
+            "row_id": "4",
+            "col_name": "vendor",
+            "editable": True,
+            "target_row_ids": ("4",),
+            "committed_value": "ABC",
+            "selection_serial": 1,
+        }
+        view.app = SimpleNamespace(
+            _bulk_apply_editor_value=lambda row_id, col_name, value: calls.append((row_id, col_name, value)),
+            _refresh_bulk_view_after_edit=lambda row_ids: calls.append(("refresh", tuple(row_ids))) or True,
+            _update_bulk_summary=lambda: calls.append(("summary",)),
+            _update_bulk_sheet_status=lambda: calls.append(("status",)),
+            _bulk_row_values=lambda item: ["row"],
+            filtered_items=[{"item_code": "A"}, {"item_code": "B"}],
+        )
+        view.clear_selection = lambda: calls.append(("cleared",))
+        view.sheet = SimpleNamespace(get_cell_data=lambda row, col: "ABC")
+
+        view._run_post_edit_refresh()
+
+        self.assertEqual(
+            calls[:4],
+            [("4", "vendor", "ABC"), ("refresh", ("4",)), ("summary",), ("status",)],
+        )
+        self.assertNotIn(("cleared",), calls)
 
     def test_select_all_visible_selects_all_rows_and_updates_status(self):
         calls = []
@@ -780,6 +908,7 @@ class BulkSheetViewTests(unittest.TestCase):
         view.editable_cols = {"pack_size"}
         view.row_ids = [4, 8]
         view.columns = ("vendor", "pack_size", "why")
+        view.flush_pending_edit = lambda: calls.append(("flush",))
         view.sheet = SimpleNamespace(clipboard_get=lambda: "500")
         view.selected_editable_column_name = lambda: "pack_size"
         view.current_editable_column_name = lambda: "pack_size"
@@ -787,15 +916,31 @@ class BulkSheetViewTests(unittest.TestCase):
         view.current_cell = lambda: (0, 1)
         view.app = SimpleNamespace(
             _bulk_apply_editor_value=lambda row_id, col_name, value: calls.append((row_id, col_name, value)),
+            _refresh_bulk_view_after_edit=lambda row_ids: calls.append(("refresh", tuple(row_ids))) or True,
             _apply_bulk_filter=lambda: calls.append(("filter",)),
+            _capture_bulk_history_state=lambda: {"before": True},
             _update_bulk_summary=lambda: calls.append(("summary",)),
             _update_bulk_sheet_status=lambda: calls.append(("status",)),
+            _finalize_bulk_history_action=lambda label, before: calls.append((label, before)),
         )
+        view.clear_selection = lambda: calls.append(("cleared",))
 
         result = view.paste_from_clipboard()
 
         self.assertTrue(result)
-        self.assertEqual(calls[:2], [("4", "pack_size", "500"), ("8", "pack_size", "500")])
+        self.assertEqual(
+            calls,
+            [
+                ("flush",),
+                ("4", "pack_size", "500"),
+                ("8", "pack_size", "500"),
+                ("refresh", ("4", "8")),
+                ("cleared",),
+                ("summary",),
+                ("status",),
+                ("paste:pack_size", {"before": True}),
+            ],
+        )
 
     def test_paste_rectangular_block_starts_at_current_cell(self):
         calls = []
@@ -803,6 +948,7 @@ class BulkSheetViewTests(unittest.TestCase):
         view.editable_cols = {"vendor", "pack_size"}
         view.row_ids = [4, 8, 12]
         view.columns = ("vendor", "pack_size", "why")
+        view.flush_pending_edit = lambda: calls.append(("flush",))
         view.sheet = SimpleNamespace(clipboard_get=lambda: "ABC\t500\nDEF\t600")
         view.selected_editable_column_name = lambda: ""
         view.current_editable_column_name = lambda: "vendor"
@@ -810,22 +956,61 @@ class BulkSheetViewTests(unittest.TestCase):
         view.current_cell = lambda: (1, 0)
         view.app = SimpleNamespace(
             _bulk_apply_editor_value=lambda row_id, col_name, value: calls.append((row_id, col_name, value)),
+            _refresh_bulk_view_after_edit=lambda row_ids: calls.append(("refresh", tuple(row_ids))) or True,
             _apply_bulk_filter=lambda: calls.append(("filter",)),
+            _capture_bulk_history_state=lambda: {"before": True},
             _update_bulk_summary=lambda: calls.append(("summary",)),
             _update_bulk_sheet_status=lambda: calls.append(("status",)),
+            _finalize_bulk_history_action=lambda label, before: calls.append((label, before)),
         )
+        view.clear_selection = lambda: calls.append(("cleared",))
 
         result = view.paste_from_clipboard()
 
         self.assertTrue(result)
         self.assertEqual(
-            calls[:4],
+            calls,
             [
+                ("flush",),
                 ("8", "vendor", "ABC"),
                 ("8", "pack_size", "500"),
                 ("12", "vendor", "DEF"),
                 ("12", "pack_size", "600"),
+                ("refresh", ("8", "12")),
+                ("cleared",),
+                ("summary",),
+                ("status",),
+                ("paste:block", {"before": True}),
             ],
+        )
+
+    def test_paste_falls_back_to_filter_when_incremental_refresh_is_unavailable(self):
+        calls = []
+        view = BulkSheetView.__new__(BulkSheetView)
+        view.editable_cols = {"pack_size"}
+        view.row_ids = [4]
+        view.columns = ("vendor", "pack_size")
+        view.flush_pending_edit = lambda: calls.append(("flush",))
+        view.sheet = SimpleNamespace(clipboard_get=lambda: "9")
+        view.selected_editable_column_name = lambda: "pack_size"
+        view.current_editable_column_name = lambda: "pack_size"
+        view.selected_target_row_ids = lambda col_name: ("4",)
+        view.current_cell = lambda: (0, 1)
+        view.app = SimpleNamespace(
+            _bulk_apply_editor_value=lambda row_id, col_name, value: calls.append((row_id, col_name, value)),
+            _refresh_bulk_view_after_edit=lambda row_ids: calls.append(("refresh", tuple(row_ids))) or False,
+            _apply_bulk_filter=lambda: calls.append(("filter",)),
+            _update_bulk_summary=lambda: calls.append(("summary",)),
+            _update_bulk_sheet_status=lambda: calls.append(("status",)),
+        )
+        view.clear_selection = lambda: calls.append(("cleared",))
+
+        result = view.paste_from_clipboard()
+
+        self.assertTrue(result)
+        self.assertEqual(
+            calls[:5],
+            [("flush",), ("4", "pack_size", "9"), ("refresh", ("4",)), ("filter",), ("cleared",)],
         )
 
 

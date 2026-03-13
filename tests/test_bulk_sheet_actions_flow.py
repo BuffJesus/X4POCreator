@@ -11,6 +11,16 @@ import bulk_sheet_actions_flow
 
 
 class BulkSheetActionsFlowTests(unittest.TestCase):
+    def test_flush_pending_bulk_sheet_edit_calls_sheet_hook(self):
+        events = []
+        fake_app = SimpleNamespace(
+            bulk_sheet=SimpleNamespace(flush_pending_edit=lambda: events.append("flushed")),
+        )
+
+        bulk_sheet_actions_flow.flush_pending_bulk_sheet_edit(fake_app)
+
+        self.assertEqual(events, ["flushed"])
+
     def test_bulk_copy_selection_returns_break_only_when_sheet_copies(self):
         app_true = SimpleNamespace(bulk_sheet=SimpleNamespace(copy_selection_to_clipboard=lambda: True))
         app_false = SimpleNamespace(bulk_sheet=SimpleNamespace(copy_selection_to_clipboard=lambda: False))
@@ -170,6 +180,7 @@ class BulkSheetActionsFlowTests(unittest.TestCase):
         events = []
         fake_app = SimpleNamespace(
             bulk_sheet=SimpleNamespace(
+                flush_pending_edit=lambda: events.append("flush"),
                 selected_editable_column_name=lambda: "pack_size",
                 current_editable_column_name=lambda: "pack_size",
                 selected_target_row_ids=lambda col_name: ("0", "1"),
@@ -194,6 +205,7 @@ class BulkSheetActionsFlowTests(unittest.TestCase):
         self.assertEqual(
             events,
             [
+                "flush",
                 ("0", "pack_size", "6"),
                 ("1", "pack_size", "6"),
                 ("refresh", ("0", "1")),
@@ -208,6 +220,7 @@ class BulkSheetActionsFlowTests(unittest.TestCase):
         events = []
         fake_app = SimpleNamespace(
             bulk_sheet=SimpleNamespace(
+                flush_pending_edit=lambda: events.append("flush"),
                 selected_editable_column_name=lambda: "vendor",
                 current_editable_column_name=lambda: "vendor",
                 selected_target_row_ids=lambda col_name: ("0",),
@@ -230,6 +243,7 @@ class BulkSheetActionsFlowTests(unittest.TestCase):
         self.assertEqual(
             events,
             [
+                "flush",
                 ("0", "vendor", ""),
                 ("refresh", ("0",)),
                 "clear",
@@ -238,6 +252,31 @@ class BulkSheetActionsFlowTests(unittest.TestCase):
                 ("clear:vendor", {"before": True}),
             ],
         )
+
+    def test_bulk_remove_selected_rows_flushes_pending_sheet_edit_first(self):
+        events = []
+        fake_app = SimpleNamespace(
+            bulk_sheet=SimpleNamespace(
+                flush_pending_edit=lambda: events.append("flush"),
+                explicit_selected_row_ids=lambda: ("1",),
+                current_row_id=lambda: "0",
+                clear_selection=lambda: events.append("clear"),
+            ),
+            _right_click_bulk_context=None,
+            filtered_items=[{"item_code": "A"}, {"item_code": "B"}],
+            last_removed_bulk_items=[],
+            _apply_bulk_filter=lambda: events.append("filter"),
+            _update_bulk_summary=lambda: events.append("summary"),
+        )
+
+        result = bulk_sheet_actions_flow.bulk_remove_selected_rows(
+            fake_app,
+            lambda value: dict(value),
+            lambda title, message: True,
+        )
+
+        self.assertIsNone(result)
+        self.assertEqual(events[:4], ["flush", "clear", "filter", "summary"])
 
     def test_bulk_delete_selected_clears_cells_when_cells_are_selected(self):
         events = []
