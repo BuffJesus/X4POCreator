@@ -189,6 +189,42 @@ class AssignmentActionTests(unittest.TestCase):
         self.assertEqual(app.individual_items, [{"vendor": ""}])
         self.assertEqual(calls, ["flush", "warnings", "populate", ("tab", 4, "normal"), ("select", 4)])
 
+    def test_undo_last_bulk_removal_prefers_structured_bulk_undo_for_latest_removal(self):
+        calls = []
+        app = SimpleNamespace(
+            bulk_sheet=SimpleNamespace(flush_pending_edit=lambda: calls.append("flush")),
+            bulk_undo_stack=[{"label": "remove:selected_rows"}],
+            _bulk_undo=lambda event=None: calls.append(("bulk_undo", event)),
+            last_removed_bulk_items=[(1, {"item_code": "B"})],
+        )
+
+        with patch("ui_assignment_actions.messagebox.showinfo") as mocked:
+            ui_assignment_actions.undo_last_bulk_removal(app)
+
+        self.assertEqual(calls, ["flush", ("bulk_undo", None)])
+        mocked.assert_called_once_with("Undo Complete", "Reverted the most recent bulk removal.")
+
+    def test_undo_last_bulk_removal_blocks_legacy_restore_when_newer_action_exists(self):
+        calls = []
+        app = SimpleNamespace(
+            bulk_sheet=SimpleNamespace(flush_pending_edit=lambda: calls.append("flush")),
+            bulk_undo_stack=[{"label": "edit:pack_size"}],
+            last_removed_bulk_items=[(1, {"item_code": "B"})],
+            filtered_items=[{"item_code": "A"}],
+            _apply_bulk_filter=lambda: calls.append("bulk"),
+            _update_bulk_summary=lambda: calls.append("summary"),
+        )
+
+        with patch("ui_assignment_actions.messagebox.showinfo") as mocked:
+            ui_assignment_actions.undo_last_bulk_removal(app)
+
+        self.assertEqual(calls, ["flush"])
+        self.assertEqual(app.filtered_items, [{"item_code": "A"}])
+        mocked.assert_called_once_with(
+            "Nothing to Undo",
+            "The most recent bulk action was not a removal. Use Undo for the latest action first.",
+        )
+
     def test_assign_current_advances_until_finish(self):
         populate_calls = []
         finish_calls = []

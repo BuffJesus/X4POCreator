@@ -191,6 +191,8 @@ class BulkSheetActionsFlowTests(unittest.TestCase):
             _right_click_bulk_context={"row_id": row_id_b},
             filtered_items=[item_a, item_b],
             last_removed_bulk_items=[],
+            _capture_bulk_history_state=lambda: {"before": True},
+            _finalize_bulk_history_action=lambda label, before: events.append((label, before)),
             _apply_bulk_filter=lambda: events.append("filter"),
             _update_bulk_summary=lambda: events.append("summary"),
             _resolve_bulk_row_id=lambda current_row_id: (0, item_a) if current_row_id == row_id_a else ((1, item_b) if current_row_id == row_id_b else (None, None)),
@@ -205,7 +207,7 @@ class BulkSheetActionsFlowTests(unittest.TestCase):
         self.assertIsNone(result)
         self.assertEqual(fake_app.filtered_items, [item_a])
         self.assertEqual(fake_app.last_removed_bulk_items, [(1, dict(item_b))])
-        self.assertEqual(events, ["clear", "filter", "summary"])
+        self.assertEqual(events, [("remove:selected_rows", {"before": True}), "clear", "filter", "summary"])
 
     def test_bulk_remove_selected_rows_returns_break_when_nothing_selected_from_event(self):
         fake_app = SimpleNamespace(
@@ -375,6 +377,8 @@ class BulkSheetActionsFlowTests(unittest.TestCase):
             _right_click_bulk_context=None,
             filtered_items=[item_a, item_b],
             last_removed_bulk_items=[],
+            _capture_bulk_history_state=lambda: {"before": True},
+            _finalize_bulk_history_action=lambda label, before: events.append((label, before)),
             _apply_bulk_filter=lambda: events.append("filter"),
             _update_bulk_summary=lambda: events.append("summary"),
             _resolve_bulk_row_id=lambda current_row_id: (0, item_a) if current_row_id == row_id_a else ((1, item_b) if current_row_id == row_id_b else (None, None)),
@@ -387,7 +391,7 @@ class BulkSheetActionsFlowTests(unittest.TestCase):
         )
 
         self.assertIsNone(result)
-        self.assertEqual(events[:4], ["flush", "clear", "filter", "summary"])
+        self.assertEqual(events[:5], ["flush", ("remove:selected_rows", {"before": True}), "clear", "filter", "summary"])
 
     def test_bulk_delete_selected_clears_cells_when_cells_are_selected(self):
         events = []

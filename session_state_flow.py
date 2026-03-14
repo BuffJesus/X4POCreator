@@ -1,6 +1,11 @@
 import copy
 
 
+def is_bulk_removal_history_label(label):
+    normalized = str(label or "").strip().lower()
+    return normalized.startswith("remove:")
+
+
 def ignore_key(line_code, item_code):
     return f"{str(line_code).strip()}:{str(item_code).strip()}"
 

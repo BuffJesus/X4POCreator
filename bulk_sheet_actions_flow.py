@@ -1,3 +1,6 @@
+import bulk_remove_flow
+
+
 def maybe_break(result):
     return "break" if result else None
 
@@ -300,9 +303,13 @@ def bulk_remove_selected_rows(app, deepcopy, askyesno, event=None):
             resolved.append(idx)
     for idx in sorted(set(resolved), reverse=True):
         if 0 <= idx < len(app.filtered_items):
-            removed_payload.append((idx, deepcopy(app.filtered_items[idx])))
-            app.filtered_items.pop(idx)
-    app.last_removed_bulk_items = removed_payload
+            removed_payload.append(idx)
+    removed_payload = bulk_remove_flow.remove_filtered_rows(
+        app,
+        removed_payload,
+        deepcopy,
+        history_label="remove:selected_rows",
+    )
     if app.bulk_sheet:
         app.bulk_sheet.clear_selection()
     app._apply_bulk_filter()

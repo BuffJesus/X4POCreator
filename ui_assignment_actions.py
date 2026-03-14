@@ -1,5 +1,6 @@
 from tkinter import messagebox
 
+import session_state_flow
 import ui_bulk
 
 
@@ -115,6 +116,20 @@ def bulk_apply_visible(app):
 
 def undo_last_bulk_removal(app):
     flush_pending_bulk_sheet_edit(app)
+    undo_stack = list(getattr(app, "bulk_undo_stack", []) or [])
+    if undo_stack:
+        latest = undo_stack[-1]
+        if session_state_flow.is_bulk_removal_history_label(latest.get("label", "")):
+            if hasattr(app, "_bulk_undo"):
+                app._bulk_undo()
+                messagebox.showinfo("Undo Complete", "Reverted the most recent bulk removal.")
+                return
+        else:
+            messagebox.showinfo(
+                "Nothing to Undo",
+                "The most recent bulk action was not a removal. Use Undo for the latest action first.",
+            )
+            return
     if not app.last_removed_bulk_items:
         messagebox.showinfo("Nothing to Undo", "No recent bulk removal to undo.")
         return

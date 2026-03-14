@@ -11,6 +11,11 @@ import session_state_flow
 
 
 class SessionStateFlowTests(unittest.TestCase):
+    def test_is_bulk_removal_history_label_detects_remove_prefix(self):
+        self.assertTrue(session_state_flow.is_bulk_removal_history_label("remove:selected_rows"))
+        self.assertTrue(session_state_flow.is_bulk_removal_history_label("remove:not_needed:screen"))
+        self.assertFalse(session_state_flow.is_bulk_removal_history_label("edit:pack_size"))
+
     def test_finalize_bulk_history_action_trims_undo_stack_and_clears_redo(self):
         fake_app = SimpleNamespace(
             bulk_undo_stack=[

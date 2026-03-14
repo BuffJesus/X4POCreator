@@ -3,6 +3,7 @@ import math
 import tkinter as tk
 from tkinter import ttk, messagebox
 
+import bulk_remove_flow
 import storage
 import ui_bulk
 from debug_log import write_debug
@@ -405,13 +406,13 @@ def bulk_remove_not_needed(app, scope, max_exceed_abs_buffer, *, include_assigne
             [candidates[int(iid)][0] for iid in checked_set],
             reverse=True,
         )
-        removed_payload = []
-        for idx in remove_indices:
-            if 0 <= idx < len(app.filtered_items):
-                removed_payload.append((idx, copy.deepcopy(app.filtered_items[idx])))
-                app.filtered_items.pop(idx)
-        app.last_removed_bulk_items = removed_payload
-        result["removed"] = len(remove_indices)
+        removed_payload = bulk_remove_flow.remove_filtered_rows(
+            app,
+            remove_indices,
+            copy.deepcopy,
+            history_label=f"remove:not_needed:{scope}",
+        )
+        result["removed"] = len(removed_payload)
         dlg.destroy()
 
     btn_frame = ttk.Frame(dlg)
