@@ -247,7 +247,10 @@ class BulkSheetView:
                     )
                     self.app._bulk_apply_editor_value(target_row_id, col_name, value)
             elif row_id is not None:
-                self.refresh_row(row_id, self.app._bulk_row_values(self.app.filtered_items[int(row_id)]))
+                resolve_row = getattr(self.app, "_resolve_bulk_row_id", None)
+                idx, item = resolve_row(row_id) if callable(resolve_row) else (None, None)
+                if item is not None:
+                    self.refresh_row(row_id, self.app._bulk_row_values(item))
         if pending and pending.get("editable"):
             try:
                 refreshed = self.app._refresh_bulk_view_after_edit(
@@ -261,7 +264,11 @@ class BulkSheetView:
         write_debug("bulk_sheet.post_edit.filtered", incremental=bool(refreshed))
         if pending and pending.get("row_id") is not None:
             try:
-                rendered = self.app._bulk_row_values(self.app.filtered_items[int(pending["row_id"])])
+                resolve_row = getattr(self.app, "_resolve_bulk_row_id", None)
+                idx, item = resolve_row(pending["row_id"]) if callable(resolve_row) else (None, None)
+                if item is None:
+                    raise LookupError("row not found")
+                rendered = self.app._bulk_row_values(item)
                 write_debug(
                     "bulk_sheet.post_edit.rendered_row",
                     row_id=pending["row_id"],
@@ -320,7 +327,7 @@ class BulkSheetView:
             self._run_post_edit_refresh()
 
     def set_rows(self, rows, row_ids):
-        self.row_ids = [int(row_id) for row_id in row_ids]
+        self.row_ids = [str(row_id) for row_id in row_ids]
         self.row_lookup = {str(row_id): idx for idx, row_id in enumerate(self.row_ids)}
         if getattr(self.app, "_right_click_bulk_context", None):
             self.app._right_click_bulk_context = None

@@ -149,7 +149,16 @@ def bulk_begin_edit(app, editable_cols, askstring, write_debug, event=None):
         right_click_row_id=clicked_row_id or "",
     )
     if col_name == "buy_rule" and clicked_row_id:
-        app._open_buy_rule_editor(int(clicked_row_id))
+        resolve_row = getattr(app, "_resolve_bulk_row_id", None)
+        if callable(resolve_row):
+            idx, _item = resolve_row(clicked_row_id)
+        else:
+            try:
+                idx = int(clicked_row_id)
+            except (TypeError, ValueError):
+                idx = None
+        if idx is not None:
+            app._open_buy_rule_editor(idx)
         write_debug("bulk_begin_edit.buy_rule_editor", row_id=clicked_row_id)
         app._right_click_bulk_context = None
         return "break"
@@ -190,7 +199,15 @@ def bulk_begin_edit(app, editable_cols, askstring, write_debug, event=None):
     refresh_bulk_view_after_edit(app, row_ids, col_name)
     for row_id in row_ids[:12]:
         try:
-            rendered = app._bulk_row_values(app.filtered_items[int(row_id)])
+            resolve_row = getattr(app, "_resolve_bulk_row_id", None)
+            if callable(resolve_row):
+                _idx, item = resolve_row(row_id)
+            else:
+                _idx = int(row_id)
+                item = app.filtered_items[_idx] if 0 <= _idx < len(app.filtered_items) else None
+            if item is None:
+                continue
+            rendered = app._bulk_row_values(item)
             write_debug(
                 "bulk_begin_edit.rendered_row",
                 row_id=row_id,
@@ -226,7 +243,19 @@ def bulk_remove_selected_rows(app, deepcopy, askyesno, event=None):
     if not askyesno("Confirm Remove", f"Remove {len(selected)} item(s) from this session?"):
         return "break" if event is not None else None
     removed_payload = []
-    for idx in sorted((int(row_id) for row_id in selected), reverse=True):
+    resolved = []
+    resolve_row = getattr(app, "_resolve_bulk_row_id", None)
+    for row_id in selected:
+        if callable(resolve_row):
+            idx, _item = resolve_row(row_id)
+        else:
+            try:
+                idx = int(row_id)
+            except (TypeError, ValueError):
+                idx = None
+        if idx is not None:
+            resolved.append(idx)
+    for idx in sorted(set(resolved), reverse=True):
         if 0 <= idx < len(app.filtered_items):
             removed_payload.append((idx, deepcopy(app.filtered_items[idx])))
             app.filtered_items.pop(idx)

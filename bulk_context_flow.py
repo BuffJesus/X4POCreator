@@ -1,3 +1,4 @@
+import ui_bulk
 import ui_bulk_dialogs
 
 
@@ -52,9 +53,12 @@ def ignore_from_bulk(app, askyesno, showinfo):
         return
     ignore_keys = set()
     for row_id in row_ids:
-        idx = int(row_id)
-        if 0 <= idx < len(app.filtered_items):
-            item = app.filtered_items[idx]
+        resolve_row = getattr(app, "_resolve_bulk_row_id", None)
+        if callable(resolve_row):
+            _idx, item = resolve_row(row_id)
+        else:
+            _idx, item = ui_bulk.resolve_bulk_row_id(app, row_id)
+        if item is not None:
             ignore_keys.add(app._ignore_key(item["line_code"], item["item_code"]))
     if not ignore_keys:
         return

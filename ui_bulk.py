@@ -1,8 +1,48 @@
+import json
 import tkinter as tk
 from tkinter import ttk
 
 from bulk_sheet import BulkSheetView, HAS_TKSHEET, TKSHEET_IMPORT_ERROR
 from rules import get_buy_rule_summary
+
+
+def bulk_row_id(item):
+    key = [item.get("line_code", ""), item.get("item_code", "")]
+    return json.dumps(key, separators=(",", ":"))
+
+
+def resolve_bulk_row_id(app, row_id):
+    if row_id is None:
+        return None, None
+    row_id = str(row_id)
+    filtered_items = list(getattr(app, "filtered_items", ()) or ())
+    try:
+        key = json.loads(row_id)
+    except Exception:
+        key = None
+    if isinstance(key, list) and len(key) == 2:
+        key = (key[0], key[1])
+        find_item = getattr(app, "_find_filtered_item", None)
+        item = find_item(key) if callable(find_item) else None
+        if item is None:
+            for candidate in filtered_items:
+                if (candidate.get("line_code"), candidate.get("item_code")) == key:
+                    item = candidate
+                    break
+        if item is not None:
+            for idx, candidate in enumerate(filtered_items):
+                if candidate is item:
+                    return idx, candidate
+            for idx, candidate in enumerate(filtered_items):
+                if (candidate.get("line_code"), candidate.get("item_code")) == key:
+                    return idx, candidate
+    try:
+        idx = int(row_id)
+    except (TypeError, ValueError):
+        return None, None
+    if 0 <= idx < len(filtered_items):
+        return idx, filtered_items[idx]
+    return None, None
 
 
 def build_bulk_tab(app, editable_cols):
@@ -519,12 +559,14 @@ def refresh_bulk_view_after_edit(app, row_ids, changed_cols=None):
     if not getattr(app, "bulk_sheet", None):
         return False
     for row_id in row_ids:
-        try:
-            idx = int(row_id)
-        except (TypeError, ValueError):
+        idx, item = resolve_bulk_row_id(app, row_id)
+        if idx is None or item is None:
             continue
-        if 0 <= idx < len(app.filtered_items) and str(row_id) in getattr(app.bulk_sheet, "row_lookup", {}):
-            app.bulk_sheet.refresh_row(str(row_id), app._bulk_row_values(app.filtered_items[idx]))
+        effective_row_id = str(row_id)
+        if effective_row_id not in getattr(app.bulk_sheet, "row_lookup", {}):
+            effective_row_id = bulk_row_id(item)
+        if effective_row_id in getattr(app.bulk_sheet, "row_lookup", {}):
+            app.bulk_sheet.refresh_row(effective_row_id, app._bulk_row_values(item))
     return True
 
 
@@ -587,7 +629,7 @@ def apply_bulk_filter(app):
             }.get(attention_filter, "")
             if attention != expected_attention:
                 continue
-        row_ids.append(str(i))
+        row_ids.append(bulk_row_id(item))
         rows.append(list(bulk_row_values(app, item)))
     update_bulk_summary(app, counts=counts)
     if app.bulk_sheet:

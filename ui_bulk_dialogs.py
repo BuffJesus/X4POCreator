@@ -4,6 +4,7 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 
 import storage
+import ui_bulk
 from debug_log import write_debug
 from rules import (
     determine_acceptable_overstock_qty,
@@ -24,6 +25,13 @@ def flush_pending_bulk_sheet_edit(app):
     bulk_sheet = getattr(app, "bulk_sheet", None)
     if bulk_sheet and hasattr(bulk_sheet, "flush_pending_edit"):
         bulk_sheet.flush_pending_edit()
+
+
+def resolve_bulk_row(app, row_id):
+    resolver = getattr(app, "_resolve_bulk_row_id", None)
+    if callable(resolver):
+        return resolver(row_id)
+    return ui_bulk.resolve_bulk_row_id(app, row_id)
 
 
 def buy_rule_field_visibility(*, advanced=False):
@@ -257,10 +265,9 @@ def bulk_remove_not_needed(app, scope, max_exceed_abs_buffer, *, include_assigne
 
     candidates = []
     for iid in row_ids:
-        idx = int(iid)
-        if idx >= len(app.filtered_items):
+        idx, item = resolve_bulk_row(app, iid)
+        if idx is None or item is None:
             continue
-        item = app.filtered_items[idx]
         if not include_assigned and item.get("vendor"):
             continue
         reason, auto_remove = not_needed_reason(app, item, max_exceed_abs_buffer)
@@ -750,7 +757,7 @@ def open_buy_rule_editor(app, idx, order_rules_file):
                 )
             except Exception as exc:
                 write_debug("buy_rule_editor.save.rendered_row_error", idx=idx, error=str(exc))
-            app.bulk_sheet.refresh_row(str(idx), app._bulk_row_values(item))
+            app.bulk_sheet.refresh_row(ui_bulk.bulk_row_id(item), app._bulk_row_values(item))
         else:
             for child in app.bulk_tree.get_children():
                 if int(child) == idx:
@@ -774,8 +781,9 @@ def view_item_details(app):
     )
     if row_id is None:
         return
-    idx = int(row_id)
-    item = app.filtered_items[idx]
+    idx, item = resolve_bulk_row(app, row_id)
+    if idx is None or item is None:
+        return
     key = (item["line_code"], item["item_code"])
     inv = app.inventory_lookup.get(key, {})
 
@@ -952,7 +960,10 @@ def edit_buy_rule_from_bulk(app):
     )
     if row_id is None:
         return
-    app._open_buy_rule_editor(int(row_id))
+    idx, _item = resolve_bulk_row(app, row_id)
+    if idx is None:
+        return
+    app._open_buy_rule_editor(idx)
 
 
 def resolve_review_from_bulk(app):
@@ -962,8 +973,9 @@ def resolve_review_from_bulk(app):
     )
     if row_id is None:
         return
-    idx = int(row_id)
-    item = app.filtered_items[idx]
+    idx, item = resolve_bulk_row(app, row_id)
+    if idx is None or item is None:
+        return
     item["review_resolved"] = True
     item["status"], item["data_flags"] = evaluate_item_status(item)
     if item.get("review_required") and item.get("review_resolved"):
@@ -982,8 +994,9 @@ def dismiss_duplicate_from_bulk(app):
     )
     if row_id is None:
         return
-    idx = int(row_id)
-    item = app.filtered_items[idx]
+    idx, item = resolve_bulk_row(app, row_id)
+    if idx is None or item is None:
+        return
     app._dismiss_duplicate(item["item_code"])
 
 

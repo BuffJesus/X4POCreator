@@ -449,7 +449,7 @@ class BulkSheetViewTests(unittest.TestCase):
         view.set_rows([["A", "5"]], ["0"])
 
         self.assertIsNone(view.app._right_click_bulk_context)
-        self.assertEqual(view.row_ids, [0])
+        self.assertEqual(view.row_ids, ["0"])
         self.assertEqual(calls[-1], ("status",))
 
     def test_handle_select_clears_stale_right_click_context(self):

@@ -8,6 +8,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 import bulk_context_flow
+import ui_bulk
 
 
 class BulkContextFlowTests(unittest.TestCase):
@@ -29,19 +30,20 @@ class BulkContextFlowTests(unittest.TestCase):
 
     def test_ignore_from_bulk_uses_right_click_snapshot_selection_when_available(self):
         events = []
+        item_a = {"line_code": "AER-", "item_code": "GH781-4"}
+        item_b = {"line_code": "MOT-", "item_code": "ABC123"}
+        row_id_a = ui_bulk.bulk_row_id(item_a)
+        row_id_b = ui_bulk.bulk_row_id(item_b)
         fake_app = SimpleNamespace(
-            _right_click_bulk_context={"row_id": "1"},
+            _right_click_bulk_context={"row_id": row_id_b},
             bulk_sheet=SimpleNamespace(
                 flush_pending_edit=lambda: events.append("flush"),
-                snapshot_row_ids=lambda: ("0", "1"),
-                explicit_selected_row_ids=lambda: ("0",),
-                selected_row_ids=lambda: ("0",),
-                current_row_id=lambda: "0",
+                snapshot_row_ids=lambda: (row_id_a, row_id_b),
+                explicit_selected_row_ids=lambda: (row_id_a,),
+                selected_row_ids=lambda: (row_id_a,),
+                current_row_id=lambda: row_id_a,
             ),
-            filtered_items=[
-                {"line_code": "AER-", "item_code": "GH781-4"},
-                {"line_code": "MOT-", "item_code": "ABC123"},
-            ],
+            filtered_items=[item_a, item_b],
             _ignore_key=lambda lc, ic: f"{lc}:{ic}",
             _ignore_items_by_keys=lambda keys: events.append(("ignore", keys)) or len(keys),
         )
@@ -59,19 +61,20 @@ class BulkContextFlowTests(unittest.TestCase):
 
     def test_ignore_from_bulk_falls_back_to_single_right_click_row_when_outside_snapshot(self):
         events = []
+        item_a = {"line_code": "AER-", "item_code": "GH781-4"}
+        item_b = {"line_code": "MOT-", "item_code": "ABC123"}
+        row_id_a = ui_bulk.bulk_row_id(item_a)
+        row_id_b = ui_bulk.bulk_row_id(item_b)
         fake_app = SimpleNamespace(
-            _right_click_bulk_context={"row_id": "1"},
+            _right_click_bulk_context={"row_id": row_id_b},
             bulk_sheet=SimpleNamespace(
                 flush_pending_edit=lambda: events.append("flush"),
-                snapshot_row_ids=lambda: ("0",),
-                explicit_selected_row_ids=lambda: ("0",),
-                selected_row_ids=lambda: ("0",),
-                current_row_id=lambda: "0",
+                snapshot_row_ids=lambda: (row_id_a,),
+                explicit_selected_row_ids=lambda: (row_id_a,),
+                selected_row_ids=lambda: (row_id_a,),
+                current_row_id=lambda: row_id_a,
             ),
-            filtered_items=[
-                {"line_code": "AER-", "item_code": "GH781-4"},
-                {"line_code": "MOT-", "item_code": "ABC123"},
-            ],
+            filtered_items=[item_a, item_b],
             _ignore_key=lambda lc, ic: f"{lc}:{ic}",
             _ignore_items_by_keys=lambda keys: events.append(("ignore", keys)) or len(keys),
         )

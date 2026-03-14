@@ -1152,6 +1152,12 @@ class POBuilderApp:
     def _bulk_row_values(self, item):
         return ui_bulk.bulk_row_values(self, item)
 
+    def _bulk_row_id(self, item):
+        return ui_bulk.bulk_row_id(item)
+
+    def _resolve_bulk_row_id(self, row_id):
+        return ui_bulk.resolve_bulk_row_id(self, row_id)
+
     def _refresh_suggestions(self):
         """Recalculate suggestions when the reorder cycle changes."""
         reorder_flow.refresh_suggestions(self)

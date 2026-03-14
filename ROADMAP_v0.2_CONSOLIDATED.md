@@ -235,6 +235,7 @@ This is the next high-value shipping slice. The current model already uses `repl
 - [x] Add selection snapshot handling and smarter post-edit selection preservation.
 - [x] Add broad shortcut and bulk-sheet editing coverage around common editing flows.
 - [x] Improve bulk summary caching and safer incremental refresh paths for common edits.
+- [x] Move bulk row identity from positional indices to stable item keys so filtered/sorted refreshes, context actions, and row removals keep hitting the intended item.
 - [ ] Eliminate remaining previous-cell / rapid-click commit bleed under real timing pressure.
 - [ ] Guarantee edit-target integrity under rapid click-edit, keyboard-edit, filtered, sorted, and multi-selection workflows.
 - [ ] Document final precedence between current cell, selected cells, selected rows, and right-click snapshot state.

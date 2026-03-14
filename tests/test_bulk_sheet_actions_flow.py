@@ -8,6 +8,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 import bulk_sheet_actions_flow
+import ui_bulk
 
 
 class BulkSheetActionsFlowTests(unittest.TestCase):
@@ -83,6 +84,7 @@ class BulkSheetActionsFlowTests(unittest.TestCase):
 
     def test_bulk_begin_edit_opens_buy_rule_editor_from_right_click(self):
         events = []
+        row_id = ui_bulk.bulk_row_id({"line_code": "AER-", "item_code": "GH781-4"})
         fake_app = SimpleNamespace(
             bulk_sheet=SimpleNamespace(
                 selected_editable_column_name=lambda: "",
@@ -90,7 +92,8 @@ class BulkSheetActionsFlowTests(unittest.TestCase):
                 selected_target_row_ids=lambda col_name: (),
                 selected_row_ids=lambda: (),
             ),
-            _right_click_bulk_context={"row_id": "7", "col_name": "buy_rule"},
+            _right_click_bulk_context={"row_id": row_id, "col_name": "buy_rule"},
+            _resolve_bulk_row_id=lambda current_row_id: (7, {"line_code": "AER-", "item_code": "GH781-4"}) if current_row_id == row_id else (None, None),
             _open_buy_rule_editor=lambda idx: events.append(("buy_rule", idx)),
         )
 
@@ -134,17 +137,22 @@ class BulkSheetActionsFlowTests(unittest.TestCase):
 
     def test_bulk_remove_selected_rows_prefers_right_click_context_row(self):
         events = []
+        item_a = {"line_code": "AER-", "item_code": "A"}
+        item_b = {"line_code": "AER-", "item_code": "B"}
+        row_id_a = ui_bulk.bulk_row_id(item_a)
+        row_id_b = ui_bulk.bulk_row_id(item_b)
         fake_app = SimpleNamespace(
             bulk_sheet=SimpleNamespace(
                 explicit_selected_row_ids=lambda: (),
-                current_row_id=lambda: "0",
+                current_row_id=lambda: row_id_a,
                 clear_selection=lambda: events.append("clear"),
             ),
-            _right_click_bulk_context={"row_id": "1"},
-            filtered_items=[{"item_code": "A"}, {"item_code": "B"}],
+            _right_click_bulk_context={"row_id": row_id_b},
+            filtered_items=[item_a, item_b],
             last_removed_bulk_items=[],
             _apply_bulk_filter=lambda: events.append("filter"),
             _update_bulk_summary=lambda: events.append("summary"),
+            _resolve_bulk_row_id=lambda current_row_id: (0, item_a) if current_row_id == row_id_a else ((1, item_b) if current_row_id == row_id_b else (None, None)),
         )
 
         result = bulk_sheet_actions_flow.bulk_remove_selected_rows(
@@ -154,8 +162,8 @@ class BulkSheetActionsFlowTests(unittest.TestCase):
         )
 
         self.assertIsNone(result)
-        self.assertEqual(fake_app.filtered_items, [{"item_code": "A"}])
-        self.assertEqual(fake_app.last_removed_bulk_items, [(1, {"item_code": "B"})])
+        self.assertEqual(fake_app.filtered_items, [item_a])
+        self.assertEqual(fake_app.last_removed_bulk_items, [(1, dict(item_b))])
         self.assertEqual(events, ["clear", "filter", "summary"])
 
     def test_bulk_remove_selected_rows_returns_break_when_nothing_selected_from_event(self):
@@ -255,18 +263,23 @@ class BulkSheetActionsFlowTests(unittest.TestCase):
 
     def test_bulk_remove_selected_rows_flushes_pending_sheet_edit_first(self):
         events = []
+        item_a = {"line_code": "AER-", "item_code": "A"}
+        item_b = {"line_code": "MOT-", "item_code": "B"}
+        row_id_a = ui_bulk.bulk_row_id(item_a)
+        row_id_b = ui_bulk.bulk_row_id(item_b)
         fake_app = SimpleNamespace(
             bulk_sheet=SimpleNamespace(
                 flush_pending_edit=lambda: events.append("flush"),
-                explicit_selected_row_ids=lambda: ("1",),
-                current_row_id=lambda: "0",
+                explicit_selected_row_ids=lambda: (row_id_b,),
+                current_row_id=lambda: row_id_a,
                 clear_selection=lambda: events.append("clear"),
             ),
             _right_click_bulk_context=None,
-            filtered_items=[{"item_code": "A"}, {"item_code": "B"}],
+            filtered_items=[item_a, item_b],
             last_removed_bulk_items=[],
             _apply_bulk_filter=lambda: events.append("filter"),
             _update_bulk_summary=lambda: events.append("summary"),
+            _resolve_bulk_row_id=lambda current_row_id: (0, item_a) if current_row_id == row_id_a else ((1, item_b) if current_row_id == row_id_b else (None, None)),
         )
 
         result = bulk_sheet_actions_flow.bulk_remove_selected_rows(

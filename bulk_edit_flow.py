@@ -5,8 +5,15 @@ import ui_bulk
 
 
 def apply_editor_value(app, row_id, col_name, raw, editable_cols, get_rule_key, write_debug):
-    idx = int(row_id)
     write_debug("bulk_apply_editor_value.begin", row_id=row_id, col_name=col_name, raw=str(raw))
+    resolve_row = getattr(app, "_resolve_bulk_row_id", None)
+    if callable(resolve_row):
+        idx, item = resolve_row(row_id)
+    else:
+        idx, item = ui_bulk.resolve_bulk_row_id(app, row_id)
+    if idx is None or item is None:
+        write_debug("bulk_apply_editor_value.skip", row_id=row_id, col_name=col_name, reason="row_not_found")
+        return
     if col_name == "buy_rule":
         app._open_buy_rule_editor(idx)
         write_debug("bulk_apply_editor_value.buy_rule_editor", row_id=row_id)
@@ -14,7 +21,6 @@ def apply_editor_value(app, row_id, col_name, raw, editable_cols, get_rule_key, 
     if col_name not in editable_cols:
         write_debug("bulk_apply_editor_value.skip", row_id=row_id, col_name=col_name, reason="not_editable")
         return
-    item = app.filtered_items[idx]
     before_summary_item = {"vendor": item.get("vendor", ""), "status": item.get("status", "")}
     key = (item["line_code"], item["item_code"])
     inv = app.inventory_lookup.get(key, {})
