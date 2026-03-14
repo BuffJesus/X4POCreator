@@ -6,6 +6,8 @@ import time
 from collections import defaultdict
 from datetime import datetime
 
+import shipping_flow
+
 
 LOCK_TIMEOUT_SECONDS = 10
 LOCK_STALE_SECONDS = 120
@@ -128,12 +130,24 @@ def load_order_rules_with_meta(path):
 
 def load_vendor_policies(path):
     """Load per-vendor shipping/release policies from disk."""
-    return load_json_file(path, {})
+    payload = load_json_file(path, {})
+    return _normalize_vendor_policies_payload(payload)
 
 
 def load_vendor_policies_with_meta(path):
     """Load per-vendor shipping/release policies from disk with file metadata."""
-    return load_json_file(path, {}, with_meta=True)
+    payload, meta = load_json_file(path, {}, with_meta=True)
+    return _normalize_vendor_policies_payload(payload), meta
+
+
+def _normalize_vendor_policies_payload(payload):
+    normalized = {}
+    for vendor, policy in (payload or {}).items():
+        vendor_code = str(vendor or "").strip().upper()
+        if not vendor_code:
+            continue
+        normalized[vendor_code] = shipping_flow.normalize_vendor_policy(policy)
+    return normalized
 
 
 def _merge_dict_by_key(base, current_on_disk, desired):
@@ -177,7 +191,10 @@ def save_vendor_policies(path, policies, base_policies=None):
     lock_path = _acquire_lock(path)
     try:
         current_on_disk, _ = load_vendor_policies_with_meta(path)
-        merged, conflict = _merge_dict_by_key(base_policies or {}, current_on_disk, policies)
+        normalized_base = _normalize_vendor_policies_payload(base_policies or {})
+        normalized_desired = _normalize_vendor_policies_payload(policies or {})
+        merged, conflict = _merge_dict_by_key(normalized_base, current_on_disk, normalized_desired)
+        merged = _normalize_vendor_policies_payload(merged)
         save_json_file(path, merged)
         return {"payload": merged, "meta": _get_meta(path), "conflict": conflict}
     finally:

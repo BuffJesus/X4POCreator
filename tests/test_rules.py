@@ -12,6 +12,8 @@ from rules import (
     calculate_inventory_position,
     calculate_raw_need,
     calculate_suggested_qty,
+    classify_package_profile,
+    classify_replenishment_unit_mode,
     determine_acceptable_overstock_qty,
     determine_reorder_trigger_threshold,
     determine_order_policy,
@@ -28,6 +30,8 @@ from rules import (
     infer_minimum_packs_on_hand,
     looks_like_hardware_pack_item,
     looks_like_reel_item,
+    package_profile_label,
+    replenishment_unit_mode_label,
     should_large_pack_review,
 )
 
@@ -197,6 +201,56 @@ class RulesTests(unittest.TestCase):
     def test_reel_review_when_pack_far_exceeds_max(self):
         policy = determine_order_policy({"description": '1/4" 2WIRE 6500PSI HOSE'}, {"max": 100}, 500, None)
         self.assertEqual(policy, "reel_review")
+
+    def test_classify_package_profile_distinguishes_reel_hardware_and_large_nonreel(self):
+        self.assertEqual(
+            classify_package_profile({"description": '1/4" 2WIRE 6500PSI HOSE'}, {"max": 100}, 500),
+            "reel_stock",
+        )
+        self.assertEqual(
+            classify_package_profile(
+                {
+                    "description": "1/4 X 1 ELEVATOR BOLT",
+                    "sales_health_signal": "active",
+                    "performance_profile": "steady",
+                    "days_since_last_sale": 14,
+                },
+                {"max": 20},
+                100,
+            ),
+            "hardware_pack",
+        )
+        self.assertEqual(
+            classify_package_profile(
+                {
+                    "description": "FILTER KIT",
+                    "sales_health_signal": "dormant",
+                    "performance_profile": "legacy",
+                    "days_since_last_sale": 500,
+                },
+                {"max": 20},
+                100,
+            ),
+            "large_nonreel_pack",
+        )
+
+    def test_package_profile_label_maps_known_profiles(self):
+        self.assertEqual(package_profile_label("reel_stock"), "Reel / bulk-by-length")
+        self.assertEqual(package_profile_label("hardware_pack"), "Hardware pack")
+        self.assertEqual(package_profile_label("large_nonreel_pack"), "Large non-reel pack")
+
+    def test_replenishment_unit_mode_distinguishes_pack_math_from_review_policy(self):
+        self.assertEqual(classify_replenishment_unit_mode("exact_qty", {}, None, None), "exact_qty")
+        self.assertEqual(classify_replenishment_unit_mode("soft_pack", {}, 500, {"min_order_qty": 250}), "soft_pack_min_order")
+        self.assertEqual(classify_replenishment_unit_mode("pack_trigger", {}, 100, None), "pack_trigger_replenishment")
+        self.assertEqual(classify_replenishment_unit_mode("reel_review", {}, 500, None), "reel_bulk_review")
+        self.assertEqual(classify_replenishment_unit_mode("large_pack_review", {}, 100, None), "large_pack_review")
+        self.assertEqual(classify_replenishment_unit_mode("standard", {}, 12, None), "full_pack_round_up")
+
+    def test_replenishment_unit_mode_label_maps_known_modes(self):
+        self.assertEqual(replenishment_unit_mode_label("reel_bulk_review"), "Reel / bulk review")
+        self.assertEqual(replenishment_unit_mode_label("pack_trigger_replenishment"), "Pack-trigger replenishment")
+        self.assertEqual(replenishment_unit_mode_label("full_pack_round_up"), "Full-pack round-up")
 
     def test_boxed_hardware_pack_is_not_auto_marked_reel_review(self):
         policy = determine_order_policy({"description": "1/4 X 1 ELEVATOR BOLT"}, {"max": 20}, 100, None)
@@ -477,10 +531,13 @@ class RulesTests(unittest.TestCase):
         }
         enrich_item(item, {"max": 100, "last_sale": "05-Mar-2026", "last_receipt": "01-Mar-2026"}, 500, None)
         self.assertEqual(item["order_policy"], "reel_review")
+        self.assertEqual(item["replenishment_unit_mode"], "reel_bulk_review")
         self.assertEqual(item["status"], "review")
         self.assertTrue(item["reorder_needed"])
         self.assertIn("reel_review", item["data_flags"])
+        self.assertIn("unitmode_reel_bulk_review", item["reason_codes"])
         self.assertIn("Target stock", item["why"])
+        self.assertIn("Replenishment mode: Reel / bulk review", item["why"])
 
     def test_evaluate_item_status_marks_missing_pack_and_zero_final(self):
         status, flags = evaluate_item_status({
@@ -667,12 +724,15 @@ class RulesTests(unittest.TestCase):
         )
         self.assertEqual(item["minimum_cover_cycles"], 2)
         self.assertEqual(item["minimum_cover_cycles_source"], "heuristic")
+        self.assertEqual(item["package_profile"], "hardware_pack")
         self.assertEqual(item["order_policy"], "pack_trigger")
+        self.assertEqual(item["replenishment_unit_mode"], "pack_trigger_replenishment")
         self.assertEqual(item["reorder_trigger_basis"], "minimum_cover_cycles")
         self.assertEqual(item["reorder_trigger_threshold"], 16)
         self.assertEqual(item["raw_need"], 7)
         self.assertEqual(item["suggested_qty"], 10)
         self.assertIn("Minimum cover cycles: 2 (inferred)", item["why"])
+        self.assertIn("package_hardware_pack", item["reason_codes"])
 
     def test_enrich_item_uses_configured_trigger_gate_and_reason_text(self):
         item = {
@@ -850,11 +910,14 @@ class RulesTests(unittest.TestCase):
         }
 
         enrich_item(item, {"qoh": 0, "max": 20, "min": 2}, 100, None)
+        self.assertEqual(item["package_profile"], "large_nonreel_pack")
         self.assertEqual(item["order_policy"], "large_pack_review")
+        self.assertEqual(item["replenishment_unit_mode"], "large_pack_review")
         self.assertTrue(item["review_required"])
         self.assertEqual(item["status"], "review")
         self.assertIn("large_pack_review", item["reason_codes"])
         self.assertIn("large_pack_review", item["data_flags"])
+        self.assertIn("Package profile: Large non-reel pack", item["why"])
 
     def test_missing_sale_and_receipt_history_routes_reorder_candidate_to_manual_review(self):
         item = {

@@ -27,7 +27,85 @@ class StorageTests(unittest.TestCase):
             path = Path(tmp) / "vendor_policies.json"
             payload = {"MOTION": {"shipping_policy": "hold_for_threshold", "free_freight_threshold": 2000}}
             storage.save_vendor_policies(str(path), payload)
-            self.assertEqual(storage.load_vendor_policies(str(path)), payload)
+            self.assertEqual(storage.load_vendor_policies(str(path)), {
+                "MOTION": {
+                    "shipping_policy": "hold_for_threshold",
+                    "preferred_free_ship_weekdays": [],
+                    "free_freight_threshold": 2000.0,
+                    "urgent_release_floor": 0.0,
+                    "urgent_release_mode": "release_now",
+                    "release_lead_business_days": 1,
+                }
+            })
+
+    def test_vendor_policies_round_trip_normalizes_vendor_codes_and_policy_values(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "vendor_policies.json"
+            payload = {
+                " motion ": {
+                    "shipping_policy": "hold_for_threshold",
+                    "preferred_free_ship_weekdays": ["Fri"],
+                    "free_freight_threshold": "-2000",
+                    "urgent_release_floor": "-4",
+                    "urgent_release_mode": "bad_mode",
+                },
+                "": {"shipping_policy": "hold_for_free_day"},
+            }
+
+            result = storage.save_vendor_policies(str(path), payload)
+
+            self.assertEqual(result["payload"], {
+                "MOTION": {
+                    "shipping_policy": "hold_for_threshold",
+                    "preferred_free_ship_weekdays": [],
+                    "free_freight_threshold": 0.0,
+                    "urgent_release_floor": 0.0,
+                    "urgent_release_mode": "release_now",
+                    "release_lead_business_days": 1,
+                }
+            })
+            self.assertEqual(storage.load_vendor_policies(str(path)), result["payload"])
+
+    def test_load_vendor_policies_normalizes_stale_disk_payload(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "vendor_policies.json"
+            path.write_text(json.dumps({
+                " motion ": {
+                    "shipping_policy": "not_real",
+                    "preferred_free_ship_weekdays": "Fri, Noday",
+                    "free_freight_threshold": -2000,
+                    "urgent_release_floor": -1,
+                    "urgent_release_mode": "bad_mode",
+                }
+            }), encoding="utf-8")
+
+            payload = storage.load_vendor_policies(str(path))
+
+            self.assertEqual(payload, {
+                "MOTION": {
+                    "shipping_policy": "release_immediately",
+                    "preferred_free_ship_weekdays": [],
+                    "free_freight_threshold": 0.0,
+                    "urgent_release_floor": 0.0,
+                    "urgent_release_mode": "release_now",
+                    "release_lead_business_days": 1,
+                }
+            })
+
+    def test_vendor_policies_preserve_release_lead_days_for_free_day_policy(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "vendor_policies.json"
+            payload = {
+                "MOTION": {
+                    "shipping_policy": "hold_for_free_day",
+                    "preferred_free_ship_weekdays": ["Friday"],
+                    "release_lead_business_days": 2,
+                }
+            }
+
+            storage.save_vendor_policies(str(path), payload)
+
+            self.assertEqual(storage.load_vendor_policies(str(path))["MOTION"]["release_lead_business_days"], 2)
 
     def test_append_and_get_recent_orders(self):
         with tempfile.TemporaryDirectory() as tmp:

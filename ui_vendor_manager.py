@@ -15,10 +15,12 @@ def apply_vendor_policy_preset(app, vendor, preset_name):
         weekdays=", ".join(preset.get("preferred_free_ship_weekdays", [])),
         threshold=preset.get("free_freight_threshold", 0.0),
         urgent_floor=preset.get("urgent_release_floor", 0.0),
+        urgent_mode=preset.get("urgent_release_mode", "release_now"),
+        release_lead_days=preset.get("release_lead_business_days", 1),
     )
 
 
-def apply_vendor_policy_changes(app, vendor, *, shipping_policy, weekdays, threshold, urgent_floor):
+def apply_vendor_policy_changes(app, vendor, *, shipping_policy, weekdays, threshold, urgent_floor, urgent_mode="release_now", release_lead_days=1):
     normalized_vendor = app._normalize_vendor_code(vendor)
     if not normalized_vendor:
         return False
@@ -27,12 +29,16 @@ def apply_vendor_policy_changes(app, vendor, *, shipping_policy, weekdays, thres
         "preferred_free_ship_weekdays": weekdays,
         "free_freight_threshold": threshold,
         "urgent_release_floor": urgent_floor,
+        "urgent_release_mode": urgent_mode,
+        "release_lead_business_days": release_lead_days,
     })
     has_meaningful_values = any((
         normalized_policy.get("shipping_policy", "release_immediately") != "release_immediately",
         normalized_policy.get("preferred_free_ship_weekdays"),
         normalized_policy.get("free_freight_threshold", 0) > 0,
         normalized_policy.get("urgent_release_floor", 0) > 0,
+        normalized_policy.get("urgent_release_mode", "release_now") != "release_now",
+        normalized_policy.get("release_lead_business_days", 1) != 1,
     ))
     if has_meaningful_values:
         app.vendor_policies[normalized_vendor] = normalized_policy
@@ -82,6 +88,8 @@ def open_vendor_policy_editor(app, vendor, parent):
     var_urgent = tk.StringVar(
         value=str(int(policy["urgent_release_floor"])) if float(policy.get("urgent_release_floor", 0) or 0).is_integer() and policy.get("urgent_release_floor", 0) else (str(policy.get("urgent_release_floor", "")) if policy.get("urgent_release_floor", 0) else "")
     )
+    var_urgent_mode = tk.StringVar(value=policy.get("urgent_release_mode", "release_now"))
+    var_lead_days = tk.StringVar(value=str(int(policy.get("release_lead_business_days", 1) or 1)))
     preset_options = shipping_flow.vendor_policy_preset_options()
     preset_by_label = {label: key for key, label in preset_options}
     var_preset = tk.StringVar(value="")
@@ -97,6 +105,11 @@ def open_vendor_policy_editor(app, vendor, parent):
         ("Free-Ship Days", ttk.Entry(grid, textvariable=var_weekdays, width=36)),
         ("Freight Threshold", ttk.Entry(grid, textvariable=var_threshold, width=20)),
         ("Urgent Floor", ttk.Entry(grid, textvariable=var_urgent, width=20)),
+        ("Urgent Override", ttk.Combobox(grid, textvariable=var_urgent_mode, state="readonly", values=[
+            "release_now",
+            "paid_urgent_freight",
+        ], width=28)),
+        ("Lead Days", ttk.Entry(grid, textvariable=var_lead_days, width=20)),
     ]
     for row_idx, (label, widget) in enumerate(fields):
         ttk.Label(grid, text=label).grid(row=row_idx, column=0, sticky="w", padx=(0, 8), pady=4)
@@ -104,7 +117,7 @@ def open_vendor_policy_editor(app, vendor, parent):
 
     ttk.Label(
         grid,
-        text="Use a preset for the common case, or edit fields directly. Examples: Friday or Mon,Fri. Threshold and urgent floor are numeric.",
+        text="Use a preset for the common case, or edit fields directly. Examples: Friday or Mon,Fri. Threshold, urgent floor, and lead days are numeric.",
         style="SubHeader.TLabel",
         wraplength=620,
     ).grid(row=len(fields), column=0, columnspan=2, sticky="w", pady=(6, 0))
@@ -118,8 +131,12 @@ def open_vendor_policy_editor(app, vendor, parent):
         var_weekdays.set(", ".join(preset.get("preferred_free_ship_weekdays", [])))
         threshold = preset.get("free_freight_threshold", 0.0)
         urgent_floor = preset.get("urgent_release_floor", 0.0)
+        urgent_mode = preset.get("urgent_release_mode", "release_now")
+        lead_days = int(preset.get("release_lead_business_days", 1) or 1)
         var_threshold.set("" if not threshold else (str(int(threshold)) if float(threshold).is_integer() else str(threshold)))
         var_urgent.set("" if not urgent_floor else (str(int(urgent_floor)) if float(urgent_floor).is_integer() else str(urgent_floor)))
+        var_urgent_mode.set(urgent_mode)
+        var_lead_days.set(str(lead_days))
 
     def _save():
         apply_vendor_policy_changes(
@@ -129,6 +146,8 @@ def open_vendor_policy_editor(app, vendor, parent):
             weekdays=var_weekdays.get().strip(),
             threshold=var_threshold.get().strip(),
             urgent_floor=var_urgent.get().strip(),
+            urgent_mode=var_urgent_mode.get().strip(),
+            release_lead_days=var_lead_days.get().strip(),
         )
         dlg.destroy()
 
@@ -137,6 +156,8 @@ def open_vendor_policy_editor(app, vendor, parent):
         var_weekdays.set("")
         var_threshold.set("")
         var_urgent.set("")
+        var_urgent_mode.set("release_now")
+        var_lead_days.set("1")
 
     btn_frame = ttk.Frame(dlg)
     btn_frame.pack(fill=tk.X, padx=16, pady=12)

@@ -17,6 +17,7 @@ from models import AppSessionState, MaintenanceIssue
 class ExportFlowTests(unittest.TestCase):
     def test_export_bucket_classifies_immediate_planned_and_held(self):
         self.assertEqual(export_flow.export_bucket({"release_decision": "release_now"}), "release_now")
+        self.assertEqual(export_flow.export_bucket({"release_decision": "release_now_paid_urgent_freight"}), "release_now")
         self.assertEqual(
             export_flow.export_bucket({"release_decision": "export_next_business_day_for_free_day"}),
             "planned_today",
@@ -58,6 +59,11 @@ class ExportFlowTests(unittest.TestCase):
         self.assertIn("Held for vendor free-shipping day", summary)
         self.assertIn("target order 2026-03-12", summary)
         self.assertIn("target release 2026-03-13", summary)
+
+    def test_is_critical_shipping_hold_detects_review_sensitive_held_items(self):
+        self.assertTrue(export_flow.is_critical_shipping_hold({"release_decision": "hold_for_threshold", "status": "review"}))
+        self.assertTrue(export_flow.is_critical_shipping_hold({"release_decision": "hold_for_free_day", "review_required": True}))
+        self.assertFalse(export_flow.is_critical_shipping_hold({"release_decision": "hold_for_threshold", "status": "ok"}))
 
     def test_choose_export_items_returns_all_when_no_planned_items_exist(self):
         items = [
@@ -325,6 +331,7 @@ class ExportFlowTests(unittest.TestCase):
                     "order_qty": 3,
                     "release_decision": "hold_for_threshold",
                     "release_reason": "Held for freight threshold 2000",
+                    "status": "review",
                     "target_order_date": "2026-03-12",
                     "target_release_date": "2026-03-13",
                 },
@@ -370,6 +377,7 @@ class ExportFlowTests(unittest.TestCase):
         self.assertEqual(exported_items[1]["item_code"], "GH781-6")
         self.assertIn("planned-release POs", mocked_info.call_args.args[1])
         self.assertIn("were held by shipping policy and were not exported", mocked_info.call_args.args[1])
+        self.assertIn("critical exceptions", mocked_info.call_args.args[1])
         self.assertIn("target order/release dates", mocked_info.call_args.args[1])
 
     def test_do_export_can_skip_planned_items_and_export_immediate_only(self):
@@ -438,6 +446,7 @@ class ExportFlowTests(unittest.TestCase):
                     "order_qty": 3,
                     "release_decision": "hold_for_threshold",
                     "release_reason": "Held for freight threshold 2000",
+                    "status": "review",
                     "target_order_date": "2026-03-12",
                     "target_release_date": "2026-03-13",
                 },
@@ -457,6 +466,7 @@ class ExportFlowTests(unittest.TestCase):
         mocked_dir.assert_not_called()
         mocked_info.assert_called_once()
         self.assertIn("currently held by vendor shipping policy", mocked_info.call_args.args[1])
+        self.assertIn("critical exceptions", mocked_info.call_args.args[1])
         self.assertIn("target order 2026-03-12", mocked_info.call_args.args[1])
         self.assertIn("target release 2026-03-13", mocked_info.call_args.args[1])
 

@@ -49,6 +49,29 @@ def held_item_summary(item):
     )
 
 
+def is_critical_shipping_hold(item):
+    if shipping_flow.release_bucket(item) != "held":
+        return False
+    if str(item.get("status", "") or "").strip().lower() in ("review", "warning", "error"):
+        return True
+    if bool(item.get("review_required")):
+        return True
+    if str(item.get("reorder_attention_signal", "") or "").strip().lower() == "review_missed_reorder":
+        return True
+    if str(item.get("recency_review_bucket", "") or "").strip() in (
+        "critical_min_rule_protected",
+        "critical_rule_protected",
+    ):
+        return True
+    if str(item.get("sales_health_signal", "") or "").strip().lower() in ("critical", "at_risk"):
+        return True
+    return False
+
+
+def critical_held_items(held_items):
+    return [item for item in held_items if is_critical_shipping_hold(item)]
+
+
 def choose_export_items(app, exportable_items):
     immediate_items = [item for item in exportable_items if export_bucket(item) == "release_now"]
     planned_items = [item for item in exportable_items if export_bucket(item) == "planned_today"]
@@ -133,6 +156,7 @@ def do_export(app, export_vendor_po, order_history_file, sessions_dir, *, assign
         return
 
     exportable_items, held_items = partition_export_items(source_items)
+    critical_held = critical_held_items(held_items)
     if not exportable_items:
         if held_items:
             held_lines = "\n".join(
@@ -140,11 +164,17 @@ def do_export(app, export_vendor_po, order_history_file, sessions_dir, *, assign
                 for item in held_items[:8]
             )
             suffix = "\n  - ..." if len(held_items) > 8 else ""
+            critical_note = ""
+            if critical_held:
+                critical_note = (
+                    f"\n\n{len(critical_held)} held item(s) are critical exceptions and should be reviewed with the "
+                    "'Critical Held' release filter before waiting on shipping policy."
+                )
             messagebox.showinfo(
                 "No Exportable Items",
                 (
                     f"All {export_scope_label} are currently held by vendor shipping policy, so no PO files were exported.\n\n"
-                    f"{held_lines}{suffix}\n\n"
+                    f"{held_lines}{suffix}{critical_note}\n\n"
                     "These items remain visible in Review & Export until their release decision changes."
                 ),
             )
@@ -211,6 +241,11 @@ def do_export(app, export_vendor_po, order_history_file, sessions_dir, *, assign
             if str(item.get("target_order_date", "") or "").strip() or str(item.get("target_release_date", "") or "").strip()
         )
         held_note = f"\n\n{len(held_items)} assigned item(s) were held by shipping policy and were not exported."
+        if critical_held:
+            held_note += (
+                f" {len(critical_held)} of those held item(s) are critical exceptions; review them with the "
+                "'Critical Held' release filter."
+            )
         if dated_holds:
             held_note += " Review their target order/release dates in Review & Export."
         else:

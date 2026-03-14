@@ -352,6 +352,9 @@ class BulkDialogTests(unittest.TestCase):
             "acceptable_overstock_qty_effective": 30,
             "projected_overstock_qty": 18,
             "shipping_policy": "hold_for_threshold",
+            "urgent_release_mode": "paid_urgent_freight",
+            "release_lead_business_days": 1,
+            "release_timing_mode": "release_on_threshold",
             "release_decision": "hold_for_threshold",
             "release_reason": "Held for freight threshold 2000 (current vendor total 1200)",
             "vendor_order_value_total": 1200.0,
@@ -381,6 +384,9 @@ class BulkDialogTests(unittest.TestCase):
         self.assertEqual(row_lookup["Allowed Overstock"], "30")
         self.assertEqual(row_lookup["Projected Overstock"], "18")
         self.assertEqual(row_lookup["Shipping Policy"], "hold_for_threshold")
+        self.assertEqual(row_lookup["Urgent Override"], "paid_urgent_freight")
+        self.assertEqual(row_lookup["Release Lead Days"], "1")
+        self.assertEqual(row_lookup["Timing Mode"], "release_on_threshold")
         self.assertEqual(row_lookup["Release Decision"], "hold_for_threshold")
         self.assertIn("freight threshold 2000", row_lookup["Release Reason"])
         self.assertEqual(row_lookup["Vendor Order Value"], "1200.00")
@@ -501,6 +507,8 @@ class BulkDialogTests(unittest.TestCase):
             "suggested_qty": 2,
             "final_qty": 2,
             "order_policy": "soft_pack",
+            "package_profile": "hardware_pack",
+            "replenishment_unit_mode": "soft_pack_min_order",
             "status": "ok",
             "data_flags": [],
             "recency_confidence": "low",
@@ -513,6 +521,8 @@ class BulkDialogTests(unittest.TestCase):
         row_lookup = dict(row for row in rows if row[0])
 
         self.assertEqual(row_lookup["Recency Review Type"], "Critical / explicit min rule")
+        self.assertEqual(row_lookup["Package Profile"], "Hardware pack")
+        self.assertEqual(row_lookup["Replenishment Mode"], "Soft pack / min order")
 
     def test_finish_bulk_final_carries_recency_fields_into_review_items(self):
         events = []

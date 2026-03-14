@@ -107,6 +107,63 @@ def looks_like_hardware_pack_item(item, inv):
     return any(term in desc for term in HARDWARE_PACK_TERMS)
 
 
+def classify_package_profile(item, inv, pack_qty):
+    """Classify the item's replenishment/package shape for policy and UI explanations."""
+    if not pack_qty:
+        return "no_pack_data"
+    if looks_like_reel_item(item, inv or {}):
+        return "reel_stock"
+    if looks_like_hardware_pack_item(item, inv or {}):
+        if should_large_pack_review(item, inv or {}, pack_qty):
+            return "hardware_large_pack"
+        return "hardware_pack"
+    if should_large_pack_review(item, inv or {}, pack_qty):
+        return "large_nonreel_pack"
+    if pack_qty >= LARGE_PACK_REVIEW_MIN_PACK_QTY:
+        return "general_pack"
+    return "unit_pack"
+
+
+def package_profile_label(profile):
+    return {
+        "no_pack_data": "No pack data",
+        "reel_stock": "Reel / bulk-by-length",
+        "hardware_pack": "Hardware pack",
+        "hardware_large_pack": "Large hardware pack",
+        "large_nonreel_pack": "Large non-reel pack",
+        "general_pack": "General pack item",
+        "unit_pack": "Small unit pack",
+    }.get(profile, profile or "")
+
+
+def classify_replenishment_unit_mode(policy, item, pack_qty, rule):
+    """Classify the replenishment-unit behavior separately from review gating."""
+    if policy == "exact_qty" or not pack_qty:
+        return "exact_qty"
+    if policy == "soft_pack":
+        return "soft_pack_min_order"
+    if policy == "pack_trigger":
+        return "pack_trigger_replenishment"
+    if policy == "reel_review":
+        return "reel_bulk_review"
+    if policy == "large_pack_review":
+        return "large_pack_review"
+    if pack_qty and pack_qty > 0:
+        return "full_pack_round_up"
+    return "exact_qty"
+
+
+def replenishment_unit_mode_label(mode):
+    return {
+        "exact_qty": "Exact qty",
+        "soft_pack_min_order": "Soft pack / min order",
+        "pack_trigger_replenishment": "Pack-trigger replenishment",
+        "reel_bulk_review": "Reel / bulk review",
+        "large_pack_review": "Large-pack review",
+        "full_pack_round_up": "Full-pack round-up",
+    }.get(mode, mode or "")
+
+
 def should_large_pack_review(item, inv, pack_qty):
     """Return True when a non-reel item's pack looks risky enough for manual review."""
     mx = inv.get("max") if inv else None
@@ -659,21 +716,22 @@ def determine_order_policy(item, inv, pack_qty, rule):
         return "exact_qty"
 
     mx = inv.get("max") if inv else None
+    package_profile = classify_package_profile(item, inv, pack_qty)
 
     if (
         mx
         and mx > 0
         and pack_qty >= REEL_REVIEW_MIN_PACK_QTY
         and pack_qty > mx * 3
-        and looks_like_reel_item(item, inv or {})
+        and package_profile == "reel_stock"
     ):
         return "reel_review"
 
-    if should_large_pack_review(item, inv or {}, pack_qty):
+    if package_profile in ("hardware_large_pack", "large_nonreel_pack"):
         return "large_pack_review"
 
     if (
-        looks_like_hardware_pack_item(item, inv or {})
+        package_profile == "hardware_pack"
         and mx
         and mx > 0
         and pack_qty
@@ -784,6 +842,7 @@ def enrich_item(item, inv, pack_qty, rule):
     Mutates the item dict in place with calculated fields.
     """
     item["inventory"] = inv or {}
+    item["package_profile"] = classify_package_profile(item, inv or {}, pack_qty)
     apply_rule_fields(item, rule)
     if item.get("minimum_packs_on_hand") is None:
         inferred_min_packs = infer_minimum_packs_on_hand(item, inv or {}, pack_qty)
@@ -871,6 +930,12 @@ def enrich_item(item, inv, pack_qty, rule):
         reason_codes.append("large_pack_review")
     if policy == "manual_only":
         reason_codes.append("manual_only")
+    if item.get("package_profile"):
+        reason_codes.append(f"package_{item['package_profile']}")
+    replenishment_unit_mode = classify_replenishment_unit_mode(policy, item, pack_qty, rule)
+    item["replenishment_unit_mode"] = replenishment_unit_mode
+    if replenishment_unit_mode:
+        reason_codes.append(f"unitmode_{replenishment_unit_mode}")
     if item.get("recency_confidence") == "low":
         reason_codes.append("low_recency_confidence")
     recency_review_bucket = item.get("recency_review_bucket")
@@ -885,6 +950,10 @@ def enrich_item(item, inv, pack_qty, rule):
             reason_codes.append("acceptable_overstock_exceeded")
 
     detail_parts = [f"Stock after open POs: {inventory_position:g}", f"Target stock: {target_stock:g}"]
+    if item.get("package_profile"):
+        detail_parts.append(f"Package profile: {package_profile_label(item['package_profile'])}")
+    if replenishment_unit_mode:
+        detail_parts.append(f"Replenishment mode: {replenishment_unit_mode_label(replenishment_unit_mode)}")
     if effective_target_stock != target_stock:
         detail_parts.append(f"Effective reorder floor: {effective_target_stock:g}")
     if target_basis:

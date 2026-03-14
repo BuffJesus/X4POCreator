@@ -141,7 +141,7 @@ class UIReviewTests(unittest.TestCase):
             assigned_items=[
                 {"vendor": "MOTION", "release_decision": "release_now", "recency_review_bucket": "critical_min_rule_protected"},
                 {"vendor": "MOTION", "release_decision": "export_next_business_day_for_free_day", "recency_review_bucket": "new_or_sparse"},
-                {"vendor": "MOTION", "release_decision": "hold_for_threshold", "recency_review_bucket": "stale_or_likely_dead"},
+                {"vendor": "MOTION", "release_decision": "hold_for_threshold", "recency_review_bucket": "stale_or_likely_dead", "status": "review"},
                 {"vendor": "SOURCE", "release_decision": ""},
             ],
             lbl_review_summary=SimpleNamespace(config=lambda **kwargs: captured.update(kwargs)),
@@ -155,6 +155,7 @@ class UIReviewTests(unittest.TestCase):
         self.assertIn("Exceptions: 2", text)
         self.assertIn("Planned today: 1", text)
         self.assertIn("Held by shipping policy: 1", text)
+        self.assertIn("Critical held: 1", text)
         self.assertIn("Low-confidence recency: 3", text)
         self.assertIn("1 stale / likely dead", text)
         self.assertIn("1 new / sparse", text)
@@ -167,6 +168,12 @@ class UIReviewTests(unittest.TestCase):
         self.assertTrue(ui_review.is_review_exception({"recency_confidence": "low"}))
         self.assertTrue(ui_review.is_review_exception({"vendor_value_coverage": "partial"}))
         self.assertFalse(ui_review.is_review_exception({"release_decision": "release_now", "status": "ok"}))
+
+    def test_is_critical_shipping_hold_detects_review_sensitive_held_items(self):
+        self.assertTrue(ui_review.is_critical_shipping_hold({"release_decision": "hold_for_threshold", "status": "review"}))
+        self.assertTrue(ui_review.is_critical_shipping_hold({"release_decision": "hold_for_free_day", "review_required": True}))
+        self.assertTrue(ui_review.is_critical_shipping_hold({"release_decision": "hold_for_threshold", "reorder_attention_signal": "review_missed_reorder"}))
+        self.assertFalse(ui_review.is_critical_shipping_hold({"release_decision": "hold_for_threshold", "status": "ok"}))
 
     def test_apply_review_filter_can_hide_non_exception_items(self):
         events = []
@@ -234,6 +241,58 @@ class UIReviewTests(unittest.TestCase):
             "Release Now",
         )
 
+    def test_apply_review_filter_can_isolate_critical_held_items(self):
+        events = []
+
+        class Tree:
+            def get_children(self):
+                return ("old",)
+            def delete(self, item_id):
+                events.append(("delete", item_id))
+            def insert(self, parent, where, iid, values):
+                events.append(("insert", iid, values))
+
+        fake_app = SimpleNamespace(
+            bulk_sheet=SimpleNamespace(flush_pending_edit=lambda: events.append(("flush",))),
+            tree=Tree(),
+            assigned_items=[
+                {
+                    "vendor": "MOTION",
+                    "line_code": "AER-",
+                    "item_code": "A",
+                    "description": "Routine held",
+                    "order_qty": 1,
+                    "status": "ok",
+                    "why": "",
+                    "pack_size": 6,
+                    "release_decision": "hold_for_threshold",
+                },
+                {
+                    "vendor": "MOTION",
+                    "line_code": "AER-",
+                    "item_code": "B",
+                    "description": "Critical held",
+                    "order_qty": 1,
+                    "status": "review",
+                    "why": "",
+                    "pack_size": 6,
+                    "release_decision": "hold_for_free_day",
+                },
+            ],
+            var_vendor_filter=SimpleNamespace(get=lambda: "ALL"),
+            var_review_performance_filter=SimpleNamespace(get=lambda: "ALL"),
+            var_review_attention_filter=SimpleNamespace(get=lambda: "ALL"),
+            var_review_recency_filter=SimpleNamespace(get=lambda: "ALL"),
+            var_review_release_filter=SimpleNamespace(get=lambda: "Critical Held"),
+            var_review_focus_filter=SimpleNamespace(get=lambda: "All Items"),
+        )
+
+        ui_review.apply_review_filter(fake_app)
+
+        inserts = [event for event in events if event[0] == "insert"]
+        self.assertEqual(len(inserts), 1)
+        self.assertEqual(inserts[0][2][2], "B")
+
     def test_recency_filter_label_maps_known_review_buckets(self):
         self.assertEqual(
             ui_review.recency_filter_label({"recency_review_bucket": "missing_data_uncertain"}),
@@ -264,6 +323,8 @@ class UIReviewTests(unittest.TestCase):
                     "next_free_ship_date": "2026-03-13",
                     "planned_export_date": "2026-03-12",
                     "shipping_policy": "hybrid_free_day_threshold",
+                    "release_timing_mode": "same_day_release",
+                    "release_plan_label": "Release Now",
                 },
                 {
                     "vendor": "MOTION",
@@ -277,6 +338,8 @@ class UIReviewTests(unittest.TestCase):
                     "next_free_ship_date": "2026-03-13",
                     "planned_export_date": "2026-03-12",
                     "shipping_policy": "hybrid_free_day_threshold",
+                    "release_timing_mode": "release_one_business_day_before_ship_day",
+                    "release_plan_label": "Release On Order-Ahead Date",
                 },
             ],
         )
@@ -287,6 +350,8 @@ class UIReviewTests(unittest.TestCase):
         self.assertEqual(rows[0]["vendor"], "MOTION")
         self.assertEqual(rows[0]["release_now_count"], 1)
         self.assertEqual(rows[0]["planned_today_count"], 1)
+        self.assertEqual(rows[0]["release_timing_mode"], "same_day_release")
+        self.assertEqual(rows[0]["release_plan_label"], "Release Now")
 
     def test_apply_release_plan_view_sets_review_filters_and_selects_review_tab(self):
         events = []

@@ -23,6 +23,25 @@ def release_filter_bucket(item):
     }.get(shipping_flow.release_bucket(item), "Release Now")
 
 
+def is_critical_shipping_hold(item):
+    if release_filter_bucket(item) != "Held":
+        return False
+    if str(item.get("status", "") or "").strip().lower() in ("review", "warning", "error"):
+        return True
+    if bool(item.get("review_required")):
+        return True
+    if str(item.get("reorder_attention_signal", "") or "").strip().lower() == "review_missed_reorder":
+        return True
+    if str(item.get("recency_review_bucket", "") or "").strip() in (
+        "critical_min_rule_protected",
+        "critical_rule_protected",
+    ):
+        return True
+    if str(item.get("sales_health_signal", "") or "").strip().lower() in ("critical", "at_risk"):
+        return True
+    return False
+
+
 def is_review_exception(item):
     if release_filter_bucket(item) != "Release Now":
         return True
@@ -89,12 +108,14 @@ def export_release_plan_scope(app, vendor, *, release):
         "Release Now": "release_now",
         "Planned Today": "planned_today",
         "Held": "held",
+        "Critical Held": "held",
     }
     target_bucket = bucket_map.get(release, "")
     scoped_items = [
         item for item in getattr(app, "assigned_items", [])
         if str(item.get("vendor", "") or "").strip().upper() == str(vendor or "").strip().upper()
         and shipping_flow.release_bucket(item) == target_bucket
+        and (not release == "Critical Held" or is_critical_shipping_hold(item))
     ]
     if not scoped_items:
         messagebox.showinfo("Release Plan", f"No {release.lower()} items are available for vendor {vendor}.")
@@ -133,13 +154,14 @@ def show_release_plan(app):
     frame.pack(fill=tk.BOTH, expand=True, padx=16, pady=(0, 8))
 
     columns = (
-        "vendor", "policy", "immediate", "planned", "held", "total_value",
-        "shortfall", "progress", "coverage", "next_free", "planned_export",
+        "vendor", "policy", "plan", "immediate", "planned", "held", "total_value",
+        "shortfall", "progress", "coverage", "timing", "next_free", "planned_export",
     )
     tree = ttk.Treeview(frame, columns=columns, show="headings", selectmode="browse")
     headings = {
         "vendor": "Vendor",
         "policy": "Policy",
+        "plan": "Plan",
         "immediate": "Immediate",
         "planned": "Planned",
         "held": "Held",
@@ -147,12 +169,14 @@ def show_release_plan(app):
         "shortfall": "Shortfall",
         "progress": "Progress %",
         "coverage": "Coverage",
+        "timing": "Timing",
         "next_free": "Next Free-Ship",
         "planned_export": "Planned Export",
     }
     widths = {
         "vendor": 110,
         "policy": 150,
+        "plan": 180,
         "immediate": 70,
         "planned": 70,
         "held": 70,
@@ -160,6 +184,7 @@ def show_release_plan(app):
         "shortfall": 90,
         "progress": 80,
         "coverage": 80,
+        "timing": 170,
         "next_free": 100,
         "planned_export": 100,
     }
@@ -175,6 +200,7 @@ def show_release_plan(app):
             values=(
                 row["vendor"],
                 row.get("shipping_policy", "") or "-",
+                row.get("release_plan_label", "") or "-",
                 row["release_now_count"],
                 row["planned_today_count"],
                 row["held_count"],
@@ -182,6 +208,7 @@ def show_release_plan(app):
                 f'{row["vendor_threshold_shortfall"]:.2f}',
                 f'{row["vendor_threshold_progress_pct"]:.2f}',
                 row.get("vendor_value_coverage", "") or "-",
+                row.get("release_timing_mode", "") or "-",
                 row.get("next_free_ship_date", "") or "-",
                 row.get("planned_export_date", "") or "-",
             ),
@@ -300,7 +327,7 @@ def build_review_tab(app):
         textvariable=app.var_review_release_filter,
         state="readonly",
         width=14,
-        values=["ALL", "Release Now", "Planned Today", "Held"],
+        values=["ALL", "Release Now", "Planned Today", "Held", "Critical Held"],
     )
     app.combo_review_release.pack(side=tk.LEFT)
     app.combo_review_release.bind("<<ComboboxSelected>>", lambda e: app._apply_review_filter())
@@ -427,6 +454,7 @@ def populate_review_tab(app):
 def update_review_summary(app):
     vendors = set(item["vendor"] for item in app.assigned_items)
     held_count = sum(1 for item in app.assigned_items if release_filter_bucket(item) == "Held")
+    critical_held_count = sum(1 for item in app.assigned_items if is_critical_shipping_hold(item))
     planned_count = sum(1 for item in app.assigned_items if release_filter_bucket(item) == "Planned Today")
     immediate_count = sum(1 for item in app.assigned_items if release_filter_bucket(item) == "Release Now")
     exception_count = sum(1 for item in app.assigned_items if is_review_exception(item))
@@ -441,6 +469,8 @@ def update_review_summary(app):
         hold_summary += f" | Planned today: {planned_count}"
     if held_count:
         hold_summary += f" | Held by shipping policy: {held_count}"
+    if critical_held_count:
+        hold_summary += f" | Critical held: {critical_held_count}"
     if low_recency_counts:
         parts = []
         for bucket in (
@@ -501,8 +531,12 @@ def apply_review_filter(app):
                 continue
         if recency_filter != "ALL" and recency_filter_label(item) != recency_filter:
             continue
-        if release_filter != "ALL" and release_filter_bucket(item) != release_filter:
-            continue
+        if release_filter != "ALL":
+            if release_filter == "Critical Held":
+                if not is_critical_shipping_hold(item):
+                    continue
+            elif release_filter_bucket(item) != release_filter:
+                continue
         app.tree.insert("", "end", iid=str(i), values=review_row_values(item))
 
 

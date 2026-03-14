@@ -20,6 +20,8 @@ class ShippingFlowTests(unittest.TestCase):
         self.assertEqual(preset["preferred_free_ship_weekdays"], ["Friday"])
         self.assertEqual(preset["free_freight_threshold"], 2000.0)
         self.assertEqual(preset["urgent_release_floor"], 0.0)
+        self.assertEqual(preset["urgent_release_mode"], "release_now")
+        self.assertEqual(preset["release_lead_business_days"], 1)
 
     def test_vendor_policy_preset_options_expose_labels_for_ui(self):
         options = shipping_flow.vendor_policy_preset_options()
@@ -28,6 +30,61 @@ class ShippingFlowTests(unittest.TestCase):
         self.assertIn(("free_day_friday", "Free Day Friday"), options)
         self.assertIn(("threshold_2000", "Threshold 2000"), options)
         self.assertIn(("hybrid_friday_2000", "Friday + 2000"), options)
+        self.assertIn(("paid_urgent_friday_2000", "Friday + 2000 + Paid Urgent"), options)
+
+    def test_normalize_vendor_policy_defaults_unknown_urgent_mode_to_release_now(self):
+        policy = shipping_flow.normalize_vendor_policy({
+            "shipping_policy": "hold_for_free_day",
+            "urgent_release_mode": "something_else",
+        })
+
+        self.assertEqual(policy["urgent_release_mode"], "release_now")
+
+    def test_normalize_vendor_policy_clamps_invalid_values_and_irrelevant_fields(self):
+        policy = shipping_flow.normalize_vendor_policy({
+            "shipping_policy": "not_real",
+            "preferred_free_ship_weekdays": "Fri, Noday",
+            "free_freight_threshold": "-200",
+            "urgent_release_floor": "-5",
+            "urgent_release_mode": "also_bad",
+            "release_lead_business_days": "-2",
+        })
+
+        self.assertEqual(policy["shipping_policy"], "release_immediately")
+        self.assertEqual(policy["preferred_free_ship_weekdays"], [])
+        self.assertEqual(policy["free_freight_threshold"], 0.0)
+        self.assertEqual(policy["urgent_release_floor"], 0.0)
+        self.assertEqual(policy["urgent_release_mode"], "release_now")
+        self.assertEqual(policy["release_lead_business_days"], 1)
+
+    def test_normalize_vendor_policy_clears_unused_fields_for_specific_policy_types(self):
+        free_day = shipping_flow.normalize_vendor_policy({
+            "shipping_policy": "hold_for_free_day",
+            "preferred_free_ship_weekdays": "Fri",
+            "free_freight_threshold": 2000,
+        })
+        threshold = shipping_flow.normalize_vendor_policy({
+            "shipping_policy": "hold_for_threshold",
+            "preferred_free_ship_weekdays": "Fri",
+            "free_freight_threshold": 2000,
+            "release_lead_business_days": 3,
+        })
+
+        self.assertEqual(free_day["preferred_free_ship_weekdays"], ["Friday"])
+        self.assertEqual(free_day["free_freight_threshold"], 0.0)
+        self.assertEqual(free_day["release_lead_business_days"], 1)
+        self.assertEqual(threshold["preferred_free_ship_weekdays"], [])
+        self.assertEqual(threshold["free_freight_threshold"], 2000.0)
+        self.assertEqual(threshold["release_lead_business_days"], 1)
+
+    def test_normalize_vendor_policy_keeps_configured_lead_days_for_free_day_policies(self):
+        policy = shipping_flow.normalize_vendor_policy({
+            "shipping_policy": "hold_for_free_day",
+            "preferred_free_ship_weekdays": "Fri",
+            "release_lead_business_days": 2,
+        })
+
+        self.assertEqual(policy["release_lead_business_days"], 2)
 
     def test_release_bucket_classifies_release_states(self):
         self.assertEqual(shipping_flow.release_bucket({"release_decision": "release_now"}), "release_now")
@@ -36,6 +93,68 @@ class ShippingFlowTests(unittest.TestCase):
             "planned_today",
         )
         self.assertEqual(shipping_flow.release_bucket({"release_decision": "hold_for_threshold"}), "held")
+
+    def test_release_timing_mode_maps_policy_shapes(self):
+        self.assertEqual(
+            shipping_flow.release_timing_mode({"shipping_policy": "release_immediately"}),
+            "same_day_release",
+        )
+        self.assertEqual(
+            shipping_flow.release_timing_mode({"shipping_policy": "hold_for_threshold"}),
+            "release_on_threshold",
+        )
+        self.assertEqual(
+            shipping_flow.release_timing_mode({"shipping_policy": "hold_for_free_day", "release_lead_business_days": 0}),
+            "release_on_target_ship_day",
+        )
+        self.assertEqual(
+            shipping_flow.release_timing_mode({"shipping_policy": "hold_for_free_day", "release_lead_business_days": 1}),
+            "release_one_business_day_before_ship_day",
+        )
+        self.assertEqual(
+            shipping_flow.release_timing_mode({"shipping_policy": "hybrid_free_day_threshold", "release_lead_business_days": 2}),
+            "vendor_specific_lead_days",
+        )
+
+    def test_vendor_release_plan_status_distinguishes_release_postures(self):
+        self.assertEqual(
+            shipping_flow.vendor_release_plan_status({
+                "release_now_count": 1,
+                "planned_today_count": 0,
+                "held_count": 0,
+            }),
+            "release_now",
+        )
+        self.assertEqual(
+            shipping_flow.vendor_release_plan_status({
+                "shipping_policy": "hold_for_threshold",
+                "release_now_count": 0,
+                "planned_today_count": 0,
+                "held_count": 2,
+                "vendor_threshold_shortfall": 50,
+            }),
+            "hold_accumulating_to_threshold",
+        )
+        self.assertEqual(
+            shipping_flow.vendor_release_plan_status({
+                "shipping_policy": "hold_for_free_day",
+                "release_now_count": 0,
+                "planned_today_count": 1,
+                "held_count": 0,
+                "release_timing_mode": "release_on_target_ship_day",
+            }),
+            "release_on_next_free_ship_day",
+        )
+        self.assertEqual(
+            shipping_flow.vendor_release_plan_status({
+                "shipping_policy": "hold_for_free_day",
+                "release_now_count": 0,
+                "planned_today_count": 1,
+                "held_count": 0,
+                "release_timing_mode": "release_one_business_day_before_ship_day",
+            }),
+            "release_on_order_ahead_date",
+        )
 
     def test_build_vendor_release_plan_aggregates_counts_and_values(self):
         rows = shipping_flow.build_vendor_release_plan([
@@ -51,6 +170,7 @@ class ShippingFlowTests(unittest.TestCase):
                 "next_free_ship_date": "2026-03-13",
                 "planned_export_date": "2026-03-12",
                 "shipping_policy": "hybrid_free_day_threshold",
+                "release_timing_mode": "same_day_release",
             },
             {
                 "vendor": "MOTION",
@@ -64,6 +184,7 @@ class ShippingFlowTests(unittest.TestCase):
                 "next_free_ship_date": "2026-03-13",
                 "planned_export_date": "2026-03-12",
                 "shipping_policy": "hybrid_free_day_threshold",
+                "release_timing_mode": "release_one_business_day_before_ship_day",
             },
             {
                 "vendor": "MOTION",
@@ -77,6 +198,7 @@ class ShippingFlowTests(unittest.TestCase):
                 "next_free_ship_date": "2026-03-13",
                 "planned_export_date": "2026-03-12",
                 "shipping_policy": "hybrid_free_day_threshold",
+                "release_timing_mode": "release_on_threshold",
             },
         ])
 
@@ -92,6 +214,9 @@ class ShippingFlowTests(unittest.TestCase):
         self.assertEqual(row["vendor_order_value_total"], 45.0)
         self.assertEqual(row["vendor_threshold_shortfall"], 55.0)
         self.assertEqual(row["next_free_ship_date"], "2026-03-13")
+        self.assertEqual(row["release_timing_mode"], "same_day_release")
+        self.assertEqual(row["release_plan_status"], "release_now")
+        self.assertEqual(row["release_plan_label"], "Release Now")
 
     def test_annotate_release_decisions_holds_for_free_day_when_not_today(self):
         session = AppSessionState(
@@ -128,8 +253,45 @@ class ShippingFlowTests(unittest.TestCase):
         self.assertEqual(item["target_order_date"], "2026-03-12")
         self.assertEqual(item["target_release_date"], "2026-03-13")
         self.assertIn("Release:", item["why"])
+        self.assertIn("Release lead days: 1", item["why"])
+        self.assertIn("Timing mode: release_one_business_day_before_ship_day", item["why"])
         self.assertIn("Target order date: 2026-03-12", item["why"])
         self.assertIn("Target release date: 2026-03-13", item["why"])
+
+    def test_annotate_release_decisions_uses_vendor_release_lead_days_for_planned_export(self):
+        session = AppSessionState(
+            inventory_lookup={("AER-", "GH781-4"): {"repl_cost": 2.0}},
+            vendor_policies={
+                "MOTION": {
+                    "shipping_policy": "hold_for_free_day",
+                    "preferred_free_ship_weekdays": ["Friday"],
+                    "release_lead_business_days": 2,
+                    "urgent_release_floor": 0,
+                }
+            },
+            filtered_items=[{
+                "line_code": "AER-",
+                "item_code": "GH781-4",
+                "vendor": "MOTION",
+                "final_qty": 10,
+                "order_qty": 10,
+                "inventory_position": 6,
+                "core_why": "Base why",
+                "why": "Base why",
+            }],
+        )
+
+        shipping_flow.annotate_release_decisions(session, now=datetime(2026, 3, 11, 12, 0, 0))
+
+        item = session.filtered_items[0]
+        self.assertEqual(item["release_decision"], "export_next_business_day_for_free_day")
+        self.assertEqual(item["release_lead_business_days"], 2)
+        self.assertEqual(item["next_free_ship_date"], "2026-03-13")
+        self.assertEqual(item["planned_export_date"], "2026-03-11")
+        self.assertEqual(item["target_order_date"], "2026-03-11")
+        self.assertEqual(item["target_release_date"], "2026-03-13")
+        self.assertEqual(item["release_timing_mode"], "vendor_specific_lead_days")
+        self.assertIn("Release lead days: 2", item["why"])
 
     def test_annotate_release_decisions_releases_when_threshold_reached(self):
         session = AppSessionState(
@@ -203,6 +365,134 @@ class ShippingFlowTests(unittest.TestCase):
         item = session.filtered_items[0]
         self.assertEqual(item["release_decision"], "release_now")
         self.assertIn("urgent floor 5", item["release_reason"])
+        self.assertEqual(item["release_trigger"], "urgent_floor")
+
+    def test_annotate_release_decisions_can_use_paid_urgent_freight_override(self):
+        session = AppSessionState(
+            inventory_lookup={("AER-", "GH781-4"): {"repl_cost": 1.0}},
+            vendor_policies={
+                "SOURCE": {
+                    "shipping_policy": "hold_for_free_day",
+                    "preferred_free_ship_weekdays": ["Friday"],
+                    "urgent_release_floor": 5,
+                    "urgent_release_mode": "paid_urgent_freight",
+                }
+            },
+            filtered_items=[{
+                "line_code": "AER-",
+                "item_code": "GH781-4",
+                "vendor": "SOURCE",
+                "final_qty": 12,
+                "order_qty": 12,
+                "inventory_position": 3,
+                "core_why": "Base why",
+                "why": "Base why",
+            }],
+        )
+
+        shipping_flow.annotate_release_decisions(session, now=datetime(2026, 3, 11, 12, 0, 0))
+
+        item = session.filtered_items[0]
+        self.assertEqual(item["release_decision"], "release_now_paid_urgent_freight")
+        self.assertEqual(item["release_trigger"], "urgent_floor")
+        self.assertEqual(item["urgent_release_mode"], "paid_urgent_freight")
+        self.assertIn("paid urgent freight", item["release_reason"])
+        self.assertIn("Urgent override: paid_urgent_freight", item["why"])
+
+    def test_annotate_release_decisions_consolidates_vendor_when_one_item_is_urgent(self):
+        session = AppSessionState(
+            inventory_lookup={
+                ("AER-", "GH781-4"): {"repl_cost": 1.0},
+                ("AER-", "GH781-5"): {"repl_cost": 1.0},
+            },
+            vendor_policies={
+                "SOURCE": {
+                    "shipping_policy": "hold_for_free_day",
+                    "preferred_free_ship_weekdays": ["Friday"],
+                    "urgent_release_floor": 5,
+                }
+            },
+            filtered_items=[
+                {
+                    "line_code": "AER-",
+                    "item_code": "GH781-4",
+                    "vendor": "SOURCE",
+                    "final_qty": 12,
+                    "order_qty": 12,
+                    "inventory_position": 3,
+                    "core_why": "Urgent item",
+                    "why": "Urgent item",
+                },
+                {
+                    "line_code": "AER-",
+                    "item_code": "GH781-5",
+                    "vendor": "SOURCE",
+                    "final_qty": 8,
+                    "order_qty": 8,
+                    "inventory_position": 20,
+                    "core_why": "Held sibling",
+                    "why": "Held sibling",
+                },
+            ],
+        )
+
+        shipping_flow.annotate_release_decisions(session, now=datetime(2026, 3, 11, 12, 0, 0))
+
+        urgent = session.filtered_items[0]
+        sibling = session.filtered_items[1]
+        self.assertEqual(urgent["release_decision"], "release_now")
+        self.assertEqual(urgent["release_trigger"], "urgent_floor")
+        self.assertEqual(sibling["release_decision"], "release_now")
+        self.assertEqual(sibling["release_trigger"], "vendor_urgent_consolidation")
+        self.assertIn("urgent vendor item", sibling["release_reason"])
+        self.assertEqual(sibling["target_order_date"], "2026-03-11")
+        self.assertEqual(sibling["target_release_date"], "2026-03-11")
+        self.assertIn("vendor PO stays consolidated", sibling["why"])
+
+    def test_annotate_release_decisions_consolidates_vendor_into_paid_urgent_freight_when_configured(self):
+        session = AppSessionState(
+            inventory_lookup={
+                ("AER-", "GH781-4"): {"repl_cost": 1.0},
+                ("AER-", "GH781-5"): {"repl_cost": 1.0},
+            },
+            vendor_policies={
+                "SOURCE": {
+                    "shipping_policy": "hold_for_threshold",
+                    "free_freight_threshold": 2000,
+                    "urgent_release_floor": 5,
+                    "urgent_release_mode": "paid_urgent_freight",
+                }
+            },
+            filtered_items=[
+                {
+                    "line_code": "AER-",
+                    "item_code": "GH781-4",
+                    "vendor": "SOURCE",
+                    "final_qty": 12,
+                    "order_qty": 12,
+                    "inventory_position": 3,
+                    "core_why": "Urgent item",
+                    "why": "Urgent item",
+                },
+                {
+                    "line_code": "AER-",
+                    "item_code": "GH781-5",
+                    "vendor": "SOURCE",
+                    "final_qty": 8,
+                    "order_qty": 8,
+                    "inventory_position": 20,
+                    "core_why": "Held sibling",
+                    "why": "Held sibling",
+                },
+            ],
+        )
+
+        shipping_flow.annotate_release_decisions(session, now=datetime(2026, 3, 11, 12, 0, 0))
+
+        sibling = session.filtered_items[1]
+        self.assertEqual(sibling["release_decision"], "release_now_paid_urgent_freight")
+        self.assertEqual(sibling["release_trigger"], "vendor_urgent_consolidation")
+        self.assertIn("paid urgent freight", sibling["release_reason"])
 
     def test_annotate_release_decisions_exports_on_previous_business_day_for_free_day(self):
         session = AppSessionState(

@@ -31,6 +31,8 @@ class UIVendorManagerTests(unittest.TestCase):
         self.assertEqual(fake_app.vendor_policies["MOTION"]["preferred_free_ship_weekdays"], ["Friday"])
         self.assertEqual(fake_app.vendor_policies["MOTION"]["free_freight_threshold"], 2000.0)
         self.assertEqual(fake_app.vendor_policies["MOTION"]["urgent_release_floor"], 0.0)
+        self.assertEqual(fake_app.vendor_policies["MOTION"]["urgent_release_mode"], "release_now")
+        self.assertEqual(fake_app.vendor_policies["MOTION"]["release_lead_business_days"], 1)
         self.assertEqual(events, ["save", "annotate", "bulk", "summary", "review"])
 
     def test_apply_vendor_policy_preset_rejects_unknown_template(self):
@@ -60,13 +62,17 @@ class UIVendorManagerTests(unittest.TestCase):
             weekdays="Fri",
             threshold="2000",
             urgent_floor="10",
+            urgent_mode="paid_urgent_freight",
+            release_lead_days="3",
         )
 
         self.assertTrue(result)
         self.assertEqual(fake_app.vendor_policies["MOTION"]["shipping_policy"], "hold_for_threshold")
-        self.assertEqual(fake_app.vendor_policies["MOTION"]["preferred_free_ship_weekdays"], ["Friday"])
+        self.assertEqual(fake_app.vendor_policies["MOTION"]["preferred_free_ship_weekdays"], [])
         self.assertEqual(fake_app.vendor_policies["MOTION"]["free_freight_threshold"], 2000.0)
         self.assertEqual(fake_app.vendor_policies["MOTION"]["urgent_release_floor"], 10.0)
+        self.assertEqual(fake_app.vendor_policies["MOTION"]["urgent_release_mode"], "paid_urgent_freight")
+        self.assertEqual(fake_app.vendor_policies["MOTION"]["release_lead_business_days"], 1)
         self.assertEqual(events, ["save", "annotate", "bulk", "summary", "review"])
 
     def test_apply_vendor_policy_changes_clears_default_policy(self):
@@ -84,11 +90,55 @@ class UIVendorManagerTests(unittest.TestCase):
             weekdays="",
             threshold="",
             urgent_floor="",
+            urgent_mode="release_now",
+            release_lead_days="1",
         )
 
         self.assertTrue(result)
         self.assertNotIn("MOTION", fake_app.vendor_policies)
         self.assertEqual(events, ["save"])
+
+    def test_apply_vendor_policy_changes_normalizes_invalid_and_negative_input(self):
+        fake_app = SimpleNamespace(
+            vendor_policies={},
+            _normalize_vendor_code=lambda value: str(value or "").strip().upper(),
+            _save_vendor_policies=lambda: None,
+        )
+
+        result = ui_vendor_manager.apply_vendor_policy_changes(
+            fake_app,
+            "motion",
+            shipping_policy="not_real",
+            weekdays="Fri, Noday",
+            threshold="-2000",
+            urgent_floor="-5",
+            urgent_mode="bad_mode",
+            release_lead_days="-2",
+        )
+
+        self.assertTrue(result)
+        self.assertNotIn("MOTION", fake_app.vendor_policies)
+
+    def test_apply_vendor_policy_changes_persists_release_lead_days_for_free_day_policy(self):
+        fake_app = SimpleNamespace(
+            vendor_policies={},
+            _normalize_vendor_code=lambda value: str(value or "").strip().upper(),
+            _save_vendor_policies=lambda: None,
+        )
+
+        result = ui_vendor_manager.apply_vendor_policy_changes(
+            fake_app,
+            "motion",
+            shipping_policy="hold_for_free_day",
+            weekdays="Fri",
+            threshold="",
+            urgent_floor="",
+            urgent_mode="release_now",
+            release_lead_days="2",
+        )
+
+        self.assertTrue(result)
+        self.assertEqual(fake_app.vendor_policies["MOTION"]["release_lead_business_days"], 2)
 
 
 if __name__ == "__main__":

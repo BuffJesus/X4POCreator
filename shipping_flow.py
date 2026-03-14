@@ -2,6 +2,12 @@ from datetime import datetime, timedelta
 
 
 WEEKDAY_NAMES = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
+VALID_SHIPPING_POLICIES = {
+    "release_immediately",
+    "hold_for_free_day",
+    "hold_for_threshold",
+    "hybrid_free_day_threshold",
+}
 
 VENDOR_POLICY_PRESETS = {
     "release_now": {
@@ -10,6 +16,8 @@ VENDOR_POLICY_PRESETS = {
         "preferred_free_ship_weekdays": [],
         "free_freight_threshold": 0.0,
         "urgent_release_floor": 0.0,
+        "urgent_release_mode": "release_now",
+        "release_lead_business_days": 1,
     },
     "free_day_friday": {
         "label": "Free Day Friday",
@@ -17,6 +25,8 @@ VENDOR_POLICY_PRESETS = {
         "preferred_free_ship_weekdays": ["Friday"],
         "free_freight_threshold": 0.0,
         "urgent_release_floor": 0.0,
+        "urgent_release_mode": "release_now",
+        "release_lead_business_days": 1,
     },
     "threshold_2000": {
         "label": "Threshold 2000",
@@ -24,6 +34,8 @@ VENDOR_POLICY_PRESETS = {
         "preferred_free_ship_weekdays": [],
         "free_freight_threshold": 2000.0,
         "urgent_release_floor": 0.0,
+        "urgent_release_mode": "release_now",
+        "release_lead_business_days": 1,
     },
     "hybrid_friday_2000": {
         "label": "Friday + 2000",
@@ -31,6 +43,17 @@ VENDOR_POLICY_PRESETS = {
         "preferred_free_ship_weekdays": ["Friday"],
         "free_freight_threshold": 2000.0,
         "urgent_release_floor": 0.0,
+        "urgent_release_mode": "release_now",
+        "release_lead_business_days": 1,
+    },
+    "paid_urgent_friday_2000": {
+        "label": "Friday + 2000 + Paid Urgent",
+        "shipping_policy": "hybrid_free_day_threshold",
+        "preferred_free_ship_weekdays": ["Friday"],
+        "free_freight_threshold": 2000.0,
+        "urgent_release_floor": 0.0,
+        "urgent_release_mode": "paid_urgent_freight",
+        "release_lead_business_days": 1,
     },
 }
 
@@ -67,6 +90,13 @@ def _safe_float(value, default=0.0):
         return default
 
 
+def _safe_nonnegative_int(value, default=0):
+    try:
+        return max(0, int(float(value)))
+    except (TypeError, ValueError):
+        return default
+
+
 def _safe_date(value):
     if isinstance(value, datetime):
         return value.date()
@@ -76,11 +106,31 @@ def _safe_date(value):
 def normalize_vendor_policy(policy):
     policy = dict(policy or {})
     shipping_policy = str(policy.get("shipping_policy", "") or "").strip() or "release_immediately"
+    if shipping_policy not in VALID_SHIPPING_POLICIES:
+        shipping_policy = "release_immediately"
+    urgent_release_mode = str(policy.get("urgent_release_mode", "") or "").strip() or "release_now"
+    if urgent_release_mode not in ("release_now", "paid_urgent_freight"):
+        urgent_release_mode = "release_now"
+    weekdays = _normalize_weekdays(policy.get("preferred_free_ship_weekdays"))
+    threshold = max(0.0, _safe_float(policy.get("free_freight_threshold"), 0.0))
+    urgent_floor = max(0.0, _safe_float(policy.get("urgent_release_floor"), 0.0))
+    release_lead_business_days = _safe_nonnegative_int(policy.get("release_lead_business_days"), 1)
+    if shipping_policy == "release_immediately":
+        weekdays = []
+        threshold = 0.0
+        release_lead_business_days = 1
+    elif shipping_policy == "hold_for_free_day":
+        threshold = 0.0
+    elif shipping_policy == "hold_for_threshold":
+        weekdays = []
+        release_lead_business_days = 1
     normalized = {
         "shipping_policy": shipping_policy,
-        "preferred_free_ship_weekdays": _normalize_weekdays(policy.get("preferred_free_ship_weekdays")),
-        "free_freight_threshold": _safe_float(policy.get("free_freight_threshold"), 0.0),
-        "urgent_release_floor": _safe_float(policy.get("urgent_release_floor"), 0.0),
+        "preferred_free_ship_weekdays": weekdays,
+        "free_freight_threshold": threshold,
+        "urgent_release_floor": urgent_floor,
+        "urgent_release_mode": urgent_release_mode,
+        "release_lead_business_days": release_lead_business_days,
     }
     return normalized
 
@@ -94,6 +144,57 @@ def get_vendor_policy_preset(preset_name):
 
 def vendor_policy_preset_options():
     return [(key, VENDOR_POLICY_PRESETS[key]["label"]) for key in VENDOR_POLICY_PRESETS]
+
+
+def release_timing_mode(policy_or_item):
+    shipping_policy = str((policy_or_item or {}).get("shipping_policy", "") or "").strip() or "release_immediately"
+    lead_days = _safe_nonnegative_int((policy_or_item or {}).get("release_lead_business_days"), 1)
+    if shipping_policy == "release_immediately":
+        return "same_day_release"
+    if shipping_policy == "hold_for_threshold":
+        return "release_on_threshold"
+    if shipping_policy in ("hold_for_free_day", "hybrid_free_day_threshold"):
+        if lead_days <= 0:
+            return "release_on_target_ship_day"
+        if lead_days == 1:
+            return "release_one_business_day_before_ship_day"
+        return "vendor_specific_lead_days"
+    return "same_day_release"
+
+
+def vendor_release_plan_status(row):
+    shipping_policy = str((row or {}).get("shipping_policy", "") or "").strip()
+    timing_mode = str((row or {}).get("release_timing_mode", "") or "").strip()
+    release_now_count = int(_safe_float((row or {}).get("release_now_count"), 0.0))
+    planned_today_count = int(_safe_float((row or {}).get("planned_today_count"), 0.0))
+    held_count = int(_safe_float((row or {}).get("held_count"), 0.0))
+    threshold_shortfall = _safe_float((row or {}).get("vendor_threshold_shortfall"), 0.0)
+
+    if release_now_count > 0:
+        return "release_now"
+    if planned_today_count > 0:
+        if timing_mode == "release_on_target_ship_day":
+            return "release_on_next_free_ship_day"
+        return "release_on_order_ahead_date"
+    if held_count > 0:
+        if shipping_policy == "hold_for_threshold":
+            return "hold_accumulating_to_threshold" if threshold_shortfall > 0 else "release_now"
+        if shipping_policy == "hybrid_free_day_threshold" and threshold_shortfall > 0:
+            return "hold_accumulating_to_threshold"
+        if shipping_policy in ("hold_for_free_day", "hybrid_free_day_threshold"):
+            if timing_mode == "release_on_target_ship_day":
+                return "release_on_next_free_ship_day"
+            return "release_on_order_ahead_date"
+    return "release_now"
+
+
+def vendor_release_plan_status_label(status):
+    return {
+        "release_now": "Release Now",
+        "hold_accumulating_to_threshold": "Hold Toward Threshold",
+        "release_on_next_free_ship_day": "Release On Free-Ship Day",
+        "release_on_order_ahead_date": "Release On Order-Ahead Date",
+    }.get(status, status or "")
 
 
 def estimate_item_order_value(item, inventory_lookup):
@@ -160,12 +261,16 @@ def _next_preferred_weekday(now, weekdays):
     return None
 
 
-def _previous_business_day(target_date):
+def _previous_business_days(target_date, business_days=1):
     if target_date is None:
         return None
-    candidate = target_date - timedelta(days=1)
-    while candidate.weekday() >= 5:
+    remaining = max(0, _safe_nonnegative_int(business_days, 1))
+    candidate = target_date
+    while remaining > 0:
         candidate -= timedelta(days=1)
+        while candidate.weekday() >= 5:
+            candidate -= timedelta(days=1)
+        remaining -= 1
     return candidate
 
 
@@ -229,6 +334,9 @@ def build_vendor_release_plan(items):
                 "next_free_ship_date": item.get("next_free_ship_date") or "",
                 "planned_export_date": item.get("planned_export_date") or "",
                 "shipping_policy": item.get("shipping_policy") or "",
+                "release_lead_business_days": _safe_nonnegative_int(item.get("release_lead_business_days"), 1),
+                "release_timing_mode": item.get("release_timing_mode") or "",
+                "release_plan_status": "",
             },
         )
         value = _safe_float(item.get("estimated_order_value"), 0.0)
@@ -249,7 +357,52 @@ def build_vendor_release_plan(items):
             row["planned_export_date"] = item.get("planned_export_date")
         if not row["shipping_policy"] and item.get("shipping_policy"):
             row["shipping_policy"] = item.get("shipping_policy")
-    return [plan[vendor] for vendor in sorted(plan)]
+        row["release_lead_business_days"] = max(
+            row.get("release_lead_business_days", 1),
+            _safe_nonnegative_int(item.get("release_lead_business_days"), 1),
+        )
+        if not row.get("release_timing_mode") and item.get("release_timing_mode"):
+            row["release_timing_mode"] = item.get("release_timing_mode")
+    rows = [plan[vendor] for vendor in sorted(plan)]
+    for row in rows:
+        row["release_plan_status"] = vendor_release_plan_status(row)
+        row["release_plan_label"] = vendor_release_plan_status_label(row["release_plan_status"])
+    return rows
+
+
+def _build_release_why(base_why, item):
+    planning_parts = []
+    threshold = _safe_float(item.get("shipping_policy_threshold"), 0.0)
+    current_total = _safe_float(item.get("vendor_order_value_total"), 0.0)
+    threshold_progress_pct = _safe_float(item.get("vendor_threshold_progress_pct"), 100.0)
+    threshold_shortfall = _safe_float(item.get("vendor_threshold_shortfall"), 0.0)
+    coverage_label = item.get("vendor_value_coverage", "")
+    known = int(_safe_float(item.get("vendor_value_known_items"), 0.0))
+    unknown = int(_safe_float(item.get("vendor_value_unknown_items"), 0.0))
+    next_free_ship_date = item.get("next_free_ship_date", "")
+    planned_export_date = item.get("planned_export_date", "")
+    if threshold > 0:
+        planning_parts.append(
+            f"Vendor threshold progress: {current_total:g}/{threshold:g} ({threshold_progress_pct:.0f}%, short {threshold_shortfall:g})"
+        )
+    if coverage_label not in ("", "complete"):
+        planning_parts.append(f"Vendor value coverage: {coverage_label} ({known} known, {unknown} unknown)")
+    if next_free_ship_date:
+        planning_parts.append(f"Next free-ship date: {next_free_ship_date}")
+    if planned_export_date:
+        planning_parts.append(f"Planned export date: {planned_export_date}")
+    if item.get("target_order_date"):
+        planning_parts.append(f"Target order date: {item['target_order_date']}")
+    if item.get("target_release_date"):
+        planning_parts.append(f"Target release date: {item['target_release_date']}")
+    if item.get("urgent_release_mode") and item.get("urgent_release_mode") != "release_now":
+        planning_parts.append(f"Urgent override: {item['urgent_release_mode']}")
+    if item.get("shipping_policy") in ("hold_for_free_day", "hybrid_free_day_threshold") and item.get("release_lead_business_days") is not None:
+        planning_parts.append(f"Release lead days: {int(_safe_float(item['release_lead_business_days'], 0.0))}")
+    if item.get("release_timing_mode"):
+        planning_parts.append(f"Timing mode: {item['release_timing_mode']}")
+    reason = item.get("release_reason", "")
+    return " | ".join(part for part in (base_why, *planning_parts, f"Release: {reason}" if reason else "") if part)
 
 
 def _choose_release_decision(item, policy, vendor_total, now):
@@ -257,26 +410,46 @@ def _choose_release_decision(item, policy, vendor_total, now):
     weekdays = policy.get("preferred_free_ship_weekdays", [])
     threshold = max(0.0, _safe_float(policy.get("free_freight_threshold"), 0.0))
     urgent_floor = max(0.0, _safe_float(policy.get("urgent_release_floor"), 0.0))
+    urgent_release_mode = str(policy.get("urgent_release_mode", "release_now") or "release_now").strip() or "release_now"
+    release_lead_business_days = _safe_nonnegative_int(policy.get("release_lead_business_days"), 1)
     current_dt = now or datetime.now()
     current_date = _safe_date(current_dt)
     today_name = current_dt.strftime("%A")
     inventory_position = _safe_float(item.get("inventory_position"), 0.0)
     urgent = urgent_floor > 0 and inventory_position <= urgent_floor
     next_free_ship_date = _next_preferred_weekday(current_dt, weekdays)
-    previous_business_export_date = _previous_business_day(next_free_ship_date)
+    previous_business_export_date = _previous_business_days(next_free_ship_date, release_lead_business_days)
 
     if urgent:
-        return "release_now", f"Released now because inventory position {inventory_position:g} is at or below urgent floor {urgent_floor:g}"
+        if urgent_release_mode == "paid_urgent_freight":
+            return {
+                "decision": "release_now_paid_urgent_freight",
+                "reason": (
+                    f"Released now on paid urgent freight because inventory position {inventory_position:g} "
+                    f"is at or below urgent floor {urgent_floor:g}"
+                ),
+                "trigger": "urgent_floor",
+            }
+        return {
+            "decision": "release_now",
+            "reason": f"Released now because inventory position {inventory_position:g} is at or below urgent floor {urgent_floor:g}",
+            "trigger": "urgent_floor",
+        }
 
     if shipping_policy == "hold_for_free_day":
         if weekdays and today_name in weekdays:
-            return "release_now", f"Released now because today is preferred free-shipping day ({today_name})"
+            return {
+                "decision": "release_now",
+                "reason": f"Released now because today is preferred free-shipping day ({today_name})",
+                "trigger": "free_day_today",
+            }
         if previous_business_export_date and current_date == previous_business_export_date:
             free_day_name = next_free_ship_date.strftime("%A") if next_free_ship_date else "scheduled free-shipping day"
-            return (
-                "export_next_business_day_for_free_day",
-                f"Export today so the PO is ready for vendor free-shipping day ({free_day_name} {_format_date(next_free_ship_date)})",
-            )
+            return {
+                "decision": "export_next_business_day_for_free_day",
+                "reason": f"Export today so the PO is ready for vendor free-shipping day ({free_day_name} {_format_date(next_free_ship_date)})",
+                "trigger": "planned_free_day",
+            }
         if weekdays:
             extra = ""
             if next_free_ship_date:
@@ -284,27 +457,56 @@ def _choose_release_decision(item, policy, vendor_total, now):
                     f"; next free-shipping day {_format_date(next_free_ship_date)}"
                     f"; planned export {_format_date(previous_business_export_date)}"
                 )
-            return "hold_for_free_day", f"Held for vendor free-shipping day ({', '.join(weekdays)}{extra})"
-        return "release_now", "Released now because no preferred free-shipping day is configured"
+            return {
+                "decision": "hold_for_free_day",
+                "reason": f"Held for vendor free-shipping day ({', '.join(weekdays)}{extra})",
+                "trigger": "hold_for_free_day",
+            }
+        return {
+            "decision": "release_now",
+            "reason": "Released now because no preferred free-shipping day is configured",
+            "trigger": "policy_default",
+        }
 
     if shipping_policy == "hold_for_threshold":
         if threshold > 0 and vendor_total >= threshold:
-            return "release_now", f"Released now because vendor threshold {threshold:g} was reached"
+            return {
+                "decision": "release_now",
+                "reason": f"Released now because vendor threshold {threshold:g} was reached",
+                "trigger": "threshold_reached",
+            }
         if threshold > 0:
-            return "hold_for_threshold", f"Held for freight threshold {threshold:g} (current vendor total {vendor_total:g})"
-        return "release_now", "Released now because no freight threshold is configured"
+            return {
+                "decision": "hold_for_threshold",
+                "reason": f"Held for freight threshold {threshold:g} (current vendor total {vendor_total:g})",
+                "trigger": "hold_for_threshold",
+            }
+        return {
+            "decision": "release_now",
+            "reason": "Released now because no freight threshold is configured",
+            "trigger": "policy_default",
+        }
 
     if shipping_policy == "hybrid_free_day_threshold":
         if threshold > 0 and vendor_total >= threshold:
-            return "release_now", f"Released now because vendor threshold {threshold:g} was reached"
+            return {
+                "decision": "release_now",
+                "reason": f"Released now because vendor threshold {threshold:g} was reached",
+                "trigger": "threshold_reached",
+            }
         if weekdays and today_name in weekdays:
-            return "release_now", f"Released now because today is preferred free-shipping day ({today_name})"
+            return {
+                "decision": "release_now",
+                "reason": f"Released now because today is preferred free-shipping day ({today_name})",
+                "trigger": "free_day_today",
+            }
         if previous_business_export_date and current_date == previous_business_export_date:
             free_day_name = next_free_ship_date.strftime("%A") if next_free_ship_date else "scheduled free-shipping day"
-            return (
-                "export_next_business_day_for_free_day",
-                f"Export today so the PO is ready for vendor free-shipping day ({free_day_name} {_format_date(next_free_ship_date)})",
-            )
+            return {
+                "decision": "export_next_business_day_for_free_day",
+                "reason": f"Export today so the PO is ready for vendor free-shipping day ({free_day_name} {_format_date(next_free_ship_date)})",
+                "trigger": "planned_free_day",
+            }
         if weekdays:
             extra = ""
             if next_free_ship_date:
@@ -312,12 +514,28 @@ def _choose_release_decision(item, policy, vendor_total, now):
                     f"; next free-shipping day {_format_date(next_free_ship_date)}"
                     f"; planned export {_format_date(previous_business_export_date)}"
                 )
-            return "hold_for_free_day", f"Held for vendor free-shipping day ({', '.join(weekdays)}{extra})"
+            return {
+                "decision": "hold_for_free_day",
+                "reason": f"Held for vendor free-shipping day ({', '.join(weekdays)}{extra})",
+                "trigger": "hold_for_free_day",
+            }
         if threshold > 0:
-            return "hold_for_threshold", f"Held for freight threshold {threshold:g} (current vendor total {vendor_total:g})"
-        return "release_now", "Released now because no vendor hold condition is configured"
+            return {
+                "decision": "hold_for_threshold",
+                "reason": f"Held for freight threshold {threshold:g} (current vendor total {vendor_total:g})",
+                "trigger": "hold_for_threshold",
+            }
+        return {
+            "decision": "release_now",
+            "reason": "Released now because no vendor hold condition is configured",
+            "trigger": "policy_default",
+        }
 
-    return "release_now", "Released now by vendor policy"
+    return {
+        "decision": "release_now",
+        "reason": "Released now by vendor policy",
+        "trigger": "policy_default",
+    }
 
 
 def annotate_release_decisions(session, now=None):
@@ -329,6 +547,7 @@ def annotate_release_decisions(session, now=None):
     vendor_totals = build_vendor_order_totals(source_items, inventory_lookup)
     vendor_value_coverage = build_vendor_value_coverage(source_items, inventory_lookup)
     current_dt = now or datetime.now()
+    annotated_items = []
 
     for collection_name in ("filtered_items", "assigned_items"):
         for item in getattr(session, collection_name, []) or []:
@@ -341,7 +560,8 @@ def annotate_release_decisions(session, now=None):
             threshold_shortfall = max(0.0, threshold - current_total) if threshold > 0 else 0.0
             threshold_progress_pct = min(100.0, (current_total / threshold) * 100.0) if threshold > 0 else 100.0
             next_free_ship_date = _next_preferred_weekday(current_dt, policy.get("preferred_free_ship_weekdays", []))
-            planned_export_date = _previous_business_day(next_free_ship_date)
+            release_lead_business_days = _safe_nonnegative_int(policy.get("release_lead_business_days"), 1)
+            planned_export_date = _previous_business_days(next_free_ship_date, release_lead_business_days)
             item["estimated_order_value"] = estimate_item_order_value(item, inventory_lookup)
             item["vendor_order_value_total"] = current_total
             item["vendor_value_coverage"] = coverage_entry["label"]
@@ -354,22 +574,34 @@ def annotate_release_decisions(session, now=None):
             _set_release_targets(item)
             item["release_decision"] = ""
             item["release_reason"] = ""
+            item["release_trigger"] = ""
             item["shipping_policy"] = ""
             item["shipping_policy_weekdays"] = []
             item["shipping_policy_threshold"] = 0.0
+            item["urgent_release_mode"] = "release_now"
+            item["release_lead_business_days"] = 1
+            item["release_timing_mode"] = release_timing_mode({"shipping_policy": "", "release_lead_business_days": 1})
             base_why = item.get("core_why") or item.get("why", "")
             item["why"] = base_why
+            item["_shipping_base_why"] = base_why
+            annotated_items.append(item)
 
             raw_policy = vendor_policies.get(vendor)
             if not vendor or qty <= 0 or not raw_policy:
                 continue
 
-            decision, reason = _choose_release_decision(item, policy, current_total, current_dt)
+            decision_data = _choose_release_decision(item, policy, current_total, current_dt)
+            decision = decision_data["decision"]
+            reason = decision_data["reason"]
             item["release_decision"] = decision
             item["release_reason"] = reason
+            item["release_trigger"] = decision_data.get("trigger", "")
             item["shipping_policy"] = policy["shipping_policy"]
             item["shipping_policy_weekdays"] = list(policy["preferred_free_ship_weekdays"])
             item["shipping_policy_threshold"] = policy["free_freight_threshold"]
+            item["urgent_release_mode"] = policy.get("urgent_release_mode", "release_now")
+            item["release_lead_business_days"] = policy.get("release_lead_business_days", 1)
+            item["release_timing_mode"] = release_timing_mode(policy)
             if decision in ("hold_for_free_day", "export_next_business_day_for_free_day"):
                 _set_release_targets(
                     item,
@@ -382,21 +614,47 @@ def annotate_release_decisions(session, now=None):
                     release_date=_safe_date(current_dt),
                     order_date=_safe_date(current_dt),
                 )
-            planning_parts = []
-            if threshold > 0:
-                planning_parts.append(
-                    f"Vendor threshold progress: {current_total:g}/{threshold:g} ({threshold_progress_pct:.0f}%, short {threshold_shortfall:g})"
-                )
-            if coverage_entry["label"] != "complete":
-                planning_parts.append(
-                    f"Vendor value coverage: {coverage_entry['label']} ({coverage_entry['known']} known, {coverage_entry['unknown']} unknown)"
-                )
-            if next_free_ship_date:
-                planning_parts.append(f"Next free-ship date: {_format_date(next_free_ship_date)}")
-            if planned_export_date:
-                planning_parts.append(f"Planned export date: {_format_date(planned_export_date)}")
-            if item.get("target_order_date"):
-                planning_parts.append(f"Target order date: {item['target_order_date']}")
-            if item.get("target_release_date"):
-                planning_parts.append(f"Target release date: {item['target_release_date']}")
-            item["why"] = " | ".join(part for part in (base_why, *planning_parts, f"Release: {reason}") if part)
+            item["why"] = _build_release_why(base_why, item)
+
+    urgent_vendors = {
+        _normalize_vendor(item.get("vendor", ""))
+        for item in annotated_items
+        if item.get("release_trigger") == "urgent_floor"
+    }
+    current_date = _safe_date(current_dt)
+    for item in annotated_items:
+        vendor = _normalize_vendor(item.get("vendor", ""))
+        qty = max(0, _safe_float(item.get("final_qty", item.get("order_qty", 0)), 0.0))
+        if not vendor or qty <= 0 or vendor not in urgent_vendors:
+            continue
+        if item.get("release_trigger") == "urgent_floor":
+            item["why"] = _build_release_why(item.get("_shipping_base_why", item.get("core_why", "")), item)
+            continue
+        if item.get("release_decision") == "release_now":
+            item["why"] = _build_release_why(item.get("_shipping_base_why", item.get("core_why", "")), item)
+            continue
+        urgent_items = [
+            candidate for candidate in annotated_items
+            if _normalize_vendor(candidate.get("vendor", "")) == vendor and candidate.get("release_trigger") == "urgent_floor"
+        ]
+        urgent_decision = "release_now"
+        if any(candidate.get("release_decision") == "release_now_paid_urgent_freight" for candidate in urgent_items):
+            urgent_decision = "release_now_paid_urgent_freight"
+        urgent_codes = ", ".join(
+            f"{candidate.get('line_code', '')}{candidate.get('item_code', '')}"
+            for candidate in urgent_items[:3]
+        )
+        if len(urgent_items) > 3:
+            urgent_codes += ", ..."
+        item["release_decision"] = urgent_decision
+        item["release_reason"] = (
+            ("Released now on paid urgent freight with urgent vendor item" if urgent_decision == "release_now_paid_urgent_freight" else "Released now with urgent vendor item")
+            + (f" ({urgent_codes})" if urgent_codes else "")
+            + " so the vendor PO stays consolidated"
+        )
+        item["release_trigger"] = "vendor_urgent_consolidation"
+        _set_release_targets(item, release_date=current_date, order_date=current_date)
+        item["why"] = _build_release_why(item.get("_shipping_base_why", item.get("core_why", "")), item)
+
+    for item in annotated_items:
+        item.pop("_shipping_base_why", None)

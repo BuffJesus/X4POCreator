@@ -2,7 +2,7 @@
 
 Status: reconciled against the current workspace and test-covered behavior
 
-Current app version: `0.1.11`
+Current app version: `0.1.12`
 
 This file consolidates:
 
@@ -92,6 +92,7 @@ The goal is to keep one phased checklist that reflects what is actually done in 
 - [x] Keep real reel-like items on `reel_review`.
 - [x] Improve reel-vs-non-reel detection with blocklists and stronger description checks.
 - [x] Add direct hardware-term detection from descriptions.
+- [x] Add explicit package-profile classification for reel stock, hardware packs, and large non-reel packs.
 - [x] Add conservative active-hardware heuristics that infer `pack_trigger` when appropriate.
 - [x] Add conservative active-hardware heuristics that infer `minimum_packs_on_hand = 2` when appropriate.
 - [x] Route stale/risky large-pack non-reel items to review instead of auto-order.
@@ -111,7 +112,7 @@ The goal is to keep one phased checklist that reflects what is actually done in 
   - critical / rule-protected
 - [x] Make low-confidence recency buckets actionable in Review filters and summary text.
 - [x] Add cadence-aware heuristics for high-velocity small-pack items beyond the current two-pack hardware floor.
-- [ ] Decide whether `reel_review` should remain distinct or split into `reel_auto` plus generalized replenishment-unit policies.
+- [x] Decide whether `reel_review` should remain distinct or split into `reel_auto` plus generalized replenishment-unit policies.
 
 ## Phase 5. Vendor Shipping Policy Model
 
@@ -135,9 +136,9 @@ The goal is to keep one phased checklist that reflects what is actually done in 
 - [x] Append release reasoning to the item `why` text.
 - [x] Add a real editing/configuration surface for vendor policies.
 - [x] Decide where vendor policy should live operationally in the UI: settings, vendor manager, dedicated dialog, or data file only.
-- [ ] Add broader validation and normalization for user-entered vendor policy values.
-- [ ] Add explicit vendor-policy fields for release lead time / order-ahead behavior.
-- [ ] Decide whether release timing should be modeled as:
+- [x] Add broader validation and normalization for user-entered vendor policy values.
+- [x] Add explicit vendor-policy fields for release lead time / order-ahead behavior.
+- [x] Decide whether release timing should be modeled as:
   - same-day release only
   - release on target ship day
   - release one business day before target ship day
@@ -152,10 +153,10 @@ The goal is to keep one phased checklist that reflects what is actually done in 
 - [x] Surface release reasoning in item details and `why` text.
 - [x] Make review/export workflows act on release decisions, not just display them.
 - [x] Support "held but still visible for review" as an explicit operational workflow, not only as explanatory text.
-- [ ] Add stronger vendor-group consolidation behavior across multiple candidate items and mixed urgency.
-- [ ] Treat "paid urgent truck" or equivalent override as an explicit release path in the model and UI.
-- [ ] Prevent hold logic from hiding critical shortages operationally during export/review, not only in reasoning text.
-- [ ] Add vendor-level release planning that distinguishes:
+- [x] Add stronger vendor-group consolidation behavior across multiple candidate items and mixed urgency.
+- [x] Treat "paid urgent truck" or equivalent override as an explicit release path in the model and UI.
+- [x] Prevent hold logic from hiding critical shortages operationally during export/review, not only in reasoning text.
+- [x] Add vendor-level release planning that distinguishes:
   - release now
   - hold and keep accumulating toward threshold
   - release on next preferred free-freight day

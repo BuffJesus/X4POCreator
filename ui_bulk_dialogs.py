@@ -13,6 +13,8 @@ from rules import (
     get_rule_int,
     get_rule_pack_size,
     infer_default_order_policy,
+    package_profile_label,
+    replenishment_unit_mode_label,
     recency_review_bucket_label,
 )
 from ui_scroll import attach_vertical_mousewheel, sync_canvas_window
@@ -739,6 +741,8 @@ def item_details_rows(app, item, inv, key):
         ("Suggested Qty", str(item.get("suggested_qty", 0))),
         ("Final Qty", str(item.get("final_qty", 0))),
         ("Order Policy", item.get("order_policy", "-")),
+        ("Package Profile", package_profile_label(item.get("package_profile")) or "-"),
+        ("Replenishment Mode", replenishment_unit_mode_label(item.get("replenishment_unit_mode")) or "-"),
         ("Trigger Qty", str(item.get("reorder_trigger_qty", "-") if item.get("reorder_trigger_qty") is not None else "-")),
         ("Trigger %", _format_metric(item.get("reorder_trigger_pct")) if item.get("reorder_trigger_pct") is not None else "-"),
         ("Min Packs", minimum_packs_display),
@@ -749,6 +753,9 @@ def item_details_rows(app, item, inv, key):
         ("Allowed Overstock", str(item.get("acceptable_overstock_qty_effective", "-") if item.get("acceptable_overstock_qty_effective") is not None else "-")),
         ("Projected Overstock", str(item.get("projected_overstock_qty", "-") if item.get("projected_overstock_qty") is not None else "-")),
         ("Shipping Policy", item.get("shipping_policy") or "-"),
+        ("Urgent Override", item.get("urgent_release_mode") or "-"),
+        ("Release Lead Days", str(item.get("release_lead_business_days", "-") if item.get("release_lead_business_days") is not None else "-")),
+        ("Timing Mode", item.get("release_timing_mode") or "-"),
         ("Release Decision", item.get("release_decision") or "-"),
         ("Release Reason", item.get("release_reason") or "-"),
         ("Vendor Order Value", _format_metric(item.get("vendor_order_value_total")) if item.get("vendor_order_value_total") is not None else "-"),
