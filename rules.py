@@ -254,6 +254,50 @@ def classify_recency_confidence(item, inv, rule):
     return item["recency_confidence"]
 
 
+def classify_low_confidence_recency(item, inv, rule):
+    """Add a more actionable subtype for low-confidence recency cases."""
+    if (item.get("recency_confidence") or classify_recency_confidence(item, inv, rule)) != "low":
+        item["recency_review_bucket"] = None
+        return None
+
+    data_completeness = item.get("data_completeness", "")
+    performance = (item.get("performance_profile", "") or "").strip().lower()
+    sales_health = (item.get("sales_health_signal", "") or "").strip().lower()
+    qty_received = item.get("qty_received", 0) or 0
+    historical_rank = item.get("historical_rank_score", 0) or 0
+    qoh = (inv or {}).get("qoh", 0) or 0
+
+    if data_completeness == "missing_recency_rule_protected":
+        bucket = "critical_rule_protected"
+    elif data_completeness == "missing_recency_activity_protected":
+        bucket = "activity_protected"
+    elif (
+        qty_received > 0
+        and sales_health in ("", "unknown")
+        and historical_rank < 24
+    ):
+        bucket = "new_or_sparse"
+    elif sales_health in ("dormant", "stale") or (
+        performance == "legacy" and qty_received <= 0 and qoh <= 0
+    ):
+        bucket = "stale_or_likely_dead"
+    else:
+        bucket = "missing_data_uncertain"
+
+    item["recency_review_bucket"] = bucket
+    return bucket
+
+
+def recency_review_bucket_label(bucket):
+    return {
+        "critical_rule_protected": "Critical / rule-protected",
+        "activity_protected": "Protected by other activity",
+        "new_or_sparse": "New or too sparse",
+        "stale_or_likely_dead": "Stale / likely dead",
+        "missing_data_uncertain": "Missing-data / uncertain",
+    }.get(bucket, bucket or "")
+
+
 def should_force_recency_review(item, inv, rule):
     """Return True when a reorder candidate lacks enough recency evidence for auto-order."""
     recency_confidence = item.get("recency_confidence") or classify_recency_confidence(item, inv, rule)
@@ -686,6 +730,7 @@ def enrich_item(item, inv, pack_qty, rule):
             item["minimum_packs_on_hand"] = inferred_min_packs
             item["minimum_packs_on_hand_source"] = "heuristic"
     classify_recency_confidence(item, inv or {}, rule)
+    classify_low_confidence_recency(item, inv or {}, rule)
     calculate_inventory_position(item)
     determine_target_stock(item)
     item["reorder_needed"] = evaluate_reorder_trigger(item)
@@ -714,10 +759,16 @@ def enrich_item(item, inv, pack_qty, rule):
     if should_suppress_manual_only_qty(item):
         suggested = 0
         completeness = item.get("data_completeness", "")
+        recency_bucket = item.get("recency_review_bucket")
         why = {
+            "stale_or_likely_dead": "Manual review required before ordering (missing sale/receipt history; likely stale or dead item)",
+            "new_or_sparse": "Manual review required before ordering (missing sale/receipt history; may be new or too sparse)",
+            "missing_data_uncertain": "Manual review required before ordering (missing sale/receipt history; incomplete data makes demand uncertain)",
+            "activity_protected": "Manual review required before ordering (missing sale/receipt history; protected by other evidence)",
+        }.get(recency_bucket, {
             "missing_recency": "Manual review required before ordering (missing sale/receipt history)",
             "missing_recency_activity_protected": "Manual review required before ordering (missing sale/receipt history; protected by other evidence)",
-        }.get(completeness, "Manual review required before ordering")
+        }.get(completeness, "Manual review required before ordering"))
         projected_overstock, overstock_within_tolerance = assess_post_receipt_overstock(item, suggested)
     reason_codes = []
     inventory_position = item.get("inventory_position", 0)
@@ -752,6 +803,9 @@ def enrich_item(item, inv, pack_qty, rule):
         reason_codes.append("manual_only")
     if item.get("recency_confidence") == "low":
         reason_codes.append("low_recency_confidence")
+    recency_review_bucket = item.get("recency_review_bucket")
+    if recency_review_bucket:
+        reason_codes.append(f"recency_{recency_review_bucket}")
     data_completeness = item.get("data_completeness", "")
     if data_completeness:
         reason_codes.append(f"data_{data_completeness}")
@@ -791,6 +845,8 @@ def enrich_item(item, inv, pack_qty, rule):
             "missing_recency_activity_protected": "No sale or receipt history, but protected by other evidence",
         }
         detail_parts.append(completeness_labels.get(data_completeness, data_completeness))
+    if recency_review_bucket:
+        detail_parts.append(f"Recency review type: {recency_review_bucket_label(recency_review_bucket)}")
     if acceptable_overstock > 0:
         overstock_basis = item.get("acceptable_overstock_basis")
         basis_label = {

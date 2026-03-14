@@ -4,6 +4,7 @@ from tkinter import ttk, messagebox
 
 import export_flow
 import shipping_flow
+from rules import recency_review_bucket_label
 from ui_grid_edit import TreeGridEditor
 from ui_scroll import attach_vertical_mousewheel
 
@@ -38,6 +39,22 @@ def is_review_exception(item):
     return False
 
 
+RECENCY_FILTER_LABELS = {
+    "critical_rule_protected": "Critical / Rule-Protected",
+    "activity_protected": "Activity-Protected",
+    "new_or_sparse": "New / Sparse",
+    "missing_data_uncertain": "Missing-Data / Uncertain",
+    "stale_or_likely_dead": "Stale / Likely Dead",
+}
+
+
+def recency_filter_label(item):
+    bucket = item.get("recency_review_bucket")
+    if not bucket:
+        return "None"
+    return RECENCY_FILTER_LABELS.get(bucket, recency_review_bucket_label(bucket) or str(bucket))
+
+
 def build_vendor_release_plan_rows(app):
     return shipping_flow.build_vendor_release_plan(getattr(app, "assigned_items", []))
 
@@ -49,6 +66,8 @@ def apply_release_plan_view(app, vendor, *, focus="Exceptions Only", release="AL
         app.var_review_performance_filter.set("ALL")
     if hasattr(app, "var_review_attention_filter"):
         app.var_review_attention_filter.set("ALL")
+    if hasattr(app, "var_review_recency_filter"):
+        app.var_review_recency_filter.set("ALL")
     if hasattr(app, "var_review_release_filter"):
         app.var_review_release_filter.set(release)
     if hasattr(app, "var_review_focus_filter"):
@@ -260,6 +279,18 @@ def build_review_tab(app):
     app.combo_review_attention.pack(side=tk.LEFT)
     app.combo_review_attention.bind("<<ComboboxSelected>>", lambda e: app._apply_review_filter())
 
+    ttk.Label(filter_frame, text="Recency:").pack(side=tk.LEFT, padx=(12, 6))
+    app.var_review_recency_filter = tk.StringVar(value="ALL")
+    app.combo_review_recency = ttk.Combobox(
+        filter_frame,
+        textvariable=app.var_review_recency_filter,
+        state="readonly",
+        width=24,
+        values=["ALL"] + list(RECENCY_FILTER_LABELS.values()),
+    )
+    app.combo_review_recency.pack(side=tk.LEFT)
+    app.combo_review_recency.bind("<<ComboboxSelected>>", lambda e: app._apply_review_filter())
+
     ttk.Label(filter_frame, text="Release:").pack(side=tk.LEFT, padx=(12, 6))
     app.var_review_release_filter = tk.StringVar(value="ALL")
     app.combo_review_release = ttk.Combobox(
@@ -380,6 +411,7 @@ def populate_review_tab(app):
     app.var_vendor_filter.set("ALL")
     app.var_review_performance_filter.set("ALL")
     app.var_review_attention_filter.set("ALL")
+    app.var_review_recency_filter.set("ALL")
     app.var_review_release_filter.set("ALL")
     focus = "Exceptions Only"
     get_focus = getattr(app, "_get_review_export_focus", None)
@@ -396,12 +428,32 @@ def update_review_summary(app):
     planned_count = sum(1 for item in app.assigned_items if release_filter_bucket(item) == "Planned Today")
     immediate_count = sum(1 for item in app.assigned_items if release_filter_bucket(item) == "Release Now")
     exception_count = sum(1 for item in app.assigned_items if is_review_exception(item))
+    low_recency_counts = {}
+    for item in app.assigned_items:
+        bucket = item.get("recency_review_bucket")
+        if bucket:
+            low_recency_counts[bucket] = low_recency_counts.get(bucket, 0) + 1
     exportable_count = immediate_count + planned_count
     hold_summary = f" | Exportable now: {exportable_count} | Immediate: {immediate_count} | Exceptions: {exception_count}"
     if planned_count:
         hold_summary += f" | Planned today: {planned_count}"
     if held_count:
         hold_summary += f" | Held by shipping policy: {held_count}"
+    if low_recency_counts:
+        parts = []
+        for bucket in (
+            "stale_or_likely_dead",
+            "new_or_sparse",
+            "missing_data_uncertain",
+            "activity_protected",
+            "critical_rule_protected",
+        ):
+            count = low_recency_counts.get(bucket)
+            if count:
+                parts.append(f"{count} {recency_filter_label({'recency_review_bucket': bucket}).lower()}")
+        hold_summary += f" | Low-confidence recency: {sum(low_recency_counts.values())}"
+        if parts:
+            hold_summary += f" ({', '.join(parts)})"
     app.lbl_review_summary.config(
         text=(
             f"{len(app.assigned_items)} items across {len(vendors)} vendor PO(s): {', '.join(sorted(vendors))} | "
@@ -415,6 +467,7 @@ def apply_review_filter(app):
     vendor_filter = app.var_vendor_filter.get()
     performance_filter = app.var_review_performance_filter.get()
     attention_filter = app.var_review_attention_filter.get()
+    recency_filter = app.var_review_recency_filter.get()
     release_filter = app.var_review_release_filter.get()
     focus_filter = app.var_review_focus_filter.get()
     for item_id in app.tree.get_children():
@@ -442,6 +495,8 @@ def apply_review_filter(app):
             }.get(attention_filter, "")
             if attention != expected_attention:
                 continue
+        if recency_filter != "ALL" and recency_filter_label(item) != recency_filter:
+            continue
         if release_filter != "ALL" and release_filter_bucket(item) != release_filter:
             continue
         app.tree.insert("", "end", iid=str(i), values=review_row_values(item))

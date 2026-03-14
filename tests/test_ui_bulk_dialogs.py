@@ -345,6 +345,7 @@ class BulkDialogTests(unittest.TestCase):
             "minimum_cover_cycles": 2.0,
             "recency_confidence": "medium",
             "data_completeness": "partial_recency",
+            "recency_review_bucket": None,
             "acceptable_overstock_qty": 12,
             "acceptable_overstock_pct": 10.0,
             "acceptable_overstock_qty_effective": 30,
@@ -371,6 +372,7 @@ class BulkDialogTests(unittest.TestCase):
         self.assertEqual(row_lookup["Cover Cycles"], "2.00")
         self.assertEqual(row_lookup["Recency Confidence"], "medium")
         self.assertEqual(row_lookup["Data Completeness"], "partial_recency")
+        self.assertEqual(row_lookup["Recency Review Type"], "-")
         self.assertEqual(row_lookup["Overstock Qty"], "12")
         self.assertEqual(row_lookup["Overstock %"], "10.00")
         self.assertEqual(row_lookup["Allowed Overstock"], "30")
@@ -414,6 +416,37 @@ class BulkDialogTests(unittest.TestCase):
         row_lookup = dict(row for row in rows if row[0])
 
         self.assertEqual(row_lookup["Min Packs"], "2 (Inferred)")
+
+    def test_item_details_rows_show_recency_review_type(self):
+        app = SimpleNamespace(
+            on_po_qty={("AER-", "GH781-4"): 0},
+            recent_orders={},
+            duplicate_ic_lookup={},
+            _suggest_min_max=lambda key: (None, None),
+        )
+        item = {
+            "line_code": "AER-",
+            "item_code": "GH781-4",
+            "qty_sold": 0,
+            "qty_suspended": 0,
+            "qty_received": 0,
+            "qty_on_po": 0,
+            "raw_need": 1,
+            "suggested_qty": 0,
+            "final_qty": 0,
+            "order_policy": "manual_only",
+            "status": "review",
+            "data_flags": ["manual_only", "zero_final"],
+            "recency_confidence": "low",
+            "data_completeness": "missing_recency",
+            "recency_review_bucket": "stale_or_likely_dead",
+        }
+        inv = {"qoh": 0, "min": 1, "max": 0}
+
+        rows = ui_bulk_dialogs.item_details_rows(app, item, inv, ("AER-", "GH781-4"))
+        row_lookup = dict(row for row in rows if row[0])
+
+        self.assertEqual(row_lookup["Recency Review Type"], "Stale / likely dead")
 
 
 if __name__ == "__main__":

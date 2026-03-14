@@ -104,11 +104,12 @@ The goal is to keep one phased checklist that reflects what is actually done in 
 - [x] Ensure "Remove Not Needed" respects trigger-based replenishment logic.
 - [x] Ensure "Remove Not Needed" respects acceptable intentional overstock.
 - [x] Surface minimum-pack source, confidence, completeness, and shipping/release annotations in item details.
-- [ ] Distinguish low-confidence reorder candidates more explicitly into:
+- [x] Distinguish low-confidence reorder candidates more explicitly into:
   - stale / likely dead
   - new / not enough history
   - missing-data / uncertain
   - critical / rule-protected
+- [x] Make low-confidence recency buckets actionable in Review filters and summary text.
 - [ ] Add cadence-aware heuristics for high-velocity small-pack items beyond the current two-pack hardware floor.
 - [ ] Decide whether `reel_review` should remain distinct or split into `reel_auto` plus generalized replenishment-unit policies.
 
@@ -291,7 +292,7 @@ These are the best next steps after reconciliation.
 - [ ] Add planned release dates and "export the day before free-freight day" workflow for vendor policies.
 - [ ] Add stronger vendor-group release consolidation and explicit urgent paid-freight override workflow.
 - [ ] Deepen shipping review/export options so users can export immediate, planned-tomorrow, or all-due batches intentionally.
-- [ ] Deepen recency-confidence classification for new-item / stale-item / critical-item distinctions.
+- [x] Deepen recency-confidence classification for new-item / stale-item / critical-item distinctions.
 - [x] Keep missing-recency activity-protected items visible with zero default qty instead of letting them ride through as implicitly orderable rows.
 - [ ] Add remaining edge-case tests called out in the original `0.2.5` roadmap, especially:
   - weekly-order hardware cadence cases

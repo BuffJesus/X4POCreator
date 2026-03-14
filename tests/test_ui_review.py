@@ -48,6 +48,7 @@ class UIReviewTests(unittest.TestCase):
                     "pack_size": 6,
                     "performance_profile": "steady",
                     "reorder_attention_signal": "review_missed_reorder",
+                    "recency_review_bucket": "stale_or_likely_dead",
                     "release_decision": "export_next_business_day_for_free_day",
                 },
                 {
@@ -61,12 +62,14 @@ class UIReviewTests(unittest.TestCase):
                     "pack_size": 6,
                     "performance_profile": "steady",
                     "reorder_attention_signal": "normal",
+                    "recency_review_bucket": "missing_data_uncertain",
                     "release_decision": "hold_for_threshold",
                 },
             ],
             var_vendor_filter=SimpleNamespace(get=lambda: "MOTION"),
             var_review_performance_filter=SimpleNamespace(get=lambda: "Steady"),
             var_review_attention_filter=SimpleNamespace(get=lambda: "Missed Reorder"),
+            var_review_recency_filter=SimpleNamespace(get=lambda: "Stale / Likely Dead"),
             var_review_release_filter=SimpleNamespace(get=lambda: "Planned Today"),
             var_review_focus_filter=SimpleNamespace(get=lambda: "Exceptions Only"),
         )
@@ -119,6 +122,7 @@ class UIReviewTests(unittest.TestCase):
             var_vendor_filter=Var(),
             var_review_performance_filter=Var(),
             var_review_attention_filter=Var(),
+            var_review_recency_filter=Var(),
             var_review_release_filter=Var(),
             var_review_focus_filter=Var(),
             _get_review_export_focus=lambda: "all_items",
@@ -135,9 +139,9 @@ class UIReviewTests(unittest.TestCase):
         captured = {}
         fake_app = SimpleNamespace(
             assigned_items=[
-                {"vendor": "MOTION", "release_decision": "release_now"},
-                {"vendor": "MOTION", "release_decision": "export_next_business_day_for_free_day"},
-                {"vendor": "MOTION", "release_decision": "hold_for_threshold"},
+                {"vendor": "MOTION", "release_decision": "release_now", "recency_review_bucket": "critical_rule_protected"},
+                {"vendor": "MOTION", "release_decision": "export_next_business_day_for_free_day", "recency_review_bucket": "new_or_sparse"},
+                {"vendor": "MOTION", "release_decision": "hold_for_threshold", "recency_review_bucket": "stale_or_likely_dead"},
                 {"vendor": "SOURCE", "release_decision": ""},
             ],
             lbl_review_summary=SimpleNamespace(config=lambda **kwargs: captured.update(kwargs)),
@@ -151,6 +155,10 @@ class UIReviewTests(unittest.TestCase):
         self.assertIn("Exceptions: 2", text)
         self.assertIn("Planned today: 1", text)
         self.assertIn("Held by shipping policy: 1", text)
+        self.assertIn("Low-confidence recency: 3", text)
+        self.assertIn("1 stale / likely dead", text)
+        self.assertIn("1 new / sparse", text)
+        self.assertIn("1 critical / rule-protected", text)
 
     def test_is_review_exception_detects_review_relevant_items(self):
         self.assertTrue(ui_review.is_review_exception({"release_decision": "hold_for_threshold"}))
@@ -201,6 +209,7 @@ class UIReviewTests(unittest.TestCase):
             var_vendor_filter=SimpleNamespace(get=lambda: "ALL"),
             var_review_performance_filter=SimpleNamespace(get=lambda: "ALL"),
             var_review_attention_filter=SimpleNamespace(get=lambda: "ALL"),
+            var_review_recency_filter=SimpleNamespace(get=lambda: "ALL"),
             var_review_release_filter=SimpleNamespace(get=lambda: "ALL"),
             var_review_focus_filter=SimpleNamespace(get=lambda: "Exceptions Only"),
         )
@@ -224,6 +233,13 @@ class UIReviewTests(unittest.TestCase):
             ui_review.release_filter_bucket({"release_decision": "release_now"}),
             "Release Now",
         )
+
+    def test_recency_filter_label_maps_known_review_buckets(self):
+        self.assertEqual(
+            ui_review.recency_filter_label({"recency_review_bucket": "missing_data_uncertain"}),
+            "Missing-Data / Uncertain",
+        )
+        self.assertEqual(ui_review.recency_filter_label({}), "None")
 
     def test_build_vendor_release_plan_rows_returns_vendor_aggregate_rows(self):
         fake_app = SimpleNamespace(
@@ -278,6 +294,7 @@ class UIReviewTests(unittest.TestCase):
             var_vendor_filter=Var(),
             var_review_performance_filter=Var(),
             var_review_attention_filter=Var(),
+            var_review_recency_filter=Var(),
             var_review_release_filter=Var(),
             var_review_focus_filter=Var(),
             _apply_review_filter=lambda: events.append(("apply", None)),
@@ -289,6 +306,7 @@ class UIReviewTests(unittest.TestCase):
         self.assertEqual(fake_app.var_vendor_filter.value, "MOTION")
         self.assertEqual(fake_app.var_review_release_filter.value, "Held")
         self.assertEqual(fake_app.var_review_focus_filter.value, "Exceptions Only")
+        self.assertEqual(fake_app.var_review_recency_filter.value, "ALL")
         self.assertIn(("apply", None), events)
         self.assertIn(("select", 5), events)
 

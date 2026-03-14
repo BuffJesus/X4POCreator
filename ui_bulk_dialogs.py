@@ -13,6 +13,7 @@ from rules import (
     get_rule_int,
     get_rule_pack_size,
     infer_default_order_policy,
+    recency_review_bucket_label,
 )
 from ui_scroll import attach_vertical_mousewheel, sync_canvas_window
 
@@ -699,6 +700,7 @@ def item_details_rows(app, item, inv, key):
         ("Days Since Last Sale", str(item.get("days_since_last_sale", "-") if item.get("days_since_last_sale") is not None else "-")),
         ("Recency Confidence", item.get("recency_confidence") or "-"),
         ("Data Completeness", item.get("data_completeness") or "-"),
+        ("Recency Review Type", recency_review_bucket_label(item.get("recency_review_bucket")) or "-"),
         ("YTD Sales", str(inv.get("ytd_sales", "-"))),
         ("12 Mo Sales", str(inv.get("mo12_sales", "-"))),
         ("Sales Window", _sales_window_label(item)),
