@@ -5,7 +5,14 @@ from tkinter import ttk, messagebox
 
 import storage
 from debug_log import write_debug
-from rules import enrich_item, evaluate_item_status, get_rule_pack_size, infer_default_order_policy
+from rules import (
+    enrich_item,
+    evaluate_item_status,
+    get_rule_float,
+    get_rule_int,
+    get_rule_pack_size,
+    infer_default_order_policy,
+)
 from ui_scroll import attach_vertical_mousewheel, sync_canvas_window
 
 
@@ -381,9 +388,25 @@ def open_buy_rule_editor(app, idx, order_rules_file):
     var_pack = tk.StringVar(value=str(get_rule_pack_size(rule) or item.get("pack_size", "") or ""))
     ttk.Entry(form, textvariable=var_pack, width=10).grid(row=3, column=1, sticky="w", padx=8, pady=4)
 
-    ttk.Label(form, text="Notes:").grid(row=4, column=0, sticky="nw", pady=4)
+    ttk.Label(form, text="Trigger Qty:").grid(row=4, column=0, sticky="w", pady=4)
+    var_trigger_qty = tk.StringVar(value=str(get_rule_int(rule, "reorder_trigger_qty") or ""))
+    ttk.Entry(form, textvariable=var_trigger_qty, width=10).grid(row=4, column=1, sticky="w", padx=8, pady=4)
+
+    ttk.Label(form, text="Trigger %:").grid(row=5, column=0, sticky="w", pady=4)
+    var_trigger_pct = tk.StringVar(value=str(get_rule_float(rule, "reorder_trigger_pct") or ""))
+    ttk.Entry(form, textvariable=var_trigger_pct, width=10).grid(row=5, column=1, sticky="w", padx=8, pady=4)
+
+    ttk.Label(form, text="Overstock Qty:").grid(row=6, column=0, sticky="w", pady=4)
+    var_overstock_qty = tk.StringVar(value=str(get_rule_int(rule, "acceptable_overstock_qty") or ""))
+    ttk.Entry(form, textvariable=var_overstock_qty, width=10).grid(row=6, column=1, sticky="w", padx=8, pady=4)
+
+    ttk.Label(form, text="Overstock %:").grid(row=7, column=0, sticky="w", pady=4)
+    var_overstock_pct = tk.StringVar(value=str(get_rule_float(rule, "acceptable_overstock_pct") or ""))
+    ttk.Entry(form, textvariable=var_overstock_pct, width=10).grid(row=7, column=1, sticky="w", padx=8, pady=4)
+
+    ttk.Label(form, text="Notes:").grid(row=8, column=0, sticky="nw", pady=4)
     notes_entry = ttk.Entry(form, width=30)
-    notes_entry.grid(row=4, column=1, sticky="w", padx=8, pady=4)
+    notes_entry.grid(row=8, column=1, sticky="w", padx=8, pady=4)
     notes_entry.insert(0, rule.get("notes", ""))
 
     info = ttk.LabelFrame(dlg, text="Current Data", padding=8)
@@ -412,6 +435,10 @@ def open_buy_rule_editor(app, idx, order_rules_file):
             allow_below_pack=var_allow.get(),
             min_order_qty=var_min.get().strip(),
             pack_qty=var_pack.get().strip(),
+            reorder_trigger_qty=var_trigger_qty.get().strip(),
+            reorder_trigger_pct=var_trigger_pct.get().strip(),
+            acceptable_overstock_qty=var_overstock_qty.get().strip(),
+            acceptable_overstock_pct=var_overstock_pct.get().strip(),
             initial_policy=initial_policy,
             initial_policy_locked=initial_policy_locked,
         )
@@ -431,6 +458,34 @@ def open_buy_rule_editor(app, idx, order_rules_file):
         elif pack_val == "":
             item["pack_size"] = None
             new_rule.pop("pack_size", None)
+
+        trigger_qty_val = var_trigger_qty.get().strip()
+        if trigger_qty_val:
+            try:
+                new_rule["reorder_trigger_qty"] = int(float(trigger_qty_val))
+            except ValueError:
+                pass
+
+        trigger_pct_val = var_trigger_pct.get().strip()
+        if trigger_pct_val:
+            try:
+                new_rule["reorder_trigger_pct"] = float(trigger_pct_val)
+            except ValueError:
+                pass
+
+        overstock_qty_val = var_overstock_qty.get().strip()
+        if overstock_qty_val:
+            try:
+                new_rule["acceptable_overstock_qty"] = int(float(overstock_qty_val))
+            except ValueError:
+                pass
+
+        overstock_pct_val = var_overstock_pct.get().strip()
+        if overstock_pct_val:
+            try:
+                new_rule["acceptable_overstock_pct"] = float(overstock_pct_val)
+            except ValueError:
+                pass
 
         selected_policy = var_policy.get()
         inferred_policy = infer_default_order_policy(
@@ -566,6 +621,10 @@ def item_details_rows(app, item, inv, key):
         ("Suggested Qty", str(item.get("suggested_qty", 0))),
         ("Final Qty", str(item.get("final_qty", 0))),
         ("Order Policy", item.get("order_policy", "-")),
+        ("Trigger Qty", str(item.get("reorder_trigger_qty", "-") if item.get("reorder_trigger_qty") is not None else "-")),
+        ("Trigger %", _format_metric(item.get("reorder_trigger_pct")) if item.get("reorder_trigger_pct") is not None else "-"),
+        ("Overstock Qty", str(item.get("acceptable_overstock_qty", "-") if item.get("acceptable_overstock_qty") is not None else "-")),
+        ("Overstock %", _format_metric(item.get("acceptable_overstock_pct")) if item.get("acceptable_overstock_pct") is not None else "-"),
         ("Status", item.get("status", "-")),
         ("Flags", ", ".join(item.get("data_flags", [])) or "none"),
     ]

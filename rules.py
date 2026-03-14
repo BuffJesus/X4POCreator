@@ -93,6 +93,40 @@ def get_rule_pack_size(rule):
         return None
 
 
+def get_rule_int(rule, field_name):
+    """Return an integer-like persisted rule field, if present."""
+    if not rule:
+        return None
+    value = rule.get(field_name)
+    if value in (None, ""):
+        return None
+    try:
+        return int(float(value))
+    except (TypeError, ValueError):
+        return None
+
+
+def get_rule_float(rule, field_name):
+    """Return a float-like persisted rule field, if present."""
+    if not rule:
+        return None
+    value = rule.get(field_name)
+    if value in (None, ""):
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def apply_rule_fields(item, rule):
+    """Copy persisted rule fields onto the working item for visibility and later logic."""
+    item["reorder_trigger_qty"] = get_rule_int(rule, "reorder_trigger_qty")
+    item["reorder_trigger_pct"] = get_rule_float(rule, "reorder_trigger_pct")
+    item["acceptable_overstock_qty"] = get_rule_int(rule, "acceptable_overstock_qty")
+    item["acceptable_overstock_pct"] = get_rule_float(rule, "acceptable_overstock_pct")
+
+
 def calculate_inventory_position(item):
     """Calculate and persist the item's inventory position."""
     inv = item.get("inventory", {}) or {}
@@ -280,6 +314,7 @@ def enrich_item(item, inv, pack_qty, rule):
     Mutates the item dict in place with calculated fields.
     """
     item["inventory"] = inv or {}
+    apply_rule_fields(item, rule)
     calculate_inventory_position(item)
     determine_target_stock(item)
     item["reorder_needed"] = evaluate_reorder_trigger(item)
@@ -382,5 +417,13 @@ def get_buy_rule_summary(item, rule):
 
     if rule and rule.get("allow_below_pack"):
         parts.append("↓OK")
+
+    trigger_qty = get_rule_int(rule, "reorder_trigger_qty")
+    if trigger_qty is not None:
+        parts.append(f"Trg:{trigger_qty:g}")
+
+    trigger_pct = get_rule_float(rule, "reorder_trigger_pct")
+    if trigger_pct is not None:
+        parts.append(f"Trg:{trigger_pct:g}%")
 
     return " ".join(parts) if parts else "—"

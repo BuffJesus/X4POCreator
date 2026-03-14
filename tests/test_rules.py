@@ -7,6 +7,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from rules import (
+    apply_rule_fields,
     calculate_inventory_position,
     calculate_raw_need,
     calculate_suggested_qty,
@@ -16,6 +17,8 @@ from rules import (
     evaluate_reorder_trigger,
     evaluate_item_status,
     get_buy_rule_summary,
+    get_rule_float,
+    get_rule_int,
     get_rule_pack_size,
     looks_like_reel_item,
 )
@@ -27,6 +30,34 @@ class RulesTests(unittest.TestCase):
         self.assertEqual(get_rule_pack_size({"pack_size": 12.0}), 12)
         self.assertIsNone(get_rule_pack_size({"pack_size": ""}))
         self.assertIsNone(get_rule_pack_size({"pack_size": "abc"}))
+
+    def test_get_rule_int_and_float_parse_trigger_fields(self):
+        rule = {
+            "reorder_trigger_qty": "60",
+            "reorder_trigger_pct": "20",
+            "acceptable_overstock_qty": 12.0,
+            "acceptable_overstock_pct": "10.5",
+        }
+        self.assertEqual(get_rule_int(rule, "reorder_trigger_qty"), 60)
+        self.assertEqual(get_rule_float(rule, "reorder_trigger_pct"), 20.0)
+        self.assertEqual(get_rule_int(rule, "acceptable_overstock_qty"), 12)
+        self.assertEqual(get_rule_float(rule, "acceptable_overstock_pct"), 10.5)
+
+    def test_apply_rule_fields_copies_trigger_metadata_to_item(self):
+        item = {}
+        apply_rule_fields(
+            item,
+            {
+                "reorder_trigger_qty": "60",
+                "reorder_trigger_pct": "20",
+                "acceptable_overstock_qty": "12",
+                "acceptable_overstock_pct": "10",
+            },
+        )
+        self.assertEqual(item["reorder_trigger_qty"], 60)
+        self.assertEqual(item["reorder_trigger_pct"], 20.0)
+        self.assertEqual(item["acceptable_overstock_qty"], 12)
+        self.assertEqual(item["acceptable_overstock_pct"], 10.0)
 
     def test_reel_review_when_pack_far_exceeds_max(self):
         policy = determine_order_policy({"description": '1/4" 2WIRE 6500PSI HOSE'}, {"max": 100}, 500, None)
@@ -220,6 +251,15 @@ class RulesTests(unittest.TestCase):
         self.assertIn("Soft:250", summary)
         self.assertIn("↓OK", summary)
 
+    def test_buy_rule_summary_includes_trigger_fields(self):
+        summary = get_buy_rule_summary(
+            {"order_policy": "standard", "pack_size": 300},
+            {"reorder_trigger_qty": 60, "reorder_trigger_pct": 20},
+        )
+        self.assertIn("Pk:300", summary)
+        self.assertIn("Trg:60", summary)
+        self.assertIn("Trg:20%", summary)
+
 
     def test_enrich_item_adds_inventory_and_suspense_reason_codes(self):
         item = {
@@ -253,6 +293,28 @@ class RulesTests(unittest.TestCase):
         enrich_item(item, {"qoh": 1, "min": 2, "max": None}, 6, None)
         self.assertIn("target_suggested_max", item["reason_codes"])
         self.assertIn("Based on suggested max", item["why"])
+
+    def test_enrich_item_copies_trigger_fields_from_rule(self):
+        item = {
+            "qty_sold": 3,
+            "qty_suspended": 0,
+            "qty_on_po": 0,
+            "pack_size": 6,
+            "suggested_min": 4,
+            "suggested_max": 9,
+            "demand_signal": 3,
+        }
+        rule = {
+            "reorder_trigger_qty": 60,
+            "reorder_trigger_pct": 20,
+            "acceptable_overstock_qty": 12,
+            "acceptable_overstock_pct": 10,
+        }
+        enrich_item(item, {"qoh": 1, "min": 2, "max": None}, 6, rule)
+        self.assertEqual(item["reorder_trigger_qty"], 60)
+        self.assertEqual(item["reorder_trigger_pct"], 20.0)
+        self.assertEqual(item["acceptable_overstock_qty"], 12)
+        self.assertEqual(item["acceptable_overstock_pct"], 10.0)
 
 
 if __name__ == "__main__":

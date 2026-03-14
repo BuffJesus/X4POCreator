@@ -217,6 +217,8 @@ class BulkDialogTests(unittest.TestCase):
         self.assertEqual(row_lookup["Performance"], "steady")
         self.assertEqual(row_lookup["Sales Health"], "active")
         self.assertEqual(row_lookup["Attention"], "normal")
+        self.assertEqual(row_lookup["Trigger Qty"], "-")
+        self.assertEqual(row_lookup["Trigger %"], "-")
         self.assertIn("2 total: 2x via MOTION (2026-03-10)", row_lookup["Recent Orders"])
         self.assertEqual(row_lookup["Also Under"], "ALT-")
 
@@ -251,6 +253,41 @@ class BulkDialogTests(unittest.TestCase):
         self.assertEqual(row_lookup["Days Since Last Sale"], "-")
         self.assertEqual(row_lookup["Performance"], "-")
         self.assertEqual(row_lookup["Attention"], "-")
+
+    def test_item_details_rows_include_trigger_and_overstock_fields(self):
+        app = SimpleNamespace(
+            on_po_qty={("AER-", "GH781-4"): 0},
+            recent_orders={},
+            duplicate_ic_lookup={},
+            _suggest_min_max=lambda key: (10, 18),
+        )
+        item = {
+            "line_code": "AER-",
+            "item_code": "GH781-4",
+            "qty_sold": 12,
+            "qty_suspended": 0,
+            "qty_received": 0,
+            "qty_on_po": 0,
+            "raw_need": 6,
+            "suggested_qty": 6,
+            "final_qty": 6,
+            "order_policy": "standard",
+            "status": "ok",
+            "data_flags": [],
+            "reorder_trigger_qty": 60,
+            "reorder_trigger_pct": 20.0,
+            "acceptable_overstock_qty": 12,
+            "acceptable_overstock_pct": 10.0,
+        }
+        inv = {"qoh": 6, "min": 2, "max": 18}
+
+        rows = ui_bulk_dialogs.item_details_rows(app, item, inv, ("AER-", "GH781-4"))
+        row_lookup = dict(row for row in rows if row[0])
+
+        self.assertEqual(row_lookup["Trigger Qty"], "60")
+        self.assertEqual(row_lookup["Trigger %"], "20.00")
+        self.assertEqual(row_lookup["Overstock Qty"], "12")
+        self.assertEqual(row_lookup["Overstock %"], "10.00")
 
 
 if __name__ == "__main__":
