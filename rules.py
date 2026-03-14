@@ -749,7 +749,8 @@ def enrich_item(item, inv, pack_qty, rule):
         detail_parts.append(f"Minimum packs on hand: {minimum_packs:g} ({source_label})")
     detail_parts.append(why)
     item["suggested_qty"] = suggested
-    item["why"] = " | ".join(detail_parts)
+    item["core_why"] = " | ".join(detail_parts)
+    item["why"] = item["core_why"]
     item["reason_codes"] = reason_codes
 
     if not item.get("manual_override"):

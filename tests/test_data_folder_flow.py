@@ -40,11 +40,13 @@ class DataFolderFlowTests(unittest.TestCase):
             order_rules={},
             suspense_carry={},
             vendor_codes_used=[],
+            vendor_policies={},
             _loaded_dup_whitelist=set(),
             _loaded_ignored_item_keys=set(),
             _loaded_order_rules={},
             _loaded_suspense_carry={},
             _loaded_vendor_codes=[],
+            _loaded_vendor_policies={},
             _data_path=lambda key: str(ROOT / f"{key}.txt"),
             _refresh_data_folder_labels=lambda: None,
         )
@@ -54,6 +56,7 @@ class DataFolderFlowTests(unittest.TestCase):
              patch("data_folder_flow.storage.load_order_rules_with_meta", return_value=({"AER-:GH781-4": {"pack_size": 8}}, None)), \
              patch("data_folder_flow.storage.load_suspense_carry_with_meta", return_value=({("AER-", "GH781-4"): {"qty": 2}}, None)), \
              patch("data_folder_flow.storage.load_vendor_codes", return_value=(["MOTION"], None)), \
+             patch("data_folder_flow.storage.load_vendor_policies_with_meta", return_value=({"MOTION": {"shipping_policy": "hold_for_threshold"}}, None)), \
              patch.object(fake_app, "_refresh_data_folder_labels") as mocked_refresh:
             data_folder_flow.load_persistent_state(fake_app, po_builder.KNOWN_VENDORS)
 
@@ -62,6 +65,7 @@ class DataFolderFlowTests(unittest.TestCase):
         self.assertEqual(fake_app.order_rules["AER-:GH781-4"]["pack_size"], 8)
         self.assertEqual(fake_app.suspense_carry[("AER-", "GH781-4")]["qty"], 2)
         self.assertEqual(fake_app.vendor_codes_used, ["MOTION"])
+        self.assertEqual(fake_app.vendor_policies["MOTION"]["shipping_policy"], "hold_for_threshold")
         self.assertEqual(fake_app._loaded_vendor_codes, ["MOTION"])
         mocked_refresh.assert_called_once_with()
 
@@ -98,6 +102,7 @@ class DataFolderFlowTests(unittest.TestCase):
             _prune_ignored_items_from_session=lambda: False,
             _rebuild_duplicate_ic_lookup=lambda: None,
             _ignore_key=lambda lc, ic: f"{lc}:{ic}",
+            _annotate_release_decisions=lambda: events.append("release"),
         )
 
         with patch("data_folder_flow.storage.get_recent_orders", return_value={}) as mocked_recent, \
@@ -108,7 +113,7 @@ class DataFolderFlowTests(unittest.TestCase):
                 po_builder.get_rule_key,
             )
 
-        self.assertEqual(events, ["load", "vendors", "bulk", "summary"])
+        self.assertEqual(events, ["load", "vendors", "release", "bulk", "summary"])
         self.assertEqual(filtered[0]["pack_size"], 6)
         self.assertTrue(filtered[0]["recalculated"])
         self.assertEqual(result, {"session_updated": True, "ignored_changed_session": False})

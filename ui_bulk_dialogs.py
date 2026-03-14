@@ -700,6 +700,10 @@ def item_details_rows(app, item, inv, key):
         ("Overstock %", _format_metric(item.get("acceptable_overstock_pct")) if item.get("acceptable_overstock_pct") is not None else "-"),
         ("Allowed Overstock", str(item.get("acceptable_overstock_qty_effective", "-") if item.get("acceptable_overstock_qty_effective") is not None else "-")),
         ("Projected Overstock", str(item.get("projected_overstock_qty", "-") if item.get("projected_overstock_qty") is not None else "-")),
+        ("Shipping Policy", item.get("shipping_policy") or "-"),
+        ("Release Decision", item.get("release_decision") or "-"),
+        ("Release Reason", item.get("release_reason") or "-"),
+        ("Vendor Order Value", _format_metric(item.get("vendor_order_value_total")) if item.get("vendor_order_value_total") is not None else "-"),
         ("Status", item.get("status", "-")),
         ("Flags", ", ".join(item.get("data_flags", [])) or "none"),
     ]

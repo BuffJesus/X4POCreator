@@ -99,6 +99,7 @@ class AppSessionState:
     qoh_adjustments: dict = field(default_factory=dict)
     duplicate_ic_lookup: dict = field(default_factory=dict)
     recent_orders: dict = field(default_factory=dict)
+    vendor_policies: dict = field(default_factory=dict)
     order_rules: dict = field(default_factory=dict)
     suspense_carry: dict = field(default_factory=dict)
     vendor_codes_used: list = field(default_factory=list)

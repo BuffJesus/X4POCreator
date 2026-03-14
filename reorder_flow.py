@@ -3,6 +3,13 @@ import math
 import storage
 
 
+def _recalculate_item(app, item, *, annotate_release):
+    try:
+        app._recalculate_item(item, annotate_release=annotate_release)
+    except TypeError:
+        app._recalculate_item(item)
+
+
 def get_cycle_weeks(app):
     cycle = app.var_reorder_cycle.get()
     return {"Weekly": 1, "Biweekly": 2, "Monthly": 4}.get(cycle, 2)
@@ -68,9 +75,11 @@ def refresh_suggestions(app):
         raw_demand = raw_eff_sales + raw_eff_susp
         item["demand_signal"] = _normalize_demand_signal(raw_demand, cycle_weeks, span_days)
         item["gross_need"] = item["demand_signal"]
-        app._recalculate_item(item)
+        _recalculate_item(app, item, annotate_release=False)
     for item in app.assigned_items:
         app._sync_review_item_to_filtered(item)
+    if hasattr(app, "_annotate_release_decisions"):
+        app._annotate_release_decisions()
     app._apply_bulk_filter()
 
 
@@ -104,7 +113,9 @@ def normalize_items_to_cycle(app):
         sug_min, sug_max = app._suggest_min_max(key)
         item["suggested_min"] = sug_min
         item["suggested_max"] = sug_max
-        app._recalculate_item(item)
+        _recalculate_item(app, item, annotate_release=False)
+    if hasattr(app, "_annotate_release_decisions"):
+        app._annotate_release_decisions()
 
 
 def refresh_recent_orders(app):

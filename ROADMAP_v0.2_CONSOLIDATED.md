@@ -1,0 +1,193 @@
+# PO Builder Consolidated Roadmap to `v0.2.x`
+
+Status: reconciled against the current workspace and test-covered behavior
+
+Current app version: `0.1.11`
+
+This file consolidates:
+
+- [`ROADMAP_v0.2.0.md`](C:\Users\Cornelio\Desktop\POCreator\ROADMAP_v0.2.0.md)
+- [`ROADMAP_v0.2.5.md`](C:\Users\Cornelio\Desktop\POCreator\ROADMAP_v0.2.5.md)
+
+The goal is to keep one phased checklist that reflects what is actually done in the codebase now, instead of leaving completed work mixed in with older proposed work.
+
+## Status Summary
+
+### Foundation and stability
+
+- `v0.2.0` foundation work is mostly complete.
+- Shared/local data flow, release discipline basics, and controller decomposition all have strong evidence in the current codebase.
+- The main remaining `v0.2.0` gap is packaged-app workflow confidence rather than core app structure.
+
+### Reorder core and pack-driven logic
+
+- The reorder core refactor is materially in place.
+- Trigger-based ordering, effective reorder floors, pack-trigger behavior, hardware heuristics, recency-confidence gating, and acceptable-overstock handling are all implemented.
+- The biggest remaining reorder-core gaps are cadence-aware cover beyond `minimum_packs_on_hand`, deeper low-confidence classification, and additional reel/generalized replenishment policy cleanup.
+
+### Shipping-aware release logic
+
+- A first vendor shipping policy model now exists.
+- Vendor policies persist on disk, load with session state, and annotate items with release decisions and reasons.
+- The remaining shipping work is operationalization: editing/configuration UI, export/review workflow behavior, and stronger vendor-level consolidation logic.
+
+### Bulk editor hardening
+
+- A large amount of bulk editor safety work is complete.
+- The remaining work is the final rapid-edit race elimination and further large-session performance separation.
+
+## Phase 1. Foundation, Shared Data, and Release Discipline
+
+- [x] Keep local/shared data switching explicit and visible in the UI.
+- [x] Refresh active data from disk across rules, vendor codes, ignore state, history, suspense carry, and related saved state.
+- [x] Keep shared-folder writes atomic and lock-protected for persistent JSON/text files.
+- [x] Handle shared-data merge/conflict cases for concurrency-sensitive saved state such as `suspense_carry`.
+- [x] Cover active-folder refresh and shared/local switching with regression tests.
+- [x] Continue moving workflow logic out of `po_builder.py` into focused helper modules.
+- [x] Keep UI event handlers thin and delegate logic into testable helpers.
+- [x] Maintain a release checklist document.
+- [x] Keep the internal app version as the primary version source used by the startup update check.
+- [x] Keep startup update-check prompt behavior covered.
+- [ ] Add stronger packaged `.exe` smoke-test evidence for the full user workflow using representative real-world CSVs.
+- [ ] Confirm release-candidate workflow coverage from load through export at the packaged-app level, not only unit-test level.
+
+## Phase 2. Reorder Core Refactor
+
+- [x] Separate reorder trigger, target stock, quantity suggestion, and review gating in the ordering logic.
+- [x] Stop relying only on `raw_need > 0` as the implicit reorder decision.
+- [x] Track inventory position explicitly as `QOH + on PO`.
+- [x] Track effective reorder floor separately from operational target stock.
+- [x] Support trigger-based reordering below or above the ordinary operational max as needed.
+- [x] Cover full-pack / small-operational-max edge cases with rule tests.
+- [x] Thread clearer `why` / reason-code explanations through the enriched item model.
+- [ ] Extend cadence-aware reorder logic beyond pack floors into explicit cover-days / cover-cycles rules.
+
+## Phase 3. Rule Model Expansion and Pack-Trigger Behavior
+
+- [x] Add `pack_trigger` policy support.
+- [x] Add persisted rule fields for `reorder_trigger_qty`.
+- [x] Add persisted rule fields for `reorder_trigger_pct`.
+- [x] Add persisted rule fields for `acceptable_overstock_qty`.
+- [x] Add persisted rule fields for `acceptable_overstock_pct`.
+- [x] Add persisted rule fields for `minimum_packs_on_hand`.
+- [x] Surface those fields in the buy-rule editor, details UI, and tests.
+- [x] Allow full-pack replenishment without treating all post-receipt overstock as suspicious by default.
+- [x] Compute effective acceptable overstock from qty or percent of pack.
+- [x] Use acceptable-overstock tolerances in downstream review/removal coherence.
+- [x] Use acceptable-overstock tolerances as an upstream auto-order guardrail.
+- [x] Explain trigger-driven and tolerance-driven behavior in `why` text.
+- [ ] Add persisted rule fields for `minimum_cover_days`.
+- [ ] Add persisted rule fields for `minimum_cover_cycles`.
+- [ ] Decide whether inferred two-pack hardware floors should persist into saved rules after explicit confirmation.
+
+## Phase 4. Review Coherence, Large-Pack Handling, and Confidence Gating
+
+- [x] Add `large_pack_review` as a non-reel review path.
+- [x] Keep real reel-like items on `reel_review`.
+- [x] Improve reel-vs-non-reel detection with blocklists and stronger description checks.
+- [x] Add direct hardware-term detection from descriptions.
+- [x] Add conservative active-hardware heuristics that infer `pack_trigger` when appropriate.
+- [x] Add conservative active-hardware heuristics that infer `minimum_packs_on_hand = 2` when appropriate.
+- [x] Route stale/risky large-pack non-reel items to review instead of auto-order.
+- [x] Add `recency_confidence` and `data_completeness` signals to final item recommendations.
+- [x] Require stronger evidence before auto-ordering when both `last_sale` and `last_receipt` are missing.
+- [x] Allow explicit stocking-rule exceptions for missing-recency items.
+- [x] Route suspense/open-PO protected missing-recency items to review instead of blind skip or blind auto-order.
+- [x] Ensure "Remove Not Needed" respects trigger-based replenishment logic.
+- [x] Ensure "Remove Not Needed" respects acceptable intentional overstock.
+- [x] Surface minimum-pack source, confidence, completeness, and shipping/release annotations in item details.
+- [ ] Distinguish low-confidence reorder candidates more explicitly into:
+  - stale / likely dead
+  - new / not enough history
+  - missing-data / uncertain
+  - critical / rule-protected
+- [ ] Add cadence-aware heuristics for high-velocity small-pack items beyond the current two-pack hardware floor.
+- [ ] Decide whether `reel_review` should remain distinct or split into `reel_auto` plus generalized replenishment-unit policies.
+
+## Phase 5. Vendor Shipping Policy Model
+
+- [x] Add persistent vendor shipping policy storage.
+- [x] Add vendor-policy session loading.
+- [x] Support shipping policies:
+  - `release_immediately`
+  - `hold_for_free_day`
+  - `hold_for_threshold`
+  - `hybrid_free_day_threshold`
+- [x] Support policy inputs for:
+  - preferred free-shipping weekdays
+  - freight-free threshold
+  - urgent release floor
+- [x] Compute vendor-level order-value totals for release decisions.
+- [x] Annotate items with:
+  - shipping policy
+  - release decision
+  - release reason
+  - vendor order value total
+- [x] Append release reasoning to the item `why` text.
+- [ ] Add a real editing/configuration surface for vendor policies.
+- [ ] Decide where vendor policy should live operationally in the UI: settings, vendor manager, dedicated dialog, or data file only.
+- [ ] Add broader validation and normalization for user-entered vendor policy values.
+
+## Phase 6. Shipping-Aware Release Logic
+
+- [x] Release immediately when urgent floor is breached.
+- [x] Hold for preferred free-shipping day when configured and not urgent.
+- [x] Hold for freight threshold when configured and not urgent.
+- [x] Release once threshold is reached.
+- [x] Surface release reasoning in item details and `why` text.
+- [ ] Make review/export workflows act on release decisions, not just display them.
+- [ ] Support "held but still visible for review" as an explicit operational workflow, not only as explanatory text.
+- [ ] Add stronger vendor-group consolidation behavior across multiple candidate items and mixed urgency.
+- [ ] Treat "paid urgent truck" or equivalent override as an explicit release path in the model and UI.
+- [ ] Prevent hold logic from hiding critical shortages operationally during export/review, not only in reasoning text.
+
+## Phase 7. Packaged-App Self-Update Flow
+
+- [x] Check GitHub for updates on startup.
+- [x] Prompt the user when a newer release exists.
+- [x] Keep the startup update prompt covered by tests.
+- [ ] Download accepted updates to a staging location.
+- [ ] Hand off replacement to an updater helper or script after shutdown.
+- [ ] Replace the running executable safely after exit.
+- [ ] Relaunch automatically after successful replacement.
+- [ ] Keep failed download / failed swap paths recoverable and clearly explained.
+
+## Phase 8. Bulk Editor Integrity and Large-Session Performance
+
+- [x] Flush pending bulk-sheet edits before many downstream actions.
+- [x] Invalidate stale right-click context and selection snapshots more safely.
+- [x] Add undo/redo support for bulk edits and removals.
+- [x] Add selection snapshot handling and smarter post-edit selection preservation.
+- [x] Add broad shortcut and bulk-sheet editing coverage around common editing flows.
+- [x] Improve bulk summary caching and safer incremental refresh paths for common edits.
+- [ ] Eliminate remaining previous-cell / rapid-click commit bleed under real timing pressure.
+- [ ] Guarantee edit-target integrity under rapid click-edit, keyboard-edit, filtered, sorted, and multi-selection workflows.
+- [ ] Document final precedence between current cell, selected cells, selected rows, and right-click snapshot state.
+- [ ] Tighten undo/history boundaries so they always match the user's perceived edit unit.
+- [ ] Separate full-session, active-filtered, and visible-row performance paths more aggressively for very large sessions.
+
+## High-Value Remaining Checklist
+
+These are the best next steps after reconciliation.
+
+- [ ] Add vendor-policy editing UI and persistence workflow.
+- [ ] Make export/review behavior honor `release_decision` instead of using it only as annotation.
+- [ ] Add `minimum_cover_days` / `minimum_cover_cycles` to the rule model and recommendation flow.
+- [ ] Deepen recency-confidence classification for new-item / stale-item / critical-item distinctions.
+- [ ] Add remaining edge-case tests called out in the original `0.2.5` roadmap, especially:
+  - weekly-order hardware cadence cases
+  - missing-recency + recent local PO history
+  - missing-recency + explicit critical min rule
+  - held-for-shipping behavior inside the actual review/export flow
+- [ ] Complete packaged-app self-update replacement flow.
+- [ ] Finish bulk edit-target integrity hardening under rapid interactions.
+
+## Definition of "Done Enough" for `v0.2.x`
+
+The `v0.2.x` line is in good shape when all of the following are true:
+
+- reorder behavior is explainable for pack, reel, hardware, confidence, and shipping cases
+- shared/local persistence behavior is operationally trustworthy
+- shipping policy affects release workflow, not just display text
+- bulk editor rapid-edit correctness is no longer a known risk
+- packaged update flow is safe enough for end users to rely on

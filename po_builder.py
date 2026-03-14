@@ -36,6 +36,7 @@ import persistent_state_flow
 import reorder_flow
 import review_flow
 import session_state_flow
+import shipping_flow
 import storage
 import ui_state_flow
 from debug_log import DEBUG_LOG_FILE, write_debug
@@ -339,6 +340,7 @@ class POBuilderApp:
     qoh_adjustments = _session_field("qoh_adjustments")
     duplicate_ic_lookup = _session_field("duplicate_ic_lookup")
     recent_orders = _session_field("recent_orders")
+    vendor_policies = _session_field("vendor_policies")
     order_rules = _session_field("order_rules")
     suspense_carry = _session_field("suspense_carry")
     vendor_codes_used = _session_field("vendor_codes_used")
@@ -1026,9 +1028,15 @@ class POBuilderApp:
     def _clear_manual_override(item):
         item_workflow.clear_manual_override(item)
 
-    def _recalculate_item(self, item):
+    def _annotate_release_decisions(self):
+        session = getattr(self, "session", self)
+        shipping_flow.annotate_release_decisions(session)
+
+    def _recalculate_item(self, item, annotate_release=True):
         session = getattr(self, "session", self)
         item_workflow.recalculate_item_from_session(item, session, self._suggest_min_max, get_rule_key)
+        if annotate_release:
+            shipping_flow.annotate_release_decisions(session)
         return item
 
     def _effective_order_rule(self, item, rule):
@@ -1036,12 +1044,14 @@ class POBuilderApp:
 
     def _sync_review_item_to_filtered(self, item):
         session = getattr(self, "session", self)
-        return item_workflow.sync_review_item_to_filtered_from_session(
+        result = item_workflow.sync_review_item_to_filtered_from_session(
             item,
             session,
             self._suggest_min_max,
             get_rule_key,
         )
+        shipping_flow.annotate_release_decisions(session)
+        return result
 
     def _bulk_row_values(self, item):
         return ui_bulk.bulk_row_values(self, item)

@@ -22,6 +22,13 @@ class StorageTests(unittest.TestCase):
             storage.save_order_rules(str(path), payload)
             self.assertEqual(storage.load_order_rules(str(path)), payload)
 
+    def test_vendor_policies_round_trip(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "vendor_policies.json"
+            payload = {"MOTION": {"shipping_policy": "hold_for_threshold", "free_freight_threshold": 2000}}
+            storage.save_vendor_policies(str(path), payload)
+            self.assertEqual(storage.load_vendor_policies(str(path)), payload)
+
     def test_append_and_get_recent_orders(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "order_history.json"

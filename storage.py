@@ -126,6 +126,16 @@ def load_order_rules_with_meta(path):
     return load_json_file(path, {}, with_meta=True)
 
 
+def load_vendor_policies(path):
+    """Load per-vendor shipping/release policies from disk."""
+    return load_json_file(path, {})
+
+
+def load_vendor_policies_with_meta(path):
+    """Load per-vendor shipping/release policies from disk with file metadata."""
+    return load_json_file(path, {}, with_meta=True)
+
+
 def _merge_dict_by_key(base, current_on_disk, desired):
     merged = dict(current_on_disk)
     conflict = False
@@ -156,6 +166,18 @@ def save_order_rules(path, rules, base_rules=None):
     try:
         current_on_disk, _ = load_order_rules_with_meta(path)
         merged, conflict = _merge_dict_by_key(base_rules or {}, current_on_disk, rules)
+        save_json_file(path, merged)
+        return {"payload": merged, "meta": _get_meta(path), "conflict": conflict}
+    finally:
+        _release_lock(lock_path)
+
+
+def save_vendor_policies(path, policies, base_policies=None):
+    """Save per-vendor shipping/release policies to disk."""
+    lock_path = _acquire_lock(path)
+    try:
+        current_on_disk, _ = load_vendor_policies_with_meta(path)
+        merged, conflict = _merge_dict_by_key(base_policies or {}, current_on_disk, policies)
         save_json_file(path, merged)
         return {"payload": merged, "meta": _get_meta(path), "conflict": conflict}
     finally:

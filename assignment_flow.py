@@ -1,6 +1,7 @@
 from collections import defaultdict
 
 import performance_flow
+import shipping_flow
 import storage
 from rules import enrich_item, get_rule_pack_size
 
@@ -158,4 +159,5 @@ def prepare_assignment_session(
         if vendor and vendor not in session.vendor_codes_used:
             session.vendor_codes_used.append(vendor)
     session.vendor_codes_used.sort()
+    shipping_flow.annotate_release_decisions(session)
     return True

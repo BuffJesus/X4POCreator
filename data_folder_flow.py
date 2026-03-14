@@ -15,6 +15,7 @@ def build_data_paths(data_dir):
         "suspense_carry": os.path.join(data_dir, "suspense_carry.json"),
         "sessions": os.path.join(data_dir, "sessions"),
         "vendor_codes": os.path.join(data_dir, "vendor_codes.txt"),
+        "vendor_policies": os.path.join(data_dir, "vendor_policies.json"),
         "ignored_items": os.path.join(data_dir, "ignored_items.txt"),
     }
 
@@ -44,16 +45,19 @@ def load_persistent_state(app, known_vendors):
     order_rules, _ = storage.load_order_rules_with_meta(app._data_path("order_rules"))
     suspense_carry, _ = storage.load_suspense_carry_with_meta(app._data_path("suspense_carry"))
     vendor_codes, _ = storage.load_vendor_codes(app._data_path("vendor_codes"), known_vendors, with_meta=True)
+    vendor_policies, _ = storage.load_vendor_policies_with_meta(app._data_path("vendor_policies"))
     app.dup_whitelist = set(dup_whitelist)
     app.ignored_item_keys = set(ignored_item_keys)
     app.order_rules = dict(order_rules)
     app.suspense_carry = dict(suspense_carry)
     app.vendor_codes_used = list(vendor_codes)
+    app.vendor_policies = dict(vendor_policies)
     app._loaded_dup_whitelist = set(app.dup_whitelist)
     app._loaded_ignored_item_keys = set(app.ignored_item_keys)
     app._loaded_order_rules = copy.deepcopy(app.order_rules)
     app._loaded_suspense_carry = copy.deepcopy(app.suspense_carry)
     app._loaded_vendor_codes = list(app.vendor_codes_used)
+    app._loaded_vendor_policies = copy.deepcopy(app.vendor_policies)
     app._refresh_data_folder_labels()
 
 
@@ -140,6 +144,8 @@ def refresh_active_data_state(app, known_vendors, get_rule_key, notify=True):
 
     for item in app.assigned_items:
         app._sync_review_item_to_filtered(item)
+    if hasattr(app, "_annotate_release_decisions"):
+        app._annotate_release_decisions()
 
     if app.individual_items:
         if not hasattr(app, "assign_index"):
