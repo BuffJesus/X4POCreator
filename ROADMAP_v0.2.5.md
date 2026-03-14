@@ -2,7 +2,7 @@
 
 Status: proposed
 
-Current version: `0.1.10`
+Current version: `0.1.11`
 
 Target line: `0.2.0` through `0.2.5`
 
