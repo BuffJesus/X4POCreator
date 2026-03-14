@@ -22,6 +22,7 @@ from rules import (
     get_rule_int,
     get_rule_pack_size,
     has_pack_trigger_fields,
+    infer_minimum_packs_on_hand,
     looks_like_hardware_pack_item,
     looks_like_reel_item,
     should_large_pack_review,
@@ -90,6 +91,24 @@ class RulesTests(unittest.TestCase):
         }
         self.assertEqual(determine_reorder_trigger_threshold(item), 200)
         self.assertEqual(item["reorder_trigger_basis"], "minimum_packs_on_hand")
+
+    def test_infer_minimum_packs_on_hand_for_active_hardware_pack_mismatch(self):
+        item = {
+            "description": "5/16 HEX NUT",
+            "sales_health_signal": "active",
+            "performance_profile": "steady",
+            "days_since_last_sale": 14,
+        }
+        self.assertEqual(infer_minimum_packs_on_hand(item, {"max": 20}, 100), 2)
+
+    def test_infer_minimum_packs_on_hand_skips_stale_hardware(self):
+        item = {
+            "description": "5/16 HEX NUT",
+            "sales_health_signal": "dormant",
+            "performance_profile": "legacy",
+            "days_since_last_sale": 500,
+        }
+        self.assertIsNone(infer_minimum_packs_on_hand(item, {"max": 20}, 100))
 
     def test_reel_review_when_pack_far_exceeds_max(self):
         policy = determine_order_policy({"description": '1/4" 2WIRE 6500PSI HOSE'}, {"max": 100}, 500, None)
@@ -564,6 +583,45 @@ class RulesTests(unittest.TestCase):
         self.assertEqual(item["raw_need"], 50)
         self.assertEqual(item["suggested_qty"], 100)
         self.assertIn("trigger_minimum_packs_on_hand", item["reason_codes"])
+
+    def test_active_hardware_pack_mismatch_can_infer_two_pack_floor_without_rule(self):
+        item = {
+            "description": "5/16 HEX NUT",
+            "qty_sold": 30,
+            "qty_suspended": 0,
+            "qty_on_po": 0,
+            "pack_size": 100,
+            "suggested_max": 20,
+            "demand_signal": 30,
+            "sales_health_signal": "active",
+            "performance_profile": "steady",
+            "days_since_last_sale": 14,
+        }
+
+        enrich_item(item, {"qoh": 150, "max": 20, "min": 5}, 100, None)
+        self.assertEqual(item["minimum_packs_on_hand"], 2)
+        self.assertEqual(item["minimum_packs_on_hand_source"], "heuristic")
+        self.assertEqual(item["reorder_trigger_threshold"], 200)
+        self.assertEqual(item["suggested_qty"], 100)
+
+    def test_stale_hardware_pack_mismatch_does_not_infer_two_pack_floor(self):
+        item = {
+            "description": "5/16 HEX NUT",
+            "qty_sold": 4,
+            "qty_suspended": 0,
+            "qty_on_po": 0,
+            "pack_size": 100,
+            "suggested_max": 20,
+            "demand_signal": 4,
+            "sales_health_signal": "dormant",
+            "performance_profile": "legacy",
+            "days_since_last_sale": 500,
+        }
+
+        enrich_item(item, {"qoh": 150, "max": 20, "min": 5}, 100, None)
+        self.assertIsNone(item.get("minimum_packs_on_hand"))
+        self.assertIsNone(item.get("minimum_packs_on_hand_source"))
+        self.assertEqual(item["order_policy"], "large_pack_review")
 
     def test_enrich_item_marks_large_pack_review_as_review_only(self):
         item = {

@@ -176,6 +176,7 @@ def apply_rule_fields(item, rule):
     item["reorder_trigger_qty"] = get_rule_int(rule, "reorder_trigger_qty")
     item["reorder_trigger_pct"] = get_rule_float(rule, "reorder_trigger_pct")
     item["minimum_packs_on_hand"] = get_rule_int(rule, "minimum_packs_on_hand")
+    item["minimum_packs_on_hand_source"] = "rule" if item["minimum_packs_on_hand"] is not None else None
     item["acceptable_overstock_qty"] = get_rule_int(rule, "acceptable_overstock_qty")
     item["acceptable_overstock_pct"] = get_rule_float(rule, "acceptable_overstock_pct")
 
@@ -190,6 +191,31 @@ def has_pack_trigger_fields(rule):
             get_rule_int(rule, "minimum_packs_on_hand"),
         )
     )
+
+
+def infer_minimum_packs_on_hand(item, inv, pack_qty):
+    """Infer a conservative two-pack floor for active hardware with extreme pack/max mismatch."""
+    mx = inv.get("max") if inv else None
+    if not (mx and mx > 0 and pack_qty and pack_qty >= LARGE_PACK_REVIEW_MIN_PACK_QTY):
+        return None
+    if not looks_like_hardware_pack_item(item, inv or {}):
+        return None
+    if should_large_pack_review(item, inv or {}, pack_qty):
+        return None
+    if pack_qty <= mx * 3:
+        return None
+
+    sales_health = item.get("sales_health_signal", "")
+    performance = item.get("performance_profile", "")
+    days_since_last_sale = item.get("days_since_last_sale")
+
+    if sales_health not in ("active", "stable", ""):
+        return None
+    if performance not in ("steady", "top_performer", "intermittent", ""):
+        return None
+    if isinstance(days_since_last_sale, (int, float)) and days_since_last_sale > 120:
+        return None
+    return 2
 
 
 def determine_reorder_trigger_threshold(item):
@@ -494,6 +520,11 @@ def enrich_item(item, inv, pack_qty, rule):
     """
     item["inventory"] = inv or {}
     apply_rule_fields(item, rule)
+    if item.get("minimum_packs_on_hand") is None:
+        inferred_min_packs = infer_minimum_packs_on_hand(item, inv or {}, pack_qty)
+        if inferred_min_packs is not None:
+            item["minimum_packs_on_hand"] = inferred_min_packs
+            item["minimum_packs_on_hand_source"] = "heuristic"
     calculate_inventory_position(item)
     determine_target_stock(item)
     item["reorder_needed"] = evaluate_reorder_trigger(item)
