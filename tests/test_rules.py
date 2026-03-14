@@ -391,7 +391,7 @@ class RulesTests(unittest.TestCase):
             "suggested_max": 24,
             "demand_signal": 10,
         }
-        enrich_item(item, {"max": 100}, 500, None)
+        enrich_item(item, {"max": 100, "last_sale": "05-Mar-2026", "last_receipt": "01-Mar-2026"}, 500, None)
         self.assertEqual(item["order_policy"], "reel_review")
         self.assertEqual(item["status"], "review")
         self.assertTrue(item["reorder_needed"])
@@ -583,6 +583,7 @@ class RulesTests(unittest.TestCase):
         self.assertEqual(item["raw_need"], 50)
         self.assertEqual(item["suggested_qty"], 100)
         self.assertIn("trigger_minimum_packs_on_hand", item["reason_codes"])
+        self.assertIn("Minimum packs on hand: 2 (saved rule)", item["why"])
 
     def test_active_hardware_pack_mismatch_can_infer_two_pack_floor_without_rule(self):
         item = {
@@ -598,11 +599,12 @@ class RulesTests(unittest.TestCase):
             "days_since_last_sale": 14,
         }
 
-        enrich_item(item, {"qoh": 150, "max": 20, "min": 5}, 100, None)
+        enrich_item(item, {"qoh": 150, "max": 20, "min": 5, "last_sale": "05-Mar-2026", "last_receipt": "01-Mar-2026"}, 100, None)
         self.assertEqual(item["minimum_packs_on_hand"], 2)
         self.assertEqual(item["minimum_packs_on_hand_source"], "heuristic")
         self.assertEqual(item["reorder_trigger_threshold"], 200)
         self.assertEqual(item["suggested_qty"], 100)
+        self.assertIn("Minimum packs on hand: 2 (inferred)", item["why"])
 
     def test_stale_hardware_pack_mismatch_does_not_infer_two_pack_floor(self):
         item = {
@@ -643,6 +645,45 @@ class RulesTests(unittest.TestCase):
         self.assertEqual(item["status"], "review")
         self.assertIn("large_pack_review", item["reason_codes"])
         self.assertIn("large_pack_review", item["data_flags"])
+
+    def test_missing_sale_and_receipt_history_routes_reorder_candidate_to_manual_review(self):
+        item = {
+            "description": "FILTER ELEMENT",
+            "qty_sold": 1,
+            "qty_suspended": 0,
+            "qty_on_po": 0,
+            "pack_size": 1,
+            "suggested_max": 2,
+            "demand_signal": 1,
+        }
+
+        enrich_item(item, {"qoh": 0, "max": 2, "min": 0}, 1, None)
+        self.assertEqual(item["recency_confidence"], "low")
+        self.assertEqual(item["data_completeness"], "missing_recency")
+        self.assertEqual(item["order_policy"], "manual_only")
+        self.assertTrue(item["review_required"])
+        self.assertEqual(item["status"], "review")
+        self.assertIn("No sale or receipt history available", item["why"])
+
+    def test_missing_recency_with_suspense_demand_routes_to_review_not_skip(self):
+        item = {
+            "description": "SHOP SUPPLY",
+            "qty_sold": 0,
+            "qty_suspended": 3,
+            "effective_qty_suspended": 3,
+            "qty_on_po": 0,
+            "pack_size": 12,
+            "suggested_max": 12,
+            "demand_signal": 3,
+        }
+
+        enrich_item(item, {"qoh": 0, "max": 12, "min": 0}, 12, None)
+        self.assertEqual(item["recency_confidence"], "low")
+        self.assertEqual(item["data_completeness"], "missing_recency_activity_protected")
+        self.assertEqual(item["order_policy"], "manual_only")
+        self.assertTrue(item["review_required"])
+        self.assertNotEqual(item["status"], "skip")
+        self.assertIn("protected by other evidence", item["why"])
 
 
 if __name__ == "__main__":

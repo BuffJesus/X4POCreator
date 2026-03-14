@@ -38,12 +38,16 @@ def not_needed_reason(app, item, max_exceed_abs_buffer):
     gross_need = item.get("gross_need", item.get("raw_need", final_qty))
     inventory_position = item.get("inventory_position", qoh + po_qty)
     target_stock = item.get("target_stock")
+    effective_target_stock = item.get("effective_target_stock")
     demand_signal = item.get("demand_signal", gross_need)
     effective_susp = item.get("effective_qty_suspended", item.get("qty_suspended", 0))
     effective_sales = item.get("effective_qty_sold", item.get("qty_sold", 0))
     performance_profile = item.get("performance_profile", "")
     sales_health_signal = item.get("sales_health_signal", "")
     possible_missed_reorder = bool(item.get("possible_missed_reorder"))
+    reorder_trigger_threshold = item.get("reorder_trigger_threshold")
+    reorder_trigger_basis = item.get("reorder_trigger_basis", "")
+    reorder_needed = bool(item.get("reorder_needed"))
 
     if item.get("status") == "skip" or final_qty <= 0:
         reasons.append("No net need (skip/zero final qty)")
@@ -58,6 +62,16 @@ def not_needed_reason(app, item, max_exceed_abs_buffer):
     else:
         _, sug_max = app._suggest_min_max(key)
 
+    if (
+        isinstance(effective_target_stock, (int, float))
+        and effective_target_stock > 0
+        and (
+            not isinstance(target_stock, (int, float))
+            or effective_target_stock > target_stock
+        )
+    ):
+        target_stock = effective_target_stock
+
     if target_stock and inventory_position >= target_stock and final_qty > 0:
         reasons.append(
             f"Inventory position already meets target (pos {inventory_position:g} >= target {target_stock:g})"
@@ -68,7 +82,16 @@ def not_needed_reason(app, item, max_exceed_abs_buffer):
         reasons.append(f"No uncovered demand signal (sales {effective_sales:g}, susp {effective_susp:g})")
         auto_remove = True
 
-    if ps and qoh >= gross_need and gross_need > 0:
+    if (
+        ps
+        and qoh >= gross_need
+        and gross_need > 0
+        and not (
+            reorder_needed
+            and isinstance(reorder_trigger_threshold, (int, float))
+            and reorder_trigger_threshold > 0
+        )
+    ):
         reasons.append(f"QOH covers demand signal (QOH {qoh:g} >= need {gross_need:g})")
         auto_remove = True
 
@@ -136,6 +159,22 @@ def not_needed_reason(app, item, max_exceed_abs_buffer):
     protect_from_auto_remove = False
     if possible_missed_reorder:
         reasons.append("Review: likely missed reorder candidate based on historical sales and stale recency")
+        protect_from_auto_remove = True
+    elif (
+        reorder_needed
+        and isinstance(reorder_trigger_threshold, (int, float))
+        and reorder_trigger_threshold > 0
+    ):
+        basis_label = {
+            "minimum_packs_on_hand": "minimum packs on hand",
+            "trigger_qty": "trigger quantity",
+            "trigger_pct": "trigger percent",
+            "current_min": "current min",
+            "configured_trigger": "configured trigger",
+        }.get(reorder_trigger_basis, "trigger threshold")
+        reasons.append(
+            f"Review: trigger-based replenishment is active (pos {inventory_position:g} <= trigger {reorder_trigger_threshold:g}; basis {basis_label})"
+        )
         protect_from_auto_remove = True
     elif performance_profile in ("top_performer", "steady") and sales_health_signal == "dormant":
         reasons.append("Review: historically meaningful item is dormant, so removal should be confirmed manually")
@@ -606,6 +645,17 @@ def view_item_details(app):
 
 
 def item_details_rows(app, item, inv, key):
+    minimum_packs = item.get("minimum_packs_on_hand")
+    minimum_packs_source = item.get("minimum_packs_on_hand_source")
+    if minimum_packs is None:
+        minimum_packs_display = "-"
+    else:
+        source_suffix = {
+            "heuristic": " (Inferred)",
+            "rule": " (Saved Rule)",
+        }.get(minimum_packs_source, "")
+        minimum_packs_display = f"{minimum_packs}{source_suffix}"
+
     details = [
         ("QOH", f"{inv.get('qoh', 0):g}"),
         ("On PO", f"{app.on_po_qty.get(key, 0):g}"),
@@ -615,6 +665,8 @@ def item_details_rows(app, item, inv, key):
         ("Last Receipt", inv.get("last_receipt", "-")),
         ("Last Sale", inv.get("last_sale", "-")),
         ("Days Since Last Sale", str(item.get("days_since_last_sale", "-") if item.get("days_since_last_sale") is not None else "-")),
+        ("Recency Confidence", item.get("recency_confidence") or "-"),
+        ("Data Completeness", item.get("data_completeness") or "-"),
         ("YTD Sales", str(inv.get("ytd_sales", "-"))),
         ("12 Mo Sales", str(inv.get("mo12_sales", "-"))),
         ("Sales Window", _sales_window_label(item)),
@@ -635,7 +687,7 @@ def item_details_rows(app, item, inv, key):
         ("Order Policy", item.get("order_policy", "-")),
         ("Trigger Qty", str(item.get("reorder_trigger_qty", "-") if item.get("reorder_trigger_qty") is not None else "-")),
         ("Trigger %", _format_metric(item.get("reorder_trigger_pct")) if item.get("reorder_trigger_pct") is not None else "-"),
-        ("Min Packs", str(item.get("minimum_packs_on_hand", "-") if item.get("minimum_packs_on_hand") is not None else "-")),
+        ("Min Packs", minimum_packs_display),
         ("Overstock Qty", str(item.get("acceptable_overstock_qty", "-") if item.get("acceptable_overstock_qty") is not None else "-")),
         ("Overstock %", _format_metric(item.get("acceptable_overstock_pct")) if item.get("acceptable_overstock_pct") is not None else "-"),
         ("Status", item.get("status", "-")),

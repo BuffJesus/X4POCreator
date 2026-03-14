@@ -218,6 +218,60 @@ def infer_minimum_packs_on_hand(item, inv, pack_qty):
     return 2
 
 
+def classify_recency_confidence(item, inv, rule):
+    """Classify how trustworthy the item's sale/receipt recency evidence is."""
+    has_last_sale = bool((inv or {}).get("last_sale"))
+    has_last_receipt = bool((inv or {}).get("last_receipt"))
+    has_recent_suspense = bool(item.get("effective_qty_suspended", item.get("qty_suspended", 0)))
+    has_open_po = bool(item.get("qty_on_po", 0))
+    has_protective_rule = bool(
+        has_pack_trigger_fields(rule)
+        or (rule and rule.get("order_policy"))
+        or isinstance((inv or {}).get("min"), (int, float)) and (inv or {}).get("min") > 0
+    )
+
+    if has_last_sale and has_last_receipt:
+        item["recency_confidence"] = "high"
+        item["data_completeness"] = "complete"
+    elif has_last_sale or has_last_receipt:
+        item["recency_confidence"] = "medium"
+        item["data_completeness"] = "partial_recency"
+    elif has_recent_suspense or has_open_po:
+        item["recency_confidence"] = "low"
+        item["data_completeness"] = "missing_recency_activity_protected"
+    elif has_protective_rule:
+        item["recency_confidence"] = "low"
+        item["data_completeness"] = "missing_recency_rule_protected"
+    else:
+        item["recency_confidence"] = "low"
+        item["data_completeness"] = "missing_recency"
+    return item["recency_confidence"]
+
+
+def should_force_recency_review(item, inv, rule):
+    """Return True when a reorder candidate lacks enough recency evidence for auto-order."""
+    recency_confidence = item.get("recency_confidence") or classify_recency_confidence(item, inv, rule)
+    if recency_confidence != "low":
+        return False
+
+    data_completeness = item.get("data_completeness", "")
+    raw_need = item.get("raw_need", 0)
+    demand_signal = item.get("demand_signal", 0)
+    pack_size = item.get("pack_size", 0)
+
+    if raw_need <= 0:
+        return False
+    if data_completeness == "missing_recency_rule_protected":
+        return False
+    if data_completeness == "missing_recency_activity_protected":
+        return True
+    if demand_signal > 0:
+        return True
+    if isinstance(pack_size, (int, float)) and pack_size > 1:
+        return True
+    return False
+
+
 def determine_reorder_trigger_threshold(item):
     """Compute an explicit reorder trigger threshold when rule fields define one."""
     inv = item.get("inventory", {}) or {}
@@ -525,6 +579,7 @@ def enrich_item(item, inv, pack_qty, rule):
         if inferred_min_packs is not None:
             item["minimum_packs_on_hand"] = inferred_min_packs
             item["minimum_packs_on_hand_source"] = "heuristic"
+    classify_recency_confidence(item, inv or {}, rule)
     calculate_inventory_position(item)
     determine_target_stock(item)
     item["reorder_needed"] = evaluate_reorder_trigger(item)
@@ -532,6 +587,8 @@ def enrich_item(item, inv, pack_qty, rule):
     item["raw_need"] = raw_need
 
     policy = determine_order_policy(item, inv, pack_qty, rule)
+    if policy not in ("manual_only", "reel_review", "large_pack_review") and should_force_recency_review(item, inv, rule):
+        policy = "manual_only"
     item["order_policy"] = policy
 
     suggested, why = calculate_suggested_qty(raw_need, pack_qty, policy, rule, inv)
@@ -566,6 +623,11 @@ def enrich_item(item, inv, pack_qty, rule):
         reason_codes.append("large_pack_review")
     if policy == "manual_only":
         reason_codes.append("manual_only")
+    if item.get("recency_confidence") == "low":
+        reason_codes.append("low_recency_confidence")
+    data_completeness = item.get("data_completeness", "")
+    if data_completeness:
+        reason_codes.append(f"data_{data_completeness}")
 
     detail_parts = [f"Stock after open POs: {inventory_position:g}", f"Target stock: {target_stock:g}"]
     if effective_target_stock != target_stock:
@@ -586,6 +648,26 @@ def enrich_item(item, inv, pack_qty, rule):
         detail_parts.append(f"Already on PO: {item.get('qty_on_po', 0):g}")
     if isinstance(trigger_threshold, (int, float)) and trigger_threshold > 0:
         detail_parts.append(f"Reorder trigger: {trigger_threshold:g}")
+    recency_confidence = item.get("recency_confidence")
+    if recency_confidence:
+        detail_parts.append(f"Recency confidence: {recency_confidence}")
+    if data_completeness:
+        completeness_labels = {
+            "complete": "Sale and receipt history present",
+            "partial_recency": "Only one recency signal present",
+            "missing_recency": "No sale or receipt history available",
+            "missing_recency_rule_protected": "No sale or receipt history, but protected by an explicit stocking rule",
+            "missing_recency_activity_protected": "No sale or receipt history, but protected by other evidence",
+        }
+        detail_parts.append(completeness_labels.get(data_completeness, data_completeness))
+    minimum_packs = item.get("minimum_packs_on_hand")
+    minimum_packs_source = item.get("minimum_packs_on_hand_source")
+    if isinstance(minimum_packs, (int, float)) and minimum_packs > 0:
+        source_label = {
+            "heuristic": "inferred",
+            "rule": "saved rule",
+        }.get(minimum_packs_source, "configured")
+        detail_parts.append(f"Minimum packs on hand: {minimum_packs:g} ({source_label})")
     detail_parts.append(why)
     item["suggested_qty"] = suggested
     item["why"] = " | ".join(detail_parts)

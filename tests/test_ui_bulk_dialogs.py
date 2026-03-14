@@ -165,6 +165,40 @@ class BulkDialogTests(unittest.TestCase):
         self.assertIn("likely missed reorder candidate", reason)
         self.assertFalse(auto_remove)
 
+    def test_not_needed_reason_does_not_auto_remove_trigger_based_replenishment(self):
+        app = SimpleNamespace(
+            inventory_lookup={("AER-", "GH781-4"): {"qoh": 150, "max": 20, "min": 5}},
+            on_po_qty={("AER-", "GH781-4"): 0},
+            _suggest_min_max=lambda key: (10, 20),
+        )
+        item = {
+            "line_code": "AER-",
+            "item_code": "GH781-4",
+            "pack_size": 100,
+            "final_qty": 100,
+            "order_qty": 100,
+            "suggested_qty": 100,
+            "gross_need": 50,
+            "raw_need": 50,
+            "inventory_position": 150,
+            "target_stock": 20,
+            "effective_target_stock": 200,
+            "demand_signal": 30,
+            "effective_qty_sold": 30,
+            "effective_qty_suspended": 0,
+            "order_policy": "pack_trigger",
+            "reorder_needed": True,
+            "reorder_trigger_threshold": 200,
+            "reorder_trigger_basis": "minimum_packs_on_hand",
+            "status": "ok",
+        }
+
+        reason, auto_remove = ui_bulk_dialogs.not_needed_reason(app, item, max_exceed_abs_buffer=5)
+
+        self.assertIn("trigger-based replenishment is active", reason)
+        self.assertNotIn("QOH covers demand signal", reason)
+        self.assertFalse(auto_remove)
+
     def test_item_details_rows_include_sales_history_and_attention_signals(self):
         app = SimpleNamespace(
             on_po_qty={("AER-", "GH781-4"): 4},
@@ -214,6 +248,8 @@ class BulkDialogTests(unittest.TestCase):
         self.assertEqual(row_lookup["Avg Weekly Sales"], "1.00")
         self.assertEqual(row_lookup["Annualized Sales"], "52.03")
         self.assertEqual(row_lookup["Days Since Last Sale"], "7")
+        self.assertEqual(row_lookup["Recency Confidence"], "-")
+        self.assertEqual(row_lookup["Data Completeness"], "-")
         self.assertEqual(row_lookup["Performance"], "steady")
         self.assertEqual(row_lookup["Sales Health"], "active")
         self.assertEqual(row_lookup["Attention"], "normal")
@@ -277,6 +313,9 @@ class BulkDialogTests(unittest.TestCase):
             "reorder_trigger_qty": 60,
             "reorder_trigger_pct": 20.0,
             "minimum_packs_on_hand": 2,
+            "minimum_packs_on_hand_source": "rule",
+            "recency_confidence": "medium",
+            "data_completeness": "partial_recency",
             "acceptable_overstock_qty": 12,
             "acceptable_overstock_pct": 10.0,
         }
@@ -287,9 +326,41 @@ class BulkDialogTests(unittest.TestCase):
 
         self.assertEqual(row_lookup["Trigger Qty"], "60")
         self.assertEqual(row_lookup["Trigger %"], "20.00")
-        self.assertEqual(row_lookup["Min Packs"], "2")
+        self.assertEqual(row_lookup["Min Packs"], "2 (Saved Rule)")
+        self.assertEqual(row_lookup["Recency Confidence"], "medium")
+        self.assertEqual(row_lookup["Data Completeness"], "partial_recency")
         self.assertEqual(row_lookup["Overstock Qty"], "12")
         self.assertEqual(row_lookup["Overstock %"], "10.00")
+
+    def test_item_details_rows_label_inferred_min_packs(self):
+        app = SimpleNamespace(
+            on_po_qty={("AER-", "GH781-4"): 0},
+            recent_orders={},
+            duplicate_ic_lookup={},
+            _suggest_min_max=lambda key: (10, 18),
+        )
+        item = {
+            "line_code": "AER-",
+            "item_code": "GH781-4",
+            "qty_sold": 12,
+            "qty_suspended": 0,
+            "qty_received": 0,
+            "qty_on_po": 0,
+            "raw_need": 6,
+            "suggested_qty": 6,
+            "final_qty": 6,
+            "order_policy": "pack_trigger",
+            "status": "ok",
+            "data_flags": [],
+            "minimum_packs_on_hand": 2,
+            "minimum_packs_on_hand_source": "heuristic",
+        }
+        inv = {"qoh": 6, "min": 2, "max": 18}
+
+        rows = ui_bulk_dialogs.item_details_rows(app, item, inv, ("AER-", "GH781-4"))
+        row_lookup = dict(row for row in rows if row[0])
+
+        self.assertEqual(row_lookup["Min Packs"], "2 (Inferred)")
 
 
 if __name__ == "__main__":

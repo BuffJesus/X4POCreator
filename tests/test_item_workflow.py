@@ -57,7 +57,7 @@ class ItemWorkflowTests(unittest.TestCase):
 
     def test_recalculate_item_from_session_uses_session_state(self):
         session = AppSessionState(
-            inventory_lookup={("AER-", "GH781-4"): {"qoh": 0, "max": 10}},
+            inventory_lookup={("AER-", "GH781-4"): {"qoh": 0, "max": 10, "last_sale": "05-Mar-2026", "last_receipt": "01-Mar-2026"}},
             order_rules={},
         )
         item = {
@@ -96,7 +96,7 @@ class ItemWorkflowTests(unittest.TestCase):
         }
         session = AppSessionState(
             filtered_items=[filtered],
-            inventory_lookup={("AER-", "GH781-4"): {"qoh": 0, "max": 10}},
+            inventory_lookup={("AER-", "GH781-4"): {"qoh": 0, "max": 10, "last_sale": "05-Mar-2026", "last_receipt": "01-Mar-2026"}},
             order_rules={},
         )
 

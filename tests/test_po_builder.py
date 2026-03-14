@@ -403,7 +403,7 @@ class POBuilderTests(unittest.TestCase):
             "order_qty": 5,
         }
         assigned_item = dict(filtered_item)
-        fake_app.inventory_lookup[key] = {"qoh": 0, "max": 2, "mo12_sales": 52}
+        fake_app.inventory_lookup[key] = {"qoh": 0, "max": 2, "mo12_sales": 52, "last_sale": "05-Mar-2026", "last_receipt": "01-Mar-2026"}
         fake_app.filtered_items = [filtered_item]
         fake_app.assigned_items = [assigned_item]
         fake_app.var_reorder_cycle = SimpleNamespace(get=lambda: "Monthly")
@@ -441,7 +441,7 @@ class POBuilderTests(unittest.TestCase):
             "order_qty": 12,
         }
         assigned_item = dict(filtered_item)
-        fake_app.inventory_lookup[key] = {"qoh": 0, "max": 10, "mo12_sales": 26}
+        fake_app.inventory_lookup[key] = {"qoh": 0, "max": 10, "mo12_sales": 26, "last_sale": "05-Mar-2026", "last_receipt": "01-Mar-2026"}
         fake_app.filtered_items = [filtered_item]
         fake_app.assigned_items = [assigned_item]
         saved = {}
@@ -502,7 +502,7 @@ class POBuilderTests(unittest.TestCase):
     def test_bulk_qoh_edit_recalculates_item_fields(self):
         fake_app = self._make_calc_app()
         key = ("AER-", "GH781-4")
-        fake_app.inventory_lookup[key] = {"qoh": 2, "max": 10}
+        fake_app.inventory_lookup[key] = {"qoh": 2, "max": 10, "last_sale": "05-Mar-2026", "last_receipt": "01-Mar-2026"}
         fake_app.filtered_items = [{
             "line_code": key[0],
             "item_code": key[1],
@@ -528,7 +528,7 @@ class POBuilderTests(unittest.TestCase):
     def test_bulk_final_qty_edit_preserves_override_and_recalculates_context(self):
         fake_app = self._make_calc_app()
         key = ("AER-", "GH781-4")
-        fake_app.inventory_lookup[key] = {"qoh": 2, "max": 10}
+        fake_app.inventory_lookup[key] = {"qoh": 2, "max": 10, "last_sale": "05-Mar-2026", "last_receipt": "01-Mar-2026"}
         fake_app.filtered_items = [{
             "line_code": key[0],
             "item_code": key[1],
@@ -567,7 +567,7 @@ class POBuilderTests(unittest.TestCase):
             "final_qty": 12,
             "order_qty": 12,
         }
-        fake_app.inventory_lookup[key] = {"qoh": 0, "max": 10}
+        fake_app.inventory_lookup[key] = {"qoh": 0, "max": 10, "last_sale": "05-Mar-2026", "last_receipt": "01-Mar-2026"}
         fake_app.filtered_items = [filtered_item]
         po_builder.POBuilderApp._recalculate_item(fake_app, filtered_item)
         fake_app.assigned_items = [{
@@ -607,7 +607,7 @@ class POBuilderTests(unittest.TestCase):
             "final_qty": 12,
             "order_qty": 12,
         }
-        fake_app.inventory_lookup[key] = {"qoh": 0, "max": 10}
+        fake_app.inventory_lookup[key] = {"qoh": 0, "max": 10, "last_sale": "05-Mar-2026", "last_receipt": "01-Mar-2026"}
         fake_app.filtered_items = [filtered_item]
         po_builder.POBuilderApp._recalculate_item(fake_app, filtered_item)
         fake_app.assigned_items = [{
@@ -659,7 +659,7 @@ class POBuilderTests(unittest.TestCase):
     def test_bulk_pack_size_edit_recalculates_qty_and_persists_rule(self):
         fake_app = self._make_calc_app()
         key = ("AER-", "GH781-4")
-        fake_app.inventory_lookup[key] = {"qoh": 0, "max": 10}
+        fake_app.inventory_lookup[key] = {"qoh": 0, "max": 10, "last_sale": "05-Mar-2026", "last_receipt": "01-Mar-2026"}
         fake_app.filtered_items = [{
             "line_code": key[0],
             "item_code": key[1],
@@ -700,7 +700,7 @@ class POBuilderTests(unittest.TestCase):
     def test_bulk_pack_size_edit_moves_exact_qty_item_to_pack_rounded_qty(self):
         fake_app = self._make_calc_app()
         key = ("GDY-", "5VX560")
-        fake_app.inventory_lookup[key] = {"qoh": 1, "max": 3}
+        fake_app.inventory_lookup[key] = {"qoh": 1, "max": 3, "last_sale": "05-Mar-2026", "last_receipt": "01-Mar-2026"}
         fake_app.filtered_items = [{
             "line_code": key[0],
             "item_code": key[1],
@@ -727,7 +727,7 @@ class POBuilderTests(unittest.TestCase):
     def test_bulk_pack_size_edit_clears_stale_exact_policy_rule(self):
         fake_app = self._make_calc_app()
         key = ("GDY-", "5VX560")
-        fake_app.inventory_lookup[key] = {"qoh": 1, "max": 3}
+        fake_app.inventory_lookup[key] = {"qoh": 1, "max": 3, "last_sale": "05-Mar-2026", "last_receipt": "01-Mar-2026"}
         fake_app.order_rules = {"GDY-:5VX560": {"order_policy": "exact_qty"}}
         fake_app.filtered_items = [{
             "line_code": key[0],
@@ -760,7 +760,7 @@ class POBuilderTests(unittest.TestCase):
         fake_app._apply_bulk_filter = lambda: None
         fake_app._update_bulk_summary = lambda: None
         key = ("GDY-", "5VX560")
-        fake_app.inventory_lookup[key] = {"qoh": 0, "max": 3}
+        fake_app.inventory_lookup[key] = {"qoh": 0, "max": 3, "last_sale": "05-Mar-2026", "last_receipt": "01-Mar-2026"}
         fake_app.filtered_items = [{
             "line_code": key[0],
             "item_code": key[1],
@@ -878,7 +878,7 @@ class POBuilderTests(unittest.TestCase):
         fake_app._apply_bulk_filter = lambda: None
         fake_app._update_bulk_summary = lambda: None
         key = ("AER-", "GH781-4")
-        fake_app.inventory_lookup[key] = {"qoh": 0, "max": 18}
+        fake_app.inventory_lookup[key] = {"qoh": 0, "max": 18, "last_sale": "05-Mar-2026", "last_receipt": "01-Mar-2026"}
         fake_app.filtered_items = [{
             "line_code": key[0],
             "item_code": key[1],
@@ -998,7 +998,7 @@ class POBuilderTests(unittest.TestCase):
         fake_app._apply_bulk_filter = lambda: None
         fake_app._update_bulk_summary = lambda: None
         key = ("AER-", "GH781-4")
-        fake_app.inventory_lookup[key] = {"qoh": 58, "min": 10, "max": 93}
+        fake_app.inventory_lookup[key] = {"qoh": 58, "min": 10, "max": 93, "last_sale": "05-Mar-2026", "last_receipt": "01-Mar-2026"}
         fake_app.filtered_items = [{
             "line_code": key[0],
             "item_code": key[1],
@@ -1124,7 +1124,7 @@ class POBuilderTests(unittest.TestCase):
             "order_qty": 10,
             "manual_override": True,
         }
-        fake_app.inventory_lookup[key] = {"qoh": 0, "max": 10}
+        fake_app.inventory_lookup[key] = {"qoh": 0, "max": 10, "last_sale": "05-Mar-2026", "last_receipt": "01-Mar-2026"}
         fake_app.filtered_items = [filtered_item]
         po_builder.POBuilderApp._recalculate_item(fake_app, filtered_item)
         fake_app.assigned_items = [{
