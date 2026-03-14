@@ -239,6 +239,10 @@ class UIReviewTests(unittest.TestCase):
             ui_review.recency_filter_label({"recency_review_bucket": "missing_data_uncertain"}),
             "Missing-Data / Uncertain",
         )
+        self.assertEqual(
+            ui_review.recency_filter_label({"recency_review_bucket": "recent_local_po_protected"}),
+            "Recent Local PO-Protected",
+        )
         self.assertEqual(ui_review.recency_filter_label({}), "None")
 
     def test_build_vendor_release_plan_rows_returns_vendor_aggregate_rows(self):

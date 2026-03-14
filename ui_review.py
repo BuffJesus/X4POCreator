@@ -41,6 +41,7 @@ def is_review_exception(item):
 
 RECENCY_FILTER_LABELS = {
     "critical_rule_protected": "Critical / Rule-Protected",
+    "recent_local_po_protected": "Recent Local PO-Protected",
     "activity_protected": "Activity-Protected",
     "new_or_sparse": "New / Sparse",
     "missing_data_uncertain": "Missing-Data / Uncertain",
@@ -445,6 +446,7 @@ def update_review_summary(app):
             "stale_or_likely_dead",
             "new_or_sparse",
             "missing_data_uncertain",
+            "recent_local_po_protected",
             "activity_protected",
             "critical_rule_protected",
         ):

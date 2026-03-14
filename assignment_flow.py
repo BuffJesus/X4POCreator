@@ -3,6 +3,7 @@ from collections import defaultdict
 import performance_flow
 import shipping_flow
 import storage
+from item_workflow import apply_recent_order_context
 from rules import enrich_item, get_rule_pack_size
 
 
@@ -127,12 +128,15 @@ def prepare_assignment_session(
 
     session.filtered_items.sort(key=lambda x: (x["line_code"], x["item_code"]))
 
+    session.recent_orders = storage.get_recent_orders(order_history_path, lookback_days)
+
     for item in session.filtered_items:
         key = (item["line_code"], item["item_code"])
         inv = session.inventory_lookup.get(key, {})
         sug_min, sug_max = suggest_min_max(key)
         item["suggested_min"] = sug_min
         item["suggested_max"] = sug_max
+        apply_recent_order_context(item, session.recent_orders.get(key, []))
         rule_key = get_rule_key(item["line_code"], item["item_code"])
         rule = session.order_rules.get(rule_key)
         rule_pack = get_rule_pack_size(rule)
@@ -153,7 +157,6 @@ def prepare_assignment_session(
         if len(line_codes) > 1 and item_code not in dup_whitelist
     }
 
-    session.recent_orders = storage.get_recent_orders(order_history_path, lookback_days)
     session.assigned_items = []
     session.qoh_adjustments = {}
     session.vendor_codes_used = storage.load_vendor_codes(vendor_codes_path, known_vendors)

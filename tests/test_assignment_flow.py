@@ -56,6 +56,9 @@ class AssignmentFlowTests(unittest.TestCase):
         self.assertEqual(session.filtered_items[0]["reorder_cycle_weeks"], 2)
         self.assertEqual(session.filtered_items[0]["performance_profile"], "legacy")
         self.assertEqual(session.filtered_items[0]["sales_health_signal"], "unknown")
+        self.assertEqual(session.filtered_items[0]["recent_local_order_count"], 1)
+        self.assertEqual(session.filtered_items[0]["recent_local_order_qty"], 1)
+        self.assertTrue(session.filtered_items[0]["has_recent_local_order"])
         self.assertIn("GH781-4", session.duplicate_ic_lookup)
         self.assertEqual(session.recent_orders[("AER-", "GH781-4")][0]["qty"], 1)
 

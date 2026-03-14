@@ -28,6 +28,25 @@ def clear_manual_override(item):
     item["manual_override"] = False
 
 
+def apply_recent_order_context(item, recent_orders):
+    """Stamp recent local PO evidence onto an item for recency-confidence handling."""
+    recent_orders = list(recent_orders or [])
+    total_qty = 0
+    latest_date = ""
+    for row in recent_orders:
+        try:
+            total_qty += max(0, int(float(row.get("qty", 0) or 0)))
+        except Exception:
+            continue
+        raw_date = str(row.get("date", "") or "").strip()
+        if raw_date and raw_date > latest_date:
+            latest_date = raw_date
+    item["recent_local_order_count"] = len(recent_orders)
+    item["recent_local_order_qty"] = total_qty
+    item["recent_local_order_date"] = latest_date
+    item["has_recent_local_order"] = bool(recent_orders and total_qty > 0)
+
+
 def apply_pack_size_edit(item, raw, order_rules, get_rule_key):
     """Update an item's pack size and its persisted per-item rule."""
     item["pack_size"] = None if raw == "" else int(float(raw))
@@ -74,6 +93,10 @@ def recalculate_item(item, inventory_lookup, order_rules, suggest_min_max, get_r
 
 
 def recalculate_item_from_session(item, session, suggest_min_max, get_rule_key):
+    apply_recent_order_context(
+        item,
+        (getattr(session, "recent_orders", {}) or {}).get((item["line_code"], item["item_code"]), []),
+    )
     return recalculate_item(item, session.inventory_lookup, session.order_rules, suggest_min_max, get_rule_key)
 
 

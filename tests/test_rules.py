@@ -902,6 +902,31 @@ class RulesTests(unittest.TestCase):
         self.assertIn("Protected by other activity", item["why"])
         self.assertIn("protected by other evidence", item["why"])
 
+    def test_missing_recency_with_recent_local_po_history_routes_to_zero_qty_review(self):
+        item = {
+            "description": "LOCAL PO HISTORY ITEM",
+            "qty_sold": 0,
+            "qty_suspended": 0,
+            "qty_received": 0,
+            "qty_on_po": 0,
+            "pack_size": 1,
+            "demand_signal": 1,
+            "recent_local_order_count": 1,
+            "recent_local_order_qty": 2,
+            "recent_local_order_date": "2026-03-10",
+            "has_recent_local_order": True,
+        }
+
+        enrich_item(item, {"qoh": 0, "max": 1, "min": 0}, 1, None)
+        self.assertEqual(item["recency_confidence"], "low")
+        self.assertEqual(item["data_completeness"], "missing_recency_local_po_protected")
+        self.assertEqual(item["recency_review_bucket"], "recent_local_po_protected")
+        self.assertEqual(item["order_policy"], "manual_only")
+        self.assertEqual(item["suggested_qty"], 0)
+        self.assertEqual(item["final_qty"], 0)
+        self.assertIn("Protected by recent local PO history", item["why"])
+        self.assertIn("Recent local PO history: 1 order(s), 2 total, latest 2026-03-10", item["why"])
+
 
 if __name__ == "__main__":
     unittest.main()

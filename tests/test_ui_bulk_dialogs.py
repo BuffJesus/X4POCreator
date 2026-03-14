@@ -2,6 +2,7 @@ import sys
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -447,6 +448,58 @@ class BulkDialogTests(unittest.TestCase):
         row_lookup = dict(row for row in rows if row[0])
 
         self.assertEqual(row_lookup["Recency Review Type"], "Stale / likely dead")
+
+    def test_finish_bulk_final_carries_recency_fields_into_review_items(self):
+        events = []
+        app = SimpleNamespace(
+            bulk_sheet=None,
+            filtered_items=[{
+                "line_code": "AER-",
+                "item_code": "GH781-4",
+                "description": "LOCAL PO HISTORY ITEM",
+                "qty_sold": 0,
+                "qty_suspended": 0,
+                "qty_received": 0,
+                "qty_on_po": 0,
+                "vendor": "MOTION",
+                "pack_size": 1,
+                "final_qty": 2,
+                "order_qty": 2,
+                "status": "review",
+                "why": "why",
+                "core_why": "core why",
+                "order_policy": "manual_only",
+                "data_flags": ["manual_only"],
+                "review_required": True,
+                "review_resolved": False,
+                "suggested_qty": 0,
+                "raw_need": 2,
+                "recency_confidence": "low",
+                "data_completeness": "missing_recency_local_po_protected",
+                "recency_review_bucket": "recent_local_po_protected",
+                "performance_profile": "legacy",
+                "sales_health_signal": "unknown",
+                "reorder_attention_signal": "normal",
+                "recent_local_order_count": 1,
+                "recent_local_order_qty": 2,
+                "recent_local_order_date": "2026-03-10",
+                "inventory_position": 0,
+            }],
+            _annotate_release_decisions=lambda: events.append("annotate"),
+            _populate_review_tab=lambda: events.append("review"),
+            notebook=SimpleNamespace(tab=lambda *args, **kwargs: None, select=lambda idx: events.append(("select", idx))),
+        )
+
+        with patch("ui_bulk_dialogs.messagebox.showinfo"), \
+             patch("ui_bulk_dialogs.messagebox.askyesno", return_value=True):
+            ui_bulk_dialogs.finish_bulk_final(app)
+
+        assigned = app.assigned_items[0]
+        self.assertEqual(assigned["recency_review_bucket"], "recent_local_po_protected")
+        self.assertEqual(assigned["recent_local_order_qty"], 2)
+        self.assertEqual(assigned["final_qty"], 2)
+        self.assertIn("annotate", events)
+        self.assertIn("review", events)
 
 
 if __name__ == "__main__":

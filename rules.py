@@ -230,6 +230,7 @@ def classify_recency_confidence(item, inv, rule):
     has_last_receipt = bool((inv or {}).get("last_receipt"))
     has_recent_suspense = bool(item.get("effective_qty_suspended", item.get("qty_suspended", 0)))
     has_open_po = bool(item.get("qty_on_po", 0))
+    has_recent_local_order = bool(item.get("has_recent_local_order"))
     has_protective_rule = bool(
         has_pack_trigger_fields(rule)
         or (rule and rule.get("order_policy"))
@@ -245,6 +246,9 @@ def classify_recency_confidence(item, inv, rule):
     elif has_recent_suspense or has_open_po:
         item["recency_confidence"] = "low"
         item["data_completeness"] = "missing_recency_activity_protected"
+    elif has_recent_local_order:
+        item["recency_confidence"] = "low"
+        item["data_completeness"] = "missing_recency_local_po_protected"
     elif has_protective_rule:
         item["recency_confidence"] = "low"
         item["data_completeness"] = "missing_recency_rule_protected"
@@ -269,6 +273,8 @@ def classify_low_confidence_recency(item, inv, rule):
 
     if data_completeness == "missing_recency_rule_protected":
         bucket = "critical_rule_protected"
+    elif data_completeness == "missing_recency_local_po_protected":
+        bucket = "recent_local_po_protected"
     elif data_completeness == "missing_recency_activity_protected":
         bucket = "activity_protected"
     elif (
@@ -291,6 +297,7 @@ def classify_low_confidence_recency(item, inv, rule):
 def recency_review_bucket_label(bucket):
     return {
         "critical_rule_protected": "Critical / rule-protected",
+        "recent_local_po_protected": "Protected by recent local PO history",
         "activity_protected": "Protected by other activity",
         "new_or_sparse": "New or too sparse",
         "stale_or_likely_dead": "Stale / likely dead",
@@ -311,7 +318,11 @@ def should_force_recency_review(item, inv, rule):
         return False
     if data_completeness == "missing_recency_rule_protected":
         return False
-    if data_completeness in ("missing_recency_activity_protected", "missing_recency"):
+    if data_completeness in (
+        "missing_recency_local_po_protected",
+        "missing_recency_activity_protected",
+        "missing_recency",
+    ):
         return True
     return False
 
@@ -324,6 +335,7 @@ def should_suppress_manual_only_qty(item):
         return False
     return (item.get("data_completeness") or "") in (
         "missing_recency",
+        "missing_recency_local_po_protected",
         "missing_recency_activity_protected",
     )
 
@@ -764,9 +776,11 @@ def enrich_item(item, inv, pack_qty, rule):
             "stale_or_likely_dead": "Manual review required before ordering (missing sale/receipt history; likely stale or dead item)",
             "new_or_sparse": "Manual review required before ordering (missing sale/receipt history; may be new or too sparse)",
             "missing_data_uncertain": "Manual review required before ordering (missing sale/receipt history; incomplete data makes demand uncertain)",
+            "recent_local_po_protected": "Manual review required before ordering (missing sale/receipt history; protected by recent local PO history)",
             "activity_protected": "Manual review required before ordering (missing sale/receipt history; protected by other evidence)",
         }.get(recency_bucket, {
             "missing_recency": "Manual review required before ordering (missing sale/receipt history)",
+            "missing_recency_local_po_protected": "Manual review required before ordering (missing sale/receipt history; protected by recent local PO history)",
             "missing_recency_activity_protected": "Manual review required before ordering (missing sale/receipt history; protected by other evidence)",
         }.get(completeness, "Manual review required before ordering"))
         projected_overstock, overstock_within_tolerance = assess_post_receipt_overstock(item, suggested)
@@ -841,12 +855,24 @@ def enrich_item(item, inv, pack_qty, rule):
             "complete": "Sale and receipt history present",
             "partial_recency": "Only one recency signal present",
             "missing_recency": "No sale or receipt history available",
+            "missing_recency_local_po_protected": "No sale or receipt history, but recent local PO history exists",
             "missing_recency_rule_protected": "No sale or receipt history, but protected by an explicit stocking rule",
             "missing_recency_activity_protected": "No sale or receipt history, but protected by other evidence",
         }
         detail_parts.append(completeness_labels.get(data_completeness, data_completeness))
     if recency_review_bucket:
         detail_parts.append(f"Recency review type: {recency_review_bucket_label(recency_review_bucket)}")
+    recent_local_order_count = item.get("recent_local_order_count", 0) or 0
+    recent_local_order_qty = item.get("recent_local_order_qty", 0) or 0
+    recent_local_order_date = item.get("recent_local_order_date", "")
+    if recent_local_order_count > 0 and recent_local_order_qty > 0:
+        recent_local_detail = (
+            f"Recent local PO history: {recent_local_order_count:g} order(s), "
+            f"{recent_local_order_qty:g} total"
+        )
+        if recent_local_order_date:
+            recent_local_detail += f", latest {recent_local_order_date}"
+        detail_parts.append(recent_local_detail)
     if acceptable_overstock > 0:
         overstock_basis = item.get("acceptable_overstock_basis")
         basis_label = {

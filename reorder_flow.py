@@ -1,5 +1,6 @@
 import math
 
+import item_workflow
 import storage
 
 
@@ -127,4 +128,13 @@ def refresh_recent_orders(app):
     except Exception:
         days = 14
     app.recent_orders = storage.get_recent_orders(app._data_path("order_history"), days)
+    for item in getattr(app, "filtered_items", []) or []:
+        key = (item.get("line_code", ""), item.get("item_code", ""))
+        item_workflow.apply_recent_order_context(item, app.recent_orders.get(key, []))
+        _recalculate_item(app, item, annotate_release=False)
+    for item in getattr(app, "assigned_items", []) or []:
+        key = (item.get("line_code", ""), item.get("item_code", ""))
+        item_workflow.apply_recent_order_context(item, app.recent_orders.get(key, []))
+    if hasattr(app, "_annotate_release_decisions"):
+        app._annotate_release_decisions()
     app._apply_bulk_filter()

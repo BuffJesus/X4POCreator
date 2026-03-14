@@ -933,6 +933,7 @@ def finish_bulk_final(app):
             "item_code": item["item_code"],
             "description": item["description"],
             "order_qty": max(0, int(item.get("final_qty", item.get("order_qty", 0)))),
+            "final_qty": max(0, int(item.get("final_qty", item.get("order_qty", 0)))),
             "qty_sold": item["qty_sold"],
             "qty_suspended": item.get("qty_suspended", 0),
             "qty_received": item.get("qty_received", 0),
@@ -940,8 +941,23 @@ def finish_bulk_final(app):
             "pack_size": item.get("pack_size"),
             "status": item.get("status", "ok"),
             "why": item.get("why", ""),
+            "core_why": item.get("core_why", item.get("why", "")),
             "order_policy": item.get("order_policy", ""),
             "data_flags": item.get("data_flags", []),
+            "review_required": item.get("review_required", False),
+            "review_resolved": item.get("review_resolved", False),
+            "suggested_qty": item.get("suggested_qty", 0),
+            "raw_need": item.get("raw_need", 0),
+            "recency_confidence": item.get("recency_confidence", ""),
+            "data_completeness": item.get("data_completeness", ""),
+            "recency_review_bucket": item.get("recency_review_bucket"),
+            "performance_profile": item.get("performance_profile", ""),
+            "sales_health_signal": item.get("sales_health_signal", ""),
+            "reorder_attention_signal": item.get("reorder_attention_signal", ""),
+            "recent_local_order_count": item.get("recent_local_order_count", 0),
+            "recent_local_order_qty": item.get("recent_local_order_qty", 0),
+            "recent_local_order_date": item.get("recent_local_order_date", ""),
+            "inventory_position": item.get("inventory_position", 0),
         }
         for item in app.filtered_items
         if item.get("vendor") and item.get("final_qty", item.get("order_qty", 0)) > 0
@@ -953,6 +969,8 @@ def finish_bulk_final(app):
     skipped_no_vendor = sum(1 for item in app.filtered_items if not item.get("vendor"))
     skipped_zero = sum(1 for item in app.filtered_items if item.get("vendor") and item.get("final_qty", item.get("order_qty", 0)) <= 0)
 
+    if hasattr(app, "_annotate_release_decisions"):
+        app._annotate_release_decisions()
     app._populate_review_tab()
     app.notebook.tab(5, state="normal")
     app.notebook.select(5)
