@@ -24,6 +24,7 @@ from rules import (
     get_rule_int,
     get_rule_pack_size,
     has_pack_trigger_fields,
+    infer_minimum_cover_cycles,
     infer_minimum_packs_on_hand,
     looks_like_hardware_pack_item,
     looks_like_reel_item,
@@ -158,6 +159,40 @@ class RulesTests(unittest.TestCase):
             "days_since_last_sale": 500,
         }
         self.assertIsNone(infer_minimum_packs_on_hand(item, {"max": 20}, 100))
+
+    def test_infer_minimum_cover_cycles_for_active_weekly_hardware(self):
+        item = {
+            "description": "5/16 HEX NUT",
+            "sales_health_signal": "active",
+            "performance_profile": "steady",
+            "days_since_last_sale": 14,
+            "reorder_cycle_weeks": 1,
+            "avg_weekly_sales_loaded": 8.0,
+            "demand_signal": 8,
+        }
+        self.assertEqual(infer_minimum_cover_cycles(item, {"max": 8}, 10), 2)
+
+    def test_infer_minimum_cover_cycles_skips_biweekly_or_slow_hardware(self):
+        weekly_slow_item = {
+            "description": "5/16 HEX NUT",
+            "sales_health_signal": "active",
+            "performance_profile": "steady",
+            "days_since_last_sale": 14,
+            "reorder_cycle_weeks": 1,
+            "avg_weekly_sales_loaded": 2.0,
+            "demand_signal": 2,
+        }
+        biweekly_item = {
+            "description": "5/16 HEX NUT",
+            "sales_health_signal": "active",
+            "performance_profile": "steady",
+            "days_since_last_sale": 14,
+            "reorder_cycle_weeks": 2,
+            "avg_weekly_sales_loaded": 8.0,
+            "demand_signal": 16,
+        }
+        self.assertIsNone(infer_minimum_cover_cycles(weekly_slow_item, {"max": 8}, 10))
+        self.assertIsNone(infer_minimum_cover_cycles(biweekly_item, {"max": 8}, 10))
 
     def test_reel_review_when_pack_far_exceeds_max(self):
         policy = determine_order_policy({"description": '1/4" 2WIRE 6500PSI HOSE'}, {"max": 100}, 500, None)
@@ -607,6 +642,37 @@ class RulesTests(unittest.TestCase):
         self.assertEqual(item["reorder_trigger_basis"], "minimum_cover_days")
         self.assertEqual(item["effective_target_stock"], 45)
         self.assertIn("Minimum cover days: 21", item["why"])
+
+    def test_enrich_item_infers_weekly_hardware_cover_cycles_and_pack_trigger(self):
+        item = {
+            "description": "5/16 HEX NUT",
+            "qty_sold": 8,
+            "qty_suspended": 0,
+            "qty_on_po": 0,
+            "pack_size": 10,
+            "suggested_max": 8,
+            "demand_signal": 8,
+            "reorder_cycle_weeks": 1,
+            "avg_weekly_sales_loaded": 8.0,
+            "sales_health_signal": "active",
+            "performance_profile": "steady",
+            "days_since_last_sale": 7,
+        }
+
+        enrich_item(
+            item,
+            {"qoh": 9, "max": 8, "min": 2, "last_sale": "05-Mar-2026", "last_receipt": "01-Mar-2026"},
+            10,
+            None,
+        )
+        self.assertEqual(item["minimum_cover_cycles"], 2)
+        self.assertEqual(item["minimum_cover_cycles_source"], "heuristic")
+        self.assertEqual(item["order_policy"], "pack_trigger")
+        self.assertEqual(item["reorder_trigger_basis"], "minimum_cover_cycles")
+        self.assertEqual(item["reorder_trigger_threshold"], 16)
+        self.assertEqual(item["raw_need"], 7)
+        self.assertEqual(item["suggested_qty"], 10)
+        self.assertIn("Minimum cover cycles: 2 (inferred)", item["why"])
 
     def test_enrich_item_uses_configured_trigger_gate_and_reason_text(self):
         item = {

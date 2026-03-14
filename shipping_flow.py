@@ -133,6 +133,11 @@ def _format_date(value):
     return value.isoformat()
 
 
+def _set_release_targets(item, *, release_date=None, order_date=None):
+    item["target_release_date"] = _format_date(release_date)
+    item["target_order_date"] = _format_date(order_date)
+
+
 def release_bucket(item):
     decision = str(item.get("release_decision", "") or "").strip()
     if decision in ("hold_for_free_day", "hold_for_threshold"):
@@ -304,6 +309,7 @@ def annotate_release_decisions(session, now=None):
             item["vendor_threshold_progress_pct"] = threshold_progress_pct
             item["next_free_ship_date"] = _format_date(next_free_ship_date)
             item["planned_export_date"] = _format_date(planned_export_date)
+            _set_release_targets(item)
             item["release_decision"] = ""
             item["release_reason"] = ""
             item["shipping_policy"] = ""
@@ -322,6 +328,18 @@ def annotate_release_decisions(session, now=None):
             item["shipping_policy"] = policy["shipping_policy"]
             item["shipping_policy_weekdays"] = list(policy["preferred_free_ship_weekdays"])
             item["shipping_policy_threshold"] = policy["free_freight_threshold"]
+            if decision in ("hold_for_free_day", "export_next_business_day_for_free_day"):
+                _set_release_targets(
+                    item,
+                    release_date=next_free_ship_date,
+                    order_date=planned_export_date,
+                )
+            elif decision == "release_now":
+                _set_release_targets(
+                    item,
+                    release_date=_safe_date(current_dt),
+                    order_date=_safe_date(current_dt),
+                )
             planning_parts = []
             if threshold > 0:
                 planning_parts.append(
@@ -335,4 +353,8 @@ def annotate_release_decisions(session, now=None):
                 planning_parts.append(f"Next free-ship date: {_format_date(next_free_ship_date)}")
             if planned_export_date:
                 planning_parts.append(f"Planned export date: {_format_date(planned_export_date)}")
+            if item.get("target_order_date"):
+                planning_parts.append(f"Target order date: {item['target_order_date']}")
+            if item.get("target_release_date"):
+                planning_parts.append(f"Target release date: {item['target_release_date']}")
             item["why"] = " | ".join(part for part in (base_why, *planning_parts, f"Release: {reason}") if part)

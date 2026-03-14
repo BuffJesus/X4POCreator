@@ -360,6 +360,8 @@ class BulkDialogTests(unittest.TestCase):
             "vendor_threshold_progress_pct": 60.0,
             "next_free_ship_date": "2026-03-13",
             "planned_export_date": "2026-03-12",
+            "target_order_date": "2026-03-12",
+            "target_release_date": "2026-03-13",
         }
         inv = {"qoh": 6, "min": 2, "max": 18}
 
@@ -387,6 +389,8 @@ class BulkDialogTests(unittest.TestCase):
         self.assertEqual(row_lookup["Threshold Progress %"], "60.00")
         self.assertEqual(row_lookup["Next Free-Ship Date"], "2026-03-13")
         self.assertEqual(row_lookup["Planned Export Date"], "2026-03-12")
+        self.assertEqual(row_lookup["Target Order Date"], "2026-03-12")
+        self.assertEqual(row_lookup["Target Release Date"], "2026-03-13")
 
     def test_item_details_rows_label_inferred_min_packs(self):
         app = SimpleNamespace(
@@ -417,6 +421,36 @@ class BulkDialogTests(unittest.TestCase):
         row_lookup = dict(row for row in rows if row[0])
 
         self.assertEqual(row_lookup["Min Packs"], "2 (Inferred)")
+
+    def test_item_details_rows_label_inferred_cover_cycles(self):
+        app = SimpleNamespace(
+            on_po_qty={("AER-", "GH781-4"): 0},
+            recent_orders={},
+            duplicate_ic_lookup={},
+            _suggest_min_max=lambda key: (10, 18),
+        )
+        item = {
+            "line_code": "AER-",
+            "item_code": "GH781-4",
+            "qty_sold": 8,
+            "qty_suspended": 0,
+            "qty_received": 0,
+            "qty_on_po": 0,
+            "raw_need": 7,
+            "suggested_qty": 10,
+            "final_qty": 10,
+            "order_policy": "pack_trigger",
+            "status": "ok",
+            "data_flags": [],
+            "minimum_cover_cycles": 2,
+            "minimum_cover_cycles_source": "heuristic",
+        }
+        inv = {"qoh": 9, "min": 2, "max": 8}
+
+        rows = ui_bulk_dialogs.item_details_rows(app, item, inv, ("AER-", "GH781-4"))
+        row_lookup = dict(row for row in rows if row[0])
+
+        self.assertEqual(row_lookup["Cover Cycles"], "2.00 (Inferred)")
 
     def test_item_details_rows_show_recency_review_type(self):
         app = SimpleNamespace(

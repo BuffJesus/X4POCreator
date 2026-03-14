@@ -224,6 +224,49 @@ def infer_minimum_packs_on_hand(item, inv, pack_qty):
     return 2
 
 
+def infer_minimum_cover_cycles(item, inv, pack_qty):
+    """Infer a conservative two-cycle cover floor for active weekly-order hardware items."""
+    reorder_cycle_weeks = item.get("reorder_cycle_weeks")
+    mx = inv.get("max") if inv else None
+    if not (
+        isinstance(reorder_cycle_weeks, (int, float))
+        and reorder_cycle_weeks > 0
+        and reorder_cycle_weeks <= 1
+        and isinstance(pack_qty, (int, float))
+        and pack_qty > 0
+        and isinstance(mx, (int, float))
+        and mx > 0
+    ):
+        return None
+    if pack_qty > mx * 3:
+        return None
+    if not looks_like_hardware_pack_item(item, inv or {}):
+        return None
+    if should_large_pack_review(item, inv or {}, pack_qty):
+        return None
+
+    sales_health = item.get("sales_health_signal", "")
+    performance = item.get("performance_profile", "")
+    days_since_last_sale = item.get("days_since_last_sale")
+    if sales_health not in ("active", "stable", ""):
+        return None
+    if performance not in ("steady", "top_performer", "intermittent", ""):
+        return None
+    if isinstance(days_since_last_sale, (int, float)) and days_since_last_sale > 120:
+        return None
+
+    weekly_demand = item.get("avg_weekly_sales_loaded")
+    if not isinstance(weekly_demand, (int, float)) or weekly_demand <= 0:
+        weekly_demand = item.get("demand_signal")
+    if not isinstance(weekly_demand, (int, float)) or weekly_demand <= 0:
+        return None
+    if weekly_demand < max(1.0, mx * 0.75):
+        return None
+    if weekly_demand < max(1.0, pack_qty * 0.5):
+        return None
+    return 2
+
+
 def classify_recency_confidence(item, inv, rule):
     """Classify how trustworthy the item's sale/receipt recency evidence is."""
     has_last_sale = bool((inv or {}).get("last_sale"))
@@ -639,7 +682,7 @@ def determine_order_policy(item, inv, pack_qty, rule):
     ):
         return "pack_trigger"
 
-    if has_pack_trigger_fields(rule):
+    if has_pack_trigger_fields(rule) or has_pack_trigger_fields(item):
         return "pack_trigger"
 
     if rule and rule.get("allow_below_pack"):
@@ -747,6 +790,11 @@ def enrich_item(item, inv, pack_qty, rule):
         if inferred_min_packs is not None:
             item["minimum_packs_on_hand"] = inferred_min_packs
             item["minimum_packs_on_hand_source"] = "heuristic"
+    if item.get("minimum_cover_cycles") is None:
+        inferred_cover_cycles = infer_minimum_cover_cycles(item, inv or {}, pack_qty)
+        if inferred_cover_cycles is not None:
+            item["minimum_cover_cycles"] = inferred_cover_cycles
+            item["minimum_cover_cycles_source"] = "heuristic"
     classify_recency_confidence(item, inv or {}, rule)
     classify_low_confidence_recency(item, inv or {}, rule)
     calculate_inventory_position(item)
@@ -909,10 +957,20 @@ def enrich_item(item, inv, pack_qty, rule):
         detail_parts.append(f"Minimum packs on hand: {minimum_packs:g} ({source_label})")
     minimum_cover_cycles = item.get("minimum_cover_cycles")
     if isinstance(minimum_cover_cycles, (int, float)) and minimum_cover_cycles > 0:
-        detail_parts.append(f"Minimum cover cycles: {minimum_cover_cycles:g}")
+        minimum_cover_cycles_source = item.get("minimum_cover_cycles_source")
+        source_label = {
+            "heuristic": "inferred",
+            "rule": "saved rule",
+        }.get(minimum_cover_cycles_source, "configured")
+        detail_parts.append(f"Minimum cover cycles: {minimum_cover_cycles:g} ({source_label})")
     minimum_cover_days = item.get("minimum_cover_days")
     if isinstance(minimum_cover_days, (int, float)) and minimum_cover_days > 0:
-        detail_parts.append(f"Minimum cover days: {minimum_cover_days:g}")
+        minimum_cover_days_source = item.get("minimum_cover_days_source")
+        source_label = {
+            "heuristic": "inferred",
+            "rule": "saved rule",
+        }.get(minimum_cover_days_source, "configured")
+        detail_parts.append(f"Minimum cover days: {minimum_cover_days:g} ({source_label})")
     detail_parts.append(why)
     item["suggested_qty"] = suggested
     item["core_why"] = " | ".join(detail_parts)

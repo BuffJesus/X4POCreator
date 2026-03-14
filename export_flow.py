@@ -33,6 +33,22 @@ def partition_export_items(assigned_items):
     return exportable, held
 
 
+def held_item_summary(item):
+    reason = item.get("release_reason", "Held by shipping policy")
+    target_order = str(item.get("target_order_date", "") or "").strip()
+    target_release = str(item.get("target_release_date", "") or "").strip()
+    planning_parts = []
+    if target_order:
+        planning_parts.append(f"target order {target_order}")
+    if target_release:
+        planning_parts.append(f"target release {target_release}")
+    if planning_parts:
+        reason = f"{reason}; {'; '.join(planning_parts)}"
+    return (
+        f"  - {item.get('vendor', '')} {item.get('line_code', '')}{item.get('item_code', '')}: {reason}"
+    )
+
+
 def choose_export_items(app, exportable_items):
     immediate_items = [item for item in exportable_items if export_bucket(item) == "release_now"]
     planned_items = [item for item in exportable_items if export_bucket(item) == "planned_today"]
@@ -120,7 +136,7 @@ def do_export(app, export_vendor_po, order_history_file, sessions_dir, *, assign
     if not exportable_items:
         if held_items:
             held_lines = "\n".join(
-                f"  - {item.get('vendor', '')} {item.get('line_code', '')}{item.get('item_code', '')}: {item.get('release_reason', 'Held by shipping policy')}"
+                held_item_summary(item)
                 for item in held_items[:8]
             )
             suffix = "\n  - ..." if len(held_items) > 8 else ""
@@ -190,10 +206,15 @@ def do_export(app, export_vendor_po, order_history_file, sessions_dir, *, assign
         )
     held_note = ""
     if held_items:
-        held_note = (
-            f"\n\n{len(held_items)} assigned item(s) were held by shipping policy and were not exported. "
-            "They remain in Review & Export with their release reason."
+        dated_holds = sum(
+            1 for item in held_items
+            if str(item.get("target_order_date", "") or "").strip() or str(item.get("target_release_date", "") or "").strip()
         )
+        held_note = f"\n\n{len(held_items)} assigned item(s) were held by shipping policy and were not exported."
+        if dated_holds:
+            held_note += " Review their target order/release dates in Review & Export."
+        else:
+            held_note += " They remain in Review & Export with their release reason."
     planned_note = ""
     if planned_items:
         planned_note = (

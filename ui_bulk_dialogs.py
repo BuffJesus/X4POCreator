@@ -688,6 +688,26 @@ def item_details_rows(app, item, inv, key):
             "rule": " (Saved Rule)",
         }.get(minimum_packs_source, "")
         minimum_packs_display = f"{minimum_packs}{source_suffix}"
+    minimum_cover_days = item.get("minimum_cover_days")
+    minimum_cover_days_source = item.get("minimum_cover_days_source")
+    if minimum_cover_days is None:
+        minimum_cover_days_display = "-"
+    else:
+        source_suffix = {
+            "heuristic": " (Inferred)",
+            "rule": " (Saved Rule)",
+        }.get(minimum_cover_days_source, "")
+        minimum_cover_days_display = f"{_format_metric(minimum_cover_days)}{source_suffix}"
+    minimum_cover_cycles = item.get("minimum_cover_cycles")
+    minimum_cover_cycles_source = item.get("minimum_cover_cycles_source")
+    if minimum_cover_cycles is None:
+        minimum_cover_cycles_display = "-"
+    else:
+        source_suffix = {
+            "heuristic": " (Inferred)",
+            "rule": " (Saved Rule)",
+        }.get(minimum_cover_cycles_source, "")
+        minimum_cover_cycles_display = f"{_format_metric(minimum_cover_cycles)}{source_suffix}"
 
     details = [
         ("QOH", f"{inv.get('qoh', 0):g}"),
@@ -722,8 +742,8 @@ def item_details_rows(app, item, inv, key):
         ("Trigger Qty", str(item.get("reorder_trigger_qty", "-") if item.get("reorder_trigger_qty") is not None else "-")),
         ("Trigger %", _format_metric(item.get("reorder_trigger_pct")) if item.get("reorder_trigger_pct") is not None else "-"),
         ("Min Packs", minimum_packs_display),
-        ("Cover Days", _format_metric(item.get("minimum_cover_days")) if item.get("minimum_cover_days") is not None else "-"),
-        ("Cover Cycles", _format_metric(item.get("minimum_cover_cycles")) if item.get("minimum_cover_cycles") is not None else "-"),
+        ("Cover Days", minimum_cover_days_display),
+        ("Cover Cycles", minimum_cover_cycles_display),
         ("Overstock Qty", str(item.get("acceptable_overstock_qty", "-") if item.get("acceptable_overstock_qty") is not None else "-")),
         ("Overstock %", _format_metric(item.get("acceptable_overstock_pct")) if item.get("acceptable_overstock_pct") is not None else "-"),
         ("Allowed Overstock", str(item.get("acceptable_overstock_qty_effective", "-") if item.get("acceptable_overstock_qty_effective") is not None else "-")),
@@ -737,6 +757,8 @@ def item_details_rows(app, item, inv, key):
         ("Threshold Progress %", _format_metric(item.get("vendor_threshold_progress_pct")) if item.get("vendor_threshold_progress_pct") is not None else "-"),
         ("Next Free-Ship Date", item.get("next_free_ship_date") or "-"),
         ("Planned Export Date", item.get("planned_export_date") or "-"),
+        ("Target Order Date", item.get("target_order_date") or "-"),
+        ("Target Release Date", item.get("target_release_date") or "-"),
         ("Status", item.get("status", "-")),
         ("Flags", ", ".join(item.get("data_flags", [])) or "none"),
     ]

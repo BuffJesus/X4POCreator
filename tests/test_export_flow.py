@@ -45,6 +45,20 @@ class ExportFlowTests(unittest.TestCase):
         self.assertEqual([item["item_code"] for item in exportable], ["A", "E", "D"])
         self.assertEqual([item["item_code"] for item in held], ["B", "C"])
 
+    def test_held_item_summary_includes_target_dates_when_present(self):
+        summary = export_flow.held_item_summary({
+            "vendor": "MOTION",
+            "line_code": "AER-",
+            "item_code": "GH781-4",
+            "release_reason": "Held for vendor free-shipping day",
+            "target_order_date": "2026-03-12",
+            "target_release_date": "2026-03-13",
+        })
+
+        self.assertIn("Held for vendor free-shipping day", summary)
+        self.assertIn("target order 2026-03-12", summary)
+        self.assertIn("target release 2026-03-13", summary)
+
     def test_choose_export_items_returns_all_when_no_planned_items_exist(self):
         items = [
             {"item_code": "A", "release_decision": "release_now"},
@@ -311,6 +325,8 @@ class ExportFlowTests(unittest.TestCase):
                     "order_qty": 3,
                     "release_decision": "hold_for_threshold",
                     "release_reason": "Held for freight threshold 2000",
+                    "target_order_date": "2026-03-12",
+                    "target_release_date": "2026-03-13",
                 },
             ],
             startup_warning_rows=[],
@@ -354,6 +370,7 @@ class ExportFlowTests(unittest.TestCase):
         self.assertEqual(exported_items[1]["item_code"], "GH781-6")
         self.assertIn("planned-release POs", mocked_info.call_args.args[1])
         self.assertIn("were held by shipping policy and were not exported", mocked_info.call_args.args[1])
+        self.assertIn("target order/release dates", mocked_info.call_args.args[1])
 
     def test_do_export_can_skip_planned_items_and_export_immediate_only(self):
         session = AppSessionState(
@@ -421,6 +438,8 @@ class ExportFlowTests(unittest.TestCase):
                     "order_qty": 3,
                     "release_decision": "hold_for_threshold",
                     "release_reason": "Held for freight threshold 2000",
+                    "target_order_date": "2026-03-12",
+                    "target_release_date": "2026-03-13",
                 },
             ],
         )
@@ -438,6 +457,8 @@ class ExportFlowTests(unittest.TestCase):
         mocked_dir.assert_not_called()
         mocked_info.assert_called_once()
         self.assertIn("currently held by vendor shipping policy", mocked_info.call_args.args[1])
+        self.assertIn("target order 2026-03-12", mocked_info.call_args.args[1])
+        self.assertIn("target release 2026-03-13", mocked_info.call_args.args[1])
 
     def test_do_export_can_export_scoped_vendor_items_only(self):
         session = AppSessionState(

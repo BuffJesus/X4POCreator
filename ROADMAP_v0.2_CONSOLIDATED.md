@@ -110,7 +110,7 @@ The goal is to keep one phased checklist that reflects what is actually done in 
   - missing-data / uncertain
   - critical / rule-protected
 - [x] Make low-confidence recency buckets actionable in Review filters and summary text.
-- [ ] Add cadence-aware heuristics for high-velocity small-pack items beyond the current two-pack hardware floor.
+- [x] Add cadence-aware heuristics for high-velocity small-pack items beyond the current two-pack hardware floor.
 - [ ] Decide whether `reel_review` should remain distinct or split into `reel_auto` plus generalized replenishment-unit policies.
 
 ## Phase 5. Vendor Shipping Policy Model
@@ -160,7 +160,7 @@ The goal is to keep one phased checklist that reflects what is actually done in 
   - hold and keep accumulating toward threshold
   - release on next preferred free-freight day
   - release one business day before the preferred free-freight day so the PO lands on time
-- [ ] Add explicit "target release date" / "target order date" annotations to held items, not only abstract hold reasons.
+- [x] Add explicit "target release date" / "target order date" annotations to held items, not only abstract hold reasons.
 - [ ] Add export support for planned-release batches so users can intentionally export tomorrow's free-freight POs one day early when policy requires it.
 
 ## Phase 6A. Cost- and Date-Aware Shipping Planning
@@ -296,9 +296,8 @@ These are the best next steps after reconciliation.
 - [x] Keep missing-recency activity-protected items visible with zero default qty instead of letting them ride through as implicitly orderable rows.
 - [x] Treat recent local PO history as protective recency evidence for review bucketing, while still keeping missing-recency items review-first by default.
 - [x] Distinguish explicit critical min-rule protection from other rule-protected missing-recency cases.
+- [x] Cover weekly-order hardware cadence cases with inferred trigger-floor behavior for active small-pack hardware.
 - [ ] Add remaining edge-case tests called out in the original `0.2.5` roadmap, especially:
-  - weekly-order hardware cadence cases
-  - held-for-shipping behavior inside the planned-release/export-date flow
 - [ ] Complete packaged-app self-update replacement flow.
 - [ ] Finish bulk edit-target integrity hardening under rapid interactions.
 

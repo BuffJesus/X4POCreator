@@ -108,7 +108,11 @@ class ShippingFlowTests(unittest.TestCase):
         self.assertEqual(item["vendor_threshold_progress_pct"], 100.0)
         self.assertEqual(item["next_free_ship_date"], "2026-03-13")
         self.assertEqual(item["planned_export_date"], "2026-03-12")
+        self.assertEqual(item["target_order_date"], "2026-03-12")
+        self.assertEqual(item["target_release_date"], "2026-03-13")
         self.assertIn("Release:", item["why"])
+        self.assertIn("Target order date: 2026-03-12", item["why"])
+        self.assertIn("Target release date: 2026-03-13", item["why"])
 
     def test_annotate_release_decisions_releases_when_threshold_reached(self):
         session = AppSessionState(
@@ -212,6 +216,8 @@ class ShippingFlowTests(unittest.TestCase):
         self.assertIn("ready for vendor free-shipping day", item["release_reason"])
         self.assertEqual(item["next_free_ship_date"], "2026-03-13")
         self.assertEqual(item["planned_export_date"], "2026-03-12")
+        self.assertEqual(item["target_order_date"], "2026-03-12")
+        self.assertEqual(item["target_release_date"], "2026-03-13")
 
     def test_annotate_release_decisions_marks_partial_value_coverage_and_threshold_shortfall(self):
         session = AppSessionState(
