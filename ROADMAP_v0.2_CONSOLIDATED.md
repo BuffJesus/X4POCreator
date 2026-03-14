@@ -251,7 +251,7 @@ This phase is about reducing required operator input. Humans will consistently c
   - export the default recommended batch
   rather than requiring users to decide policy details every run
 - [x] Establish a single default export behavior that works without prompts in the common case.
-- [ ] Reserve extra prompts for meaningful branch points only, such as:
+- [x] Reserve extra prompts for meaningful branch points only, such as:
   - all items are held
   - only planned-release items are exportable
   - mixed immediate vs planned export where timing genuinely matters

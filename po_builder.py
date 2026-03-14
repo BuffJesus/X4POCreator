@@ -112,6 +112,8 @@ DEFAULT_PLANNED_ONLY_EXPORT_BEHAVIOR = "export_automatically"
 PLANNED_ONLY_EXPORT_BEHAVIOR_OPTIONS = ("export_automatically", "ask_before_export")
 DEFAULT_REVIEW_EXPORT_FOCUS = "exceptions_only"
 REVIEW_EXPORT_FOCUS_OPTIONS = ("all_items", "exceptions_only")
+DEFAULT_REMOVE_NOT_NEEDED_SCOPE = "unassigned_only"
+REMOVE_NOT_NEEDED_SCOPE_OPTIONS = ("unassigned_only", "include_assigned")
 DEFAULT_VENDOR_POLICY_PRESET = ""
 BULK_SHORTCUTS_TEXT = """Current bulk-sheet shortcuts
 
@@ -509,6 +511,19 @@ class POBuilderApp:
         if normalized not in PLANNED_ONLY_EXPORT_BEHAVIOR_OPTIONS:
             normalized = DEFAULT_PLANNED_ONLY_EXPORT_BEHAVIOR
         self.app_settings["planned_only_export_behavior"] = normalized
+        self._save_app_settings()
+
+    def _get_remove_not_needed_scope(self):
+        scope = str(self.app_settings.get("remove_not_needed_scope", DEFAULT_REMOVE_NOT_NEEDED_SCOPE) or "").strip()
+        if scope not in REMOVE_NOT_NEEDED_SCOPE_OPTIONS:
+            scope = DEFAULT_REMOVE_NOT_NEEDED_SCOPE
+        return scope
+
+    def _set_remove_not_needed_scope(self, scope):
+        normalized = str(scope or "").strip()
+        if normalized not in REMOVE_NOT_NEEDED_SCOPE_OPTIONS:
+            normalized = DEFAULT_REMOVE_NOT_NEEDED_SCOPE
+        self.app_settings["remove_not_needed_scope"] = normalized
         self._save_app_settings()
 
     def _get_last_export_dir(self):
@@ -1169,15 +1184,20 @@ class POBuilderApp:
     def _not_needed_reason(self, item):
         return ui_bulk_dialogs.not_needed_reason(self, item, MAX_EXCEED_ABS_BUFFER)
 
-    def _bulk_remove_not_needed_visible(self):
-        self._bulk_remove_not_needed(scope="screen")
+    def _bulk_remove_not_needed_visible(self, include_assigned=None):
+        self._bulk_remove_not_needed(scope="screen", include_assigned=include_assigned)
 
-    def _bulk_remove_not_needed_filtered(self):
+    def _bulk_remove_not_needed_filtered(self, include_assigned=None):
         """Review and remove currently filtered rows that appear unnecessary to order."""
-        self._bulk_remove_not_needed(scope="filtered")
+        self._bulk_remove_not_needed(scope="filtered", include_assigned=include_assigned)
 
-    def _bulk_remove_not_needed(self, scope="screen"):
-        ui_bulk_dialogs.bulk_remove_not_needed(self, scope, MAX_EXCEED_ABS_BUFFER)
+    def _bulk_remove_not_needed(self, scope="screen", include_assigned=None):
+        ui_bulk_dialogs.bulk_remove_not_needed(
+            self,
+            scope,
+            MAX_EXCEED_ABS_BUFFER,
+            include_assigned=include_assigned,
+        )
 
     def _undo_last_bulk_removal(self):
         ui_assignment_actions.undo_last_bulk_removal(self)

@@ -563,6 +563,34 @@ def build_help_tab(app):
     )
 
     ttk.Label(
+        settings_frame,
+        text="Remove-not-needed default:",
+        style="Info.TLabel",
+    ).pack(side=tk.LEFT, padx=(18, 8))
+    remove_scope_map = {
+        "unassigned_only": "Unassigned Only",
+        "include_assigned": "Include Assigned",
+    }
+    reverse_remove_scope_map = {label: key for key, label in remove_scope_map.items()}
+    var_remove_scope = tk.StringVar(
+        value=remove_scope_map.get(app._get_remove_not_needed_scope(), "Unassigned Only")
+    )
+    combo_remove_scope = ttk.Combobox(
+        settings_frame,
+        textvariable=var_remove_scope,
+        state="readonly",
+        width=18,
+        values=list(remove_scope_map.values()),
+    )
+    combo_remove_scope.pack(side=tk.LEFT)
+    combo_remove_scope.bind(
+        "<<ComboboxSelected>>",
+        lambda _e: app._set_remove_not_needed_scope(
+            reverse_remove_scope_map.get(var_remove_scope.get(), "unassigned_only")
+        ),
+    )
+
+    ttk.Label(
         frame,
         text=(
             "Recommended routine path: keep Review & Export on Exceptions Only, use Release Plan for vendor timing decisions, "

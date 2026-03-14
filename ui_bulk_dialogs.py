@@ -230,7 +230,7 @@ def not_needed_reason(app, item, max_exceed_abs_buffer):
     return "; ".join(reasons), auto_remove
 
 
-def bulk_remove_not_needed(app, scope, max_exceed_abs_buffer):
+def bulk_remove_not_needed(app, scope, max_exceed_abs_buffer, *, include_assigned=None):
     flush_pending_bulk_sheet_edit(app)
     if scope == "screen":
         row_ids = list(app.bulk_sheet.visible_row_ids()) if getattr(app, "bulk_sheet", None) else [
@@ -245,12 +245,15 @@ def bulk_remove_not_needed(app, scope, max_exceed_abs_buffer):
         messagebox.showinfo("No Items", f"No {scope_label} rows to review.")
         return
 
-    include_assigned = messagebox.askyesno(
-        "Include Assigned?",
-        "Include vendor-assigned items in this removal review?\n\n"
-        "Yes = include assigned and unassigned\n"
-        "No = unassigned only (safer default)"
-    )
+    if include_assigned is None:
+        get_scope = getattr(app, "_get_remove_not_needed_scope", None)
+        if callable(get_scope):
+            include_assigned = get_scope() == "include_assigned"
+        else:
+            settings = getattr(app, "app_settings", {}) or {}
+            include_assigned = str(
+                settings.get("remove_not_needed_scope", "unassigned_only") or ""
+            ).strip() == "include_assigned"
 
     candidates = []
     for iid in row_ids:

@@ -171,6 +171,23 @@ class POBuilderTests(unittest.TestCase):
         self.assertEqual(fake_app.app_settings["planned_only_export_behavior"], "ask_before_export")
         self.assertTrue(saved["called"])
 
+    def test_get_and_set_remove_not_needed_scope_round_trip(self):
+        saved = {}
+        fake_app = SimpleNamespace(
+            app_settings={},
+            _save_app_settings=lambda: saved.update({"called": True}),
+        )
+
+        self.assertEqual(
+            po_builder.POBuilderApp._get_remove_not_needed_scope(fake_app),
+            po_builder.DEFAULT_REMOVE_NOT_NEEDED_SCOPE,
+        )
+
+        po_builder.POBuilderApp._set_remove_not_needed_scope(fake_app, "include_assigned")
+
+        self.assertEqual(fake_app.app_settings["remove_not_needed_scope"], "include_assigned")
+        self.assertTrue(saved["called"])
+
     def test_start_update_check_skips_non_release_versions(self):
         fake_app = SimpleNamespace(update_check_enabled=True)
         fake_app._check_for_updates_worker = lambda: self.fail("worker should not run")
