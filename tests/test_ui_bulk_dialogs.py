@@ -353,6 +353,11 @@ class BulkDialogTests(unittest.TestCase):
             "release_decision": "hold_for_threshold",
             "release_reason": "Held for freight threshold 2000 (current vendor total 1200)",
             "vendor_order_value_total": 1200.0,
+            "vendor_value_coverage": "partial",
+            "vendor_threshold_shortfall": 800.0,
+            "vendor_threshold_progress_pct": 60.0,
+            "next_free_ship_date": "2026-03-13",
+            "planned_export_date": "2026-03-12",
         }
         inv = {"qoh": 6, "min": 2, "max": 18}
 
@@ -374,6 +379,11 @@ class BulkDialogTests(unittest.TestCase):
         self.assertEqual(row_lookup["Release Decision"], "hold_for_threshold")
         self.assertIn("freight threshold 2000", row_lookup["Release Reason"])
         self.assertEqual(row_lookup["Vendor Order Value"], "1200.00")
+        self.assertEqual(row_lookup["Vendor Value Coverage"], "partial")
+        self.assertEqual(row_lookup["Threshold Shortfall"], "800.00")
+        self.assertEqual(row_lookup["Threshold Progress %"], "60.00")
+        self.assertEqual(row_lookup["Next Free-Ship Date"], "2026-03-13")
+        self.assertEqual(row_lookup["Planned Export Date"], "2026-03-12")
 
     def test_item_details_rows_label_inferred_min_packs(self):
         app = SimpleNamespace(

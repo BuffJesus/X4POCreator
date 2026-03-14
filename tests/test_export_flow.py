@@ -30,10 +30,11 @@ class ExportFlowTests(unittest.TestCase):
             {"item_code": "A", "release_decision": "release_now"},
             {"item_code": "B", "release_decision": "hold_for_free_day"},
             {"item_code": "C", "release_decision": "hold_for_threshold"},
+            {"item_code": "E", "release_decision": "export_next_business_day_for_free_day"},
             {"item_code": "D", "release_decision": ""},
         ])
 
-        self.assertEqual([item["item_code"] for item in exportable], ["A", "D"])
+        self.assertEqual([item["item_code"] for item in exportable], ["A", "E", "D"])
         self.assertEqual([item["item_code"] for item in held], ["B", "C"])
 
     def test_build_session_snapshot_captures_expected_fields(self):

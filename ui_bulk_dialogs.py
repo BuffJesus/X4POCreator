@@ -730,6 +730,11 @@ def item_details_rows(app, item, inv, key):
         ("Release Decision", item.get("release_decision") or "-"),
         ("Release Reason", item.get("release_reason") or "-"),
         ("Vendor Order Value", _format_metric(item.get("vendor_order_value_total")) if item.get("vendor_order_value_total") is not None else "-"),
+        ("Vendor Value Coverage", item.get("vendor_value_coverage") or "-"),
+        ("Threshold Shortfall", _format_metric(item.get("vendor_threshold_shortfall")) if item.get("vendor_threshold_shortfall") is not None else "-"),
+        ("Threshold Progress %", _format_metric(item.get("vendor_threshold_progress_pct")) if item.get("vendor_threshold_progress_pct") is not None else "-"),
+        ("Next Free-Ship Date", item.get("next_free_ship_date") or "-"),
+        ("Planned Export Date", item.get("planned_export_date") or "-"),
         ("Status", item.get("status", "-")),
         ("Flags", ", ".join(item.get("data_flags", [])) or "none"),
     ]
