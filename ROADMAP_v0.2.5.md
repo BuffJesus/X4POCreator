@@ -459,6 +459,14 @@ Requirements:
 - distinguish “buy full pack because that is the selling unit” from “this is suspicious over-ordering”
 - account for routine order cadence when one pack may not last until the next normal weekly order
 - avoid recommending a single-pack steady state when fastener demand can exhaust that pack before the next planned vendor order
+- detect common hardware descriptions directly from inventory/QOH descriptions:
+  - bolt
+  - nut
+  - washer
+  - screw
+  - clamp
+  - fitting
+  - similar bag/box hardware terms
 
 ### Low-movement but mandatory-stock items
 
@@ -572,6 +580,7 @@ Checklist:
   - or a more general replenishment-unit policy model
 - [ ] improve detection for real reel items vs ordinary packaged parts
 - [ ] add bag/box hardware heuristics so hardware packs do not fall into the wrong review path
+- [ ] add direct hardware-term detection from inventory descriptions so obvious fastener/box-pack items can infer the right policy without manual switching
 - [ ] add cadence-aware heuristics for high-velocity small-pack items so one-pack stock levels are not treated as sufficient by default
 - [ ] add regression tests for:
   - 300 ft hose / 93 ft max / early reorder trigger
@@ -736,6 +745,7 @@ Cons:
 - [ ] 300 ft hose reel with max 93, trigger 60, reorder at 58
 - [ ] 300 ft hose reel with max 93, stock 95, no reorder
 - [ ] bag of 100 bolts with max 20, trigger 20, reorder at 18
+- [ ] active bolt/nut/washer/screw hardware descriptions infer pack-style handling without being misclassified as reel or risky review items
 - [ ] bag of 100 bolts on a weekly order cycle: one bag on hand but weekly demand implies stockout before next order, so reorder early
 - [ ] bag of 100 bolts with two-bag minimum practical cover: reorder when projected cover falls below two bags even if current max is lower
 - [ ] bag of 100 bolts with stale demand and high stock, no reorder

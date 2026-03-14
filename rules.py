@@ -55,6 +55,22 @@ REEL_LENGTH_TERMS = (
     "COIL",
     "SPOOL",
 )
+HARDWARE_PACK_TERMS = (
+    "BOLT",
+    "BOLTS",
+    "NUT",
+    "NUTS",
+    "WASHER",
+    "WASHERS",
+    "SCREW",
+    "SCREWS",
+    "CLAMP",
+    "CLAMPS",
+    "FITTING",
+    "FITTINGS",
+    "FASTENER",
+    "FASTENERS",
+)
 
 
 def looks_like_reel_item(item, inv):
@@ -79,6 +95,16 @@ def looks_like_reel_item(item, inv):
         return True
 
     return False
+
+
+def looks_like_hardware_pack_item(item, inv):
+    """Return True when the description suggests boxed/bagged hardware rather than reel stock."""
+    desc = (item.get("description") or inv.get("description") or "").upper()
+    if not desc:
+        return False
+    if looks_like_reel_item(item, inv or {}):
+        return False
+    return any(term in desc for term in HARDWARE_PACK_TERMS)
 
 
 def should_large_pack_review(item, inv, pack_qty):
@@ -354,6 +380,16 @@ def determine_order_policy(item, inv, pack_qty, rule):
 
     if should_large_pack_review(item, inv or {}, pack_qty):
         return "large_pack_review"
+
+    if (
+        looks_like_hardware_pack_item(item, inv or {})
+        and mx
+        and mx > 0
+        and pack_qty
+        and pack_qty >= LARGE_PACK_REVIEW_MIN_PACK_QTY
+        and pack_qty > mx * 3
+    ):
+        return "pack_trigger"
 
     if has_pack_trigger_fields(rule):
         return "pack_trigger"

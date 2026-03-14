@@ -22,6 +22,7 @@ from rules import (
     get_rule_int,
     get_rule_pack_size,
     has_pack_trigger_fields,
+    looks_like_hardware_pack_item,
     looks_like_reel_item,
     should_large_pack_review,
 )
@@ -96,7 +97,13 @@ class RulesTests(unittest.TestCase):
 
     def test_boxed_hardware_pack_is_not_auto_marked_reel_review(self):
         policy = determine_order_policy({"description": "1/4 X 1 ELEVATOR BOLT"}, {"max": 20}, 100, None)
-        self.assertEqual(policy, "standard")
+        self.assertEqual(policy, "pack_trigger")
+
+    def test_bolt_description_looks_like_hardware_pack_item(self):
+        self.assertTrue(looks_like_hardware_pack_item({"description": "1/4 X 1 ELEVATOR BOLT"}, {}))
+
+    def test_hose_description_does_not_look_like_hardware_pack_item(self):
+        self.assertFalse(looks_like_hardware_pack_item({"description": '1/4" 2WIRE 6500PSI HOSE'}, {}))
 
     def test_dormant_non_reel_large_pack_item_is_marked_large_pack_review(self):
         item = {
@@ -119,6 +126,16 @@ class RulesTests(unittest.TestCase):
         policy = determine_order_policy(item, {"max": 20}, 100, rule)
         self.assertEqual(policy, "pack_trigger")
 
+    def test_active_hardware_pack_mismatch_infers_pack_trigger_without_rule_fields(self):
+        item = {
+            "description": "5/16 HEX NUT",
+            "sales_health_signal": "active",
+            "performance_profile": "steady",
+            "days_since_last_sale": 14,
+        }
+        policy = determine_order_policy(item, {"max": 20}, 100, None)
+        self.assertEqual(policy, "pack_trigger")
+
     def test_large_pack_review_still_beats_trigger_field_inference(self):
         item = {
             "description": "FILTER KIT",
@@ -128,6 +145,16 @@ class RulesTests(unittest.TestCase):
         }
         rule = {"minimum_packs_on_hand": 2}
         policy = determine_order_policy(item, {"max": 20}, 100, rule)
+        self.assertEqual(policy, "large_pack_review")
+
+    def test_stale_hardware_pack_can_still_fall_to_large_pack_review(self):
+        item = {
+            "description": "5/16 HEX NUT",
+            "sales_health_signal": "dormant",
+            "performance_profile": "legacy",
+            "days_since_last_sale": 500,
+        }
+        policy = determine_order_policy(item, {"max": 20}, 100, None)
         self.assertEqual(policy, "large_pack_review")
 
     def test_should_large_pack_review_stays_false_for_active_boxed_hardware(self):
