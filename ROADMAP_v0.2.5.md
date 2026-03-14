@@ -50,6 +50,7 @@ What is missing is an explicit concept of:
 - low-stock reserve threshold
 - order-cycle cover
 - minimum practical packs on hand
+- data completeness and recency confidence
 - vendor shipping policy
 - shipment release timing
 - free-freight threshold consolidation
@@ -84,6 +85,35 @@ This matters most when:
 - the active session still contains tens of thousands of items
 - the user is editing a much smaller working subset
 - edits are frequent enough that summary/filter work dominates the actual row mutation cost
+
+## Data completeness and recency-confidence risk
+
+The reorder algorithm is still too willing to suggest orders when item recency evidence is weak or missing.
+
+Current pressure points:
+
+- items can still look reorder-worthy from min/max math, trigger math, or pack rounding even when both `last_sale` and `last_receipt` are blank
+- a missing `last_sale` field may mean:
+  - truly stale or dead inventory
+  - incomplete source data
+  - a new item that has not started moving yet
+- a missing `last_receipt` field may mean:
+  - the item has not been replenished in a very long time
+  - the inventory system does not have a useful receipt history for that item
+  - the part predates the available history window
+- small shortage math can become noisy when pack logic turns a low-confidence candidate into a one-pack or one-item suggestion
+
+What is missing is an explicit concept of:
+
+- recency confidence
+- source-data completeness
+- minimum evidence required for automatic reorder
+- safe review-first fallbacks when recency evidence is absent
+- distinction between:
+  - stale / likely dead inventory
+  - new items with no movement history yet
+  - data-poor / uncertain items
+  - protected service / stocking items that still need coverage
 
 ## Likely failure modes to eliminate
 
@@ -305,6 +335,21 @@ Target result:
 - hold for freight threshold
 - bypass the hold if the shortage is urgent
 
+### Phase 6.5. Packaged-app self-update flow
+
+Purpose:
+
+- let the packaged app update itself safely after the user accepts a newer release
+
+Target result:
+
+- check for update
+- prompt user on startup
+- download the replacement executable
+- close the running app
+- replace the old executable
+- reopen automatically
+
 ### Phase 7. Remaining bulk-performance cleanup
 
 Purpose:
@@ -422,6 +467,28 @@ Candidate shipping policies:
 - `hybrid_free_day_threshold`
   - prefer a free-shipping day, but also release once a threshold is reached
 
+### 5. Add packaged-app self-update policy
+
+The app also needs a safe packaged-update flow for release adoption.
+
+Requirements:
+
+- if the user accepts an update prompt on startup, the app should download the new executable automatically
+- the running executable must not try to overwrite itself directly
+- the app should hand off replacement to a temporary updater script or helper process
+- the old executable should be replaced only after the main app exits
+- the updated executable should relaunch automatically
+- failures should be explainable and non-destructive
+
+Recommended future pieces:
+
+- downloaded release staging path
+- updater bootstrap script/helper
+- safe process-exit handoff
+- executable swap and cleanup
+- restart arguments / relaunch flow
+- rollback or failure messaging if replacement fails
+
 ## Edge cases to support explicitly
 
 ### Reel / spool / coil materials
@@ -498,6 +565,34 @@ Requirements:
 - avoid auto-ordering large packs just because pack rounding allows it
 - combine pack logic with dormancy and historical strength
 - prefer review when the item is stale or likely obsolete
+
+### Data-poor / missing-recency items
+
+Examples:
+
+- no `last_sale`
+- no `last_receipt`
+- no `last_sale` and no `last_receipt`
+- weak or zero `mo12_sales`
+- tiny suggested quantity caused mostly by pack rounding or min/max math
+
+Requirements:
+
+- do not auto-order low-confidence items just because target/max math suggests a small shortage
+- treat missing `last_sale` and missing `last_receipt` together as a strong warning signal, not as neutral data
+- distinguish:
+  - true stale / dead items
+  - new items with no movement history yet
+  - critical service items that must still carry stock
+  - items with recent suspense demand or local order history despite missing X4 recency fields
+- let strong positive evidence override missing recency carefully, such as:
+  - explicit manual rule
+  - critical min / service-floor rule
+  - recent suspense demand
+  - recent local PO activity
+  - clearly active recent inventory metrics when available
+- prevent random one-pack or one-bag suggestions when there is no reliable recency evidence
+- route uncertain items to review with explainable reason text instead of silently auto-ordering them
 
 ### Shipping-aware vendor ordering
 
@@ -582,12 +677,23 @@ Checklist:
 - [ ] add bag/box hardware heuristics so hardware packs do not fall into the wrong review path
 - [ ] add direct hardware-term detection from inventory descriptions so obvious fastener/box-pack items can infer the right policy without manual switching
 - [ ] add cadence-aware heuristics for high-velocity small-pack items so one-pack stock levels are not treated as sufficient by default
+- [ ] add recency-confidence heuristics so items missing both `last_sale` and `last_receipt` default to review or suppression instead of auto-order
+- [ ] classify low-confidence reorder candidates into:
+  - stale / likely dead
+  - new / not enough history
+  - missing-data / uncertain
+  - critical / rule-protected
 - [ ] add regression tests for:
   - 300 ft hose / 93 ft max / early reorder trigger
   - bag of 100 / 20 max
   - stale reel item that should still be review-only
   - active large-pack item that should auto-trigger safely
   - weekly-order bolt item where one bag is not enough cover until the next normal order
+  - no `last_sale` + no `last_receipt` + weak demand -> no auto-order
+  - no `last_sale` + no `last_receipt` + pack rounding pressure -> no random one-pack suggestion
+  - no recency fields + recent suspense demand -> review, not blind skip
+  - no recency fields + recent local PO history -> review or controlled reorder
+  - no recency fields + explicit critical min rule -> review or protected reorder
 - [ ] introduce shipping-aware consolidation logic:
   - hold non-urgent items for free-shipping weekdays
   - hold non-urgent items for freight thresholds
@@ -607,6 +713,13 @@ Checklist:
 - [ ] integrate pack-aware trigger logic into the main reorder algorithm
 - [ ] support acceptable intentional overstock explicitly
 - [ ] let cadence-aware coverage rules increase the effective reorder floor when one pack is not enough to survive until the next routine order
+- [ ] add explicit `recency_confidence` / `data_completeness` style signals to the final recommendation flow
+- [ ] require stronger evidence before auto-ordering items that have neither `last_sale` nor `last_receipt`
+- [ ] allow controlled exceptions for:
+  - new-item stocking
+  - critical service parts
+  - recent suspense demand
+  - recent local order history
 - [ ] ensure “not needed” review respects trigger-based replenishment logic
 - [ ] surface trigger reason, replenishment unit, and confidence in item details / review
 - [ ] verify that edge-case rules remain explainable to the user
@@ -618,6 +731,11 @@ Checklist:
 - [ ] treat the paid urgent truck as an override path, not the main consolidation target
 - [ ] ensure threshold/free-day holding does not hide urgent shortages or critical service items
 - [ ] surface shipping policy, hold reason, and release reason in item details / review
+- [ ] add packaged-app self-update flow for accepted startup updates
+- [ ] download replacement executable to a staging location before shutdown
+- [ ] hand off replacement to a separate updater process or script
+- [ ] close the running app, replace the old executable, and relaunch automatically
+- [ ] make updater failures recoverable and explainable to the user
 
 - [ ] guarantee bulk-editor edit-target integrity under rapid click-edit, keyboard-edit, filtered, sorted, and multi-selection workflows
 - [ ] document the expected precedence between current cell, selected cells, selected rows, and right-click snapshot state
@@ -740,6 +858,31 @@ Cons:
 - requires explainable vendor policy configuration
 - can create confusing results if hold logic is too aggressive
 
+### Replace executable through updater handoff
+
+Recommended candidate model:
+
+- app detects newer release
+- user accepts update at startup
+- app downloads new `POBuilder.exe` to a temporary staging path
+- app launches a small updater helper with:
+  - current exe path
+  - staged exe path
+  - relaunch arguments if needed
+- main app exits
+- updater waits for process release, replaces the old executable, then relaunches
+
+Pros:
+
+- works around Windows file-locking on the running executable
+- gives a clean place for retries, cleanup, and failure reporting
+- keeps update UX simple for the user
+
+Cons:
+
+- requires extra bootstrap logic beyond the main app
+- needs careful handling so failed swaps do not strand the user
+
 ## Testing scenarios that must exist by `0.2.5`
 
 - [ ] 300 ft hose reel with max 93, trigger 60, reorder at 58
@@ -750,6 +893,12 @@ Cons:
 - [ ] bag of 100 bolts with two-bag minimum practical cover: reorder when projected cover falls below two bags even if current max is lower
 - [ ] bag of 100 bolts with stale demand and high stock, no reorder
 - [ ] reel item with dormant sales and no recency signal, review instead of auto-order
+- [ ] no `last_sale` and no `last_receipt`, tiny shortage, pack size 1: no auto-order
+- [ ] no `last_sale` and no `last_receipt`, bag/box pack pressure only: no random one-pack suggestion
+- [ ] no `last_sale` and no `last_receipt`, but explicit critical min / protected stocking rule: review or constrained reorder
+- [ ] no `last_sale` and no `last_receipt`, but recent suspense demand: review with clear reason
+- [ ] no `last_sale` and no `last_receipt`, but recent local PO history: review or controlled reorder, not blind suppression
+- [ ] new item with missing recency history and explicit setup rule: do not misclassify as dead inventory
 - [ ] manual override item preserves user quantity
 - [ ] trigger-based item is not auto-removed by “Remove Not Needed”
 - [ ] vendor ships free on Friday only: non-urgent items hold until Friday
@@ -757,6 +906,10 @@ Cons:
 - [ ] vendor below threshold with no urgency: items stay held with an explainable reason
 - [ ] urgent shortage overrides free-day or threshold hold
 - [ ] held-for-shipping item is still visible in review with the release reason
+- [ ] accepted startup update downloads the new executable, replaces the old one after shutdown, and relaunches successfully
+- [ ] failed update download leaves the current app intact and explains the failure
+- [ ] failed executable swap leaves the current app intact and reports next steps
+- [ ] updater does not delete the old executable before the replacement is fully staged
 
 - [ ] edit vendor on one row, then immediately edit pack size on a different row: second edit applies to the intended row on the first attempt
 - [ ] commit with Tab or Enter, then immediately edit the newly focused cell: no previous-cell bleed
@@ -775,5 +928,10 @@ By `v0.2.5`, PO Builder should be able to explain edge cases like these in plain
 - “This item was held for the vendor's Friday free-shipping order because stock is routine, not urgent.”
 - “This item was released immediately even though the vendor has a free-shipping stock order because the shortage was urgent.”
 - “This vendor order was released because the free-freight threshold was reached.”
+- “The update was downloaded, the old executable was replaced after shutdown, and POBuilder reopened automatically.”
+
+- â€œThis item has no recent sale or receipt history, so the app did not auto-order it without stronger evidence.â€
+- â€œThis item is missing sale and receipt recency, but recent suspense demand exists, so it was routed to review instead of being skipped or auto-ordered.â€
+- â€œThis item has weak recency data, but it is protected by an explicit stocking rule, so the app kept it as a controlled reorder candidate.â€
 
 That is the bar: not just better numbers, but better reasoning users can trust.
