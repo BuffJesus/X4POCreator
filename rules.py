@@ -127,6 +127,59 @@ def apply_rule_fields(item, rule):
     item["acceptable_overstock_pct"] = get_rule_float(rule, "acceptable_overstock_pct")
 
 
+def determine_reorder_trigger_threshold(item):
+    """Compute an explicit reorder trigger threshold when rule fields define one."""
+    inv = item.get("inventory", {}) or {}
+    current_min = inv.get("min")
+    pack_size = item.get("pack_size")
+    trigger_qty = item.get("reorder_trigger_qty")
+    trigger_pct = item.get("reorder_trigger_pct")
+
+    has_explicit_trigger = (
+        isinstance(trigger_qty, (int, float)) and trigger_qty > 0
+    ) or (
+        isinstance(trigger_pct, (int, float)) and trigger_pct > 0
+    )
+    if not has_explicit_trigger:
+        item["reorder_trigger_threshold"] = None
+        item["reorder_trigger_basis"] = "default_target"
+        return None
+
+    candidates = [value for value in (current_min, trigger_qty) if isinstance(value, (int, float)) and value > 0]
+    if (
+        isinstance(pack_size, (int, float))
+        and pack_size > 0
+        and isinstance(trigger_pct, (int, float))
+        and trigger_pct > 0
+    ):
+        candidates.append(pack_size * (trigger_pct / 100.0))
+
+    if not candidates:
+        item["reorder_trigger_threshold"] = None
+        item["reorder_trigger_basis"] = "default_target"
+        return None
+
+    threshold = max(candidates)
+    if isinstance(trigger_qty, (int, float)) and threshold == trigger_qty:
+        basis = "trigger_qty"
+    elif (
+        isinstance(pack_size, (int, float))
+        and pack_size > 0
+        and isinstance(trigger_pct, (int, float))
+        and trigger_pct > 0
+        and math.isclose(threshold, pack_size * (trigger_pct / 100.0))
+    ):
+        basis = "trigger_pct"
+    elif isinstance(current_min, (int, float)) and threshold == current_min:
+        basis = "current_min"
+    else:
+        basis = "configured_trigger"
+
+    item["reorder_trigger_threshold"] = threshold
+    item["reorder_trigger_basis"] = basis
+    return threshold
+
+
 def calculate_inventory_position(item):
     """Calculate and persist the item's inventory position."""
     inv = item.get("inventory", {}) or {}
@@ -189,12 +242,17 @@ def evaluate_reorder_trigger(item):
         demand_signal = item.get("qty_sold", 0) + item.get("qty_suspended", 0)
         item["demand_signal"] = demand_signal
 
+    trigger_threshold = determine_reorder_trigger_threshold(item)
+
     if demand_signal <= 0:
         if isinstance(current_min, (int, float)) and inventory_position < current_min:
             target_stock = max(value for value in (target_stock, current_min) if isinstance(value, (int, float)))
             item["target_stock"] = target_stock
             return True
         return False
+
+    if isinstance(trigger_threshold, (int, float)) and trigger_threshold > 0:
+        return inventory_position < trigger_threshold
 
     return True
 
@@ -212,7 +270,7 @@ def calculate_raw_need(item):
 def determine_order_policy(item, inv, pack_qty, rule):
     """
     Determine the ordering policy for an item.
-    Returns: 'standard', 'soft_pack', 'exact_qty', 'reel_review', or 'manual_only'
+    Returns: 'standard', 'pack_trigger', 'soft_pack', 'exact_qty', 'reel_review', or 'manual_only'
     """
     if rule and rule.get("order_policy"):
         return rule["order_policy"]
@@ -265,6 +323,12 @@ def calculate_suggested_qty(raw_need, pack_qty, policy, rule, inv):
         if min_qty > 1:
             suggested = math.ceil(suggested / min_qty) * min_qty
         return suggested, f"Soft pack: min order {min_qty}"
+
+    if policy == "pack_trigger":
+        if pack_qty and pack_qty > 0:
+            rounded = max(pack_qty, math.ceil(raw_need / pack_qty) * pack_qty)
+            return rounded, f"Pack trigger: rounded to replenishment unit {pack_qty}"
+        return raw_need, "Pack trigger (no pack data)"
 
     if pack_qty and pack_qty > 0:
         rounded = max(pack_qty, math.ceil(raw_need / pack_qty) * pack_qty)
@@ -335,6 +399,10 @@ def enrich_item(item, inv, pack_qty, rule):
     target_basis = item.get("target_basis", "")
     if target_basis:
         reason_codes.append(f"target_{target_basis}")
+    trigger_basis = item.get("reorder_trigger_basis", "")
+    trigger_threshold = item.get("reorder_trigger_threshold")
+    if isinstance(trigger_threshold, (int, float)) and trigger_threshold > 0:
+        reason_codes.append(f"trigger_{trigger_basis or 'configured'}")
     if item.get("effective_qty_suspended", 0):
         reason_codes.append("suspense_included")
     if item.get("suspense_carry_qty", 0):
@@ -343,6 +411,8 @@ def enrich_item(item, inv, pack_qty, rule):
         reason_codes.append("pack_round_up")
     if policy == "soft_pack":
         reason_codes.append("soft_pack_rule")
+    if policy == "pack_trigger":
+        reason_codes.append("pack_trigger")
     if policy == "reel_review":
         reason_codes.append("reel_review")
     if policy == "manual_only":
@@ -363,6 +433,8 @@ def enrich_item(item, inv, pack_qty, rule):
         detail_parts.append(f"Suspended demand included: {item.get('effective_qty_suspended', 0):g}")
     if item.get("qty_on_po", 0):
         detail_parts.append(f"Already on PO: {item.get('qty_on_po', 0):g}")
+    if isinstance(trigger_threshold, (int, float)) and trigger_threshold > 0:
+        detail_parts.append(f"Reorder trigger: {trigger_threshold:g}")
     detail_parts.append(why)
     item["suggested_qty"] = suggested
     item["why"] = " | ".join(detail_parts)
@@ -402,6 +474,8 @@ def get_buy_rule_summary(item, rule):
 
     if policy == "standard" and pack:
         parts.append(f"Pk:{pack}")
+    elif policy == "pack_trigger":
+        parts.append(f"TrigPk:{pack}" if pack else "TrigPk")
     elif policy == "soft_pack":
         min_q = rule.get("min_order_qty", 1) if rule else 1
         parts.append(f"Soft:{min_q}")

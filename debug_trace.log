@@ -4596,3 +4596,299 @@
 2026-03-13 21:37:31.522 | buy_rule_editor.save.applied | final=24 | idx=0 | inferred_policy=standard | item_code=GH781-4 | line_code=AER- | raw_need=18 | result_policy=standard | saved_rule={'allow_below_pack': False, 'notes': '', 'min_order_qty': 2, 'pack_size': 12, 'reorder_trigger_qty': 60, 'reorder_trigger_pct': 20.0, 'acceptable_overstock_qty': 12, 'acceptable_overstock_pct': 10.0} | suggested=24 | why=Stock after open POs: 0 | Target stock: 18 | Based on current max | Rounded up to pack of 12
 2026-03-13 21:37:31.522 | buy_rule_editor.save.rendered_row | idx=0 | row=
 2026-03-13 21:37:31.526 | bulk_filter.applied | sample=AER-:GH781-4 | total=1
+2026-03-13 21:40:08.650 | bulk_begin_edit | col_name=pack_size | right_click_row_id= | row_count=2 | row_ids=0,1
+2026-03-13 21:40:08.650 | bulk_begin_edit.prompt_result | cancelled=False | col_name=pack_size | value=750
+2026-03-13 21:40:08.650 | bulk_begin_edit.apply | col_name=pack_size | right_click_context={} | row_count=2 | value=750
+2026-03-13 21:40:08.650 | bulk_begin_edit.rendered_row_error | col_name=pack_size | error='types.SimpleNamespace' object has no attribute '_bulk_row_values' | row_id=0
+2026-03-13 21:40:08.651 | bulk_begin_edit.rendered_row_error | col_name=pack_size | error='types.SimpleNamespace' object has no attribute '_bulk_row_values' | row_id=1
+2026-03-13 21:40:08.651 | bulk_begin_edit | col_name=pack_size | right_click_row_id=8 | row_count=1 | row_ids=8
+2026-03-13 21:40:08.651 | bulk_begin_edit.prompt_result | cancelled=False | col_name=pack_size | value=3
+2026-03-13 21:40:08.652 | bulk_begin_edit.apply | col_name=pack_size | right_click_context={'row_id': '8', 'col_name': 'pack_size'} | row_count=1 | value=3
+2026-03-13 21:40:08.652 | bulk_begin_edit.rendered_row_error | col_name=pack_size | error='types.SimpleNamespace' object has no attribute '_bulk_row_values' | row_id=8
+2026-03-13 21:40:08.652 | bulk_begin_edit | col_name=buy_rule | right_click_row_id=7 | row_count=1 | row_ids=7
+2026-03-13 21:40:08.653 | bulk_begin_edit.buy_rule_editor | row_id=7
+2026-03-13 21:40:08.653 | bulk_begin_edit | col_name=pack_size | right_click_row_id=5 | row_count=1 | row_ids=5
+2026-03-13 21:40:08.653 | bulk_begin_edit.prompt_result | cancelled=False | col_name=pack_size | value=5
+2026-03-13 21:40:08.654 | bulk_begin_edit.apply | col_name=pack_size | right_click_context={'row_id': '5', 'col_name': 'pack_size'} | row_count=1 | value=5
+2026-03-13 21:40:08.654 | bulk_begin_edit.rendered_row_error | col_name=pack_size | error='types.SimpleNamespace' object has no attribute '_bulk_row_values' | row_id=5
+2026-03-13 21:40:08.655 | bulk_begin_edit | col_name=pack_size | right_click_row_id=3 | row_count=3 | row_ids=2,3,4
+2026-03-13 21:40:08.655 | bulk_begin_edit.prompt_result | cancelled=False | col_name=pack_size | value=5
+2026-03-13 21:40:08.655 | bulk_begin_edit.apply | col_name=pack_size | right_click_context={'row_id': '3', 'col_name': 'pack_size'} | row_count=3 | value=5
+2026-03-13 21:40:08.655 | bulk_begin_edit.rendered_row_error | col_name=pack_size | error='types.SimpleNamespace' object has no attribute '_bulk_row_values' | row_id=2
+2026-03-13 21:40:08.656 | bulk_begin_edit.rendered_row_error | col_name=pack_size | error='types.SimpleNamespace' object has no attribute '_bulk_row_values' | row_id=3
+2026-03-13 21:40:08.656 | bulk_begin_edit.rendered_row_error | col_name=pack_size | error='types.SimpleNamespace' object has no attribute '_bulk_row_values' | row_id=4
+2026-03-13 21:40:08.656 | bulk_begin_edit | col_name=pack_size | right_click_row_id= | row_count=1 | row_ids=8
+2026-03-13 21:40:08.656 | bulk_begin_edit.prompt_result | cancelled=False | col_name=pack_size | value=3
+2026-03-13 21:40:08.657 | bulk_begin_edit.apply | col_name=pack_size | right_click_context={} | row_count=1 | value=3
+2026-03-13 21:40:08.657 | bulk_begin_edit.rendered_row_error | col_name=pack_size | error='types.SimpleNamespace' object has no attribute '_bulk_row_values' | row_id=8
+2026-03-13 21:40:08.657 | bulk_begin_edit | col_name=pack_size | right_click_row_id= | row_count=1 | row_ids=2
+2026-03-13 21:40:08.658 | bulk_begin_edit.prompt_result | cancelled=False | col_name=pack_size | value=5
+2026-03-13 21:40:08.658 | bulk_begin_edit.apply | col_name=pack_size | right_click_context={} | row_count=1 | value=5
+2026-03-13 21:40:08.658 | bulk_begin_edit.rendered_row_error | col_name=pack_size | error='types.SimpleNamespace' object has no attribute '_bulk_row_values' | row_id=2
+2026-03-13 21:40:08.658 | bulk_begin_edit | col_name=pack_size | right_click_row_id= | row_count=2 | row_ids=0,1
+2026-03-13 21:40:08.659 | bulk_begin_edit.prompt_result | cancelled=False | col_name=pack_size | value=750
+2026-03-13 21:40:08.659 | bulk_begin_edit.apply | col_name=pack_size | right_click_context={} | row_count=2 | value=750
+2026-03-13 21:40:08.659 | bulk_begin_edit.rendered_row_error | col_name=pack_size | error='types.SimpleNamespace' object has no attribute '_bulk_row_values' | row_id=0
+2026-03-13 21:40:08.659 | bulk_begin_edit.rendered_row_error | col_name=pack_size | error='types.SimpleNamespace' object has no attribute '_bulk_row_values' | row_id=1
+2026-03-13 21:40:08.661 | bulk_shortcut_fill | alias=fill_down | col_name=pack_size | row_count=2 | value=500
+2026-03-13 21:40:08.661 | bulk_sheet.handle_edit.begin | col=1 | event_value=500 | row=0
+2026-03-13 21:40:08.662 | bulk_sheet.handle_edit.target | col=1 | col_name=pack_size | row=0 | row_id=4
+2026-03-13 21:40:08.662 | bulk_sheet.handle_edit.queued | col_name=pack_size | row_id=4 | target_row_ids=4,8
+2026-03-13 21:40:08.662 | bulk_sheet.post_edit.schedule | delay_ms=1
+2026-03-13 21:40:08.662 | bulk_sheet.post_edit.commit | col=1 | col_name=pack_size | committed_value=500 | editable=True | row=0 | row_id=4 | sheet_value=500
+2026-03-13 21:40:08.662 | bulk_sheet.post_edit.apply | col_name=pack_size | row_id=4 | value=500
+2026-03-13 21:40:08.663 | bulk_sheet.post_edit.apply | col_name=pack_size | row_id=8 | value=500
+2026-03-13 21:40:08.663 | bulk_sheet.post_edit.filtered | incremental=True
+2026-03-13 21:40:08.663 | bulk_sheet.post_edit.rendered_row_error | error='types.SimpleNamespace' object has no attribute '_bulk_row_values' | row_id=4
+2026-03-13 21:40:08.663 | bulk_sheet.post_edit.drain | col_name=vendor | row_id=4
+2026-03-13 21:40:08.664 | bulk_sheet.post_edit.commit | col=0 | col_name=vendor | committed_value=OLDV | editable=True | row=0 | row_id=4 | sheet_value=VALUE
+2026-03-13 21:40:08.664 | bulk_sheet.post_edit.apply | col_name=vendor | row_id=4 | value=OLDV
+2026-03-13 21:40:08.664 | bulk_sheet.post_edit.filtered | incremental=True
+2026-03-13 21:40:08.664 | bulk_sheet.post_edit.rendered_row_error | error='types.SimpleNamespace' object has no attribute '_bulk_row_values' | row_id=4
+2026-03-13 21:40:08.665 | bulk_sheet.post_edit.keep_selection | current_serial=1 | pending_serial=0
+2026-03-13 21:40:08.665 | bulk_sheet.handle_edit.begin | col=1 | event_value=12 | row=1
+2026-03-13 21:40:08.665 | bulk_sheet.handle_edit.target | col=1 | col_name=pack_size | row=1 | row_id=8
+2026-03-13 21:40:08.665 | bulk_sheet.handle_edit.queued | col_name=pack_size | row_id=8 | target_row_ids=8
+2026-03-13 21:40:08.665 | bulk_sheet.post_edit.schedule | delay_ms=1
+2026-03-13 21:40:08.666 | bulk_sheet.select.clear_right_click_context
+2026-03-13 21:40:08.666 | bulk_sheet.post_edit.commit | col=0 | col_name=vendor | committed_value=ABC | editable=True | row=0 | row_id=4 | sheet_value=ABC
+2026-03-13 21:40:08.667 | bulk_sheet.post_edit.apply | col_name=vendor | row_id=4 | value=ABC
+2026-03-13 21:40:08.667 | bulk_sheet.post_edit.filtered | incremental=True
+2026-03-13 21:40:08.667 | bulk_sheet.post_edit.rendered_row_error | error=list index out of range | row_id=4
+2026-03-13 21:40:08.667 | bulk_sheet.post_edit.keep_selection | current_serial=2 | pending_serial=1
+2026-03-13 21:40:08.668 | bulk_sheet.set_rows.clear_right_click_context
+2026-03-13 21:40:08.702 | bulk_apply_editor_value.begin | col_name=cur_max | raw=14 | row_id=0
+2026-03-13 21:40:08.702 | bulk_apply_editor_value.minmax | col_name=cur_max | final=0 | parsed=14 | raw_need=0 | row_id=0 | suggested=0
+2026-03-13 21:40:08.703 | bulk_apply_editor_value.begin | col_name=final_qty | raw=3 | row_id=0
+2026-03-13 21:40:08.703 | bulk_apply_editor_value.final_qty | final=3 | qty=3 | row_id=0 | suggested=8 | why=Stock after open POs: 2 | Target stock: 10 | Based on current max | Rounded up to pack of 4
+2026-03-13 21:40:08.703 | bulk_apply_editor_value.begin | col_name=pack_size | raw=3 | row_id=0
+2026-03-13 21:40:08.704 | bulk_apply_editor_value.pack_size | item_code=5VX560 | line_code=GDY- | new_final=3 | new_pack=3 | new_policy=standard | new_suggested=3 | old_final=2 | old_pack=None | old_policy= | old_suggested=None | row_id=0 | rule={"pack_size": 3} | why=Stock after open POs: 1 | Target stock: 3 | Based on current max | Rounded up to pack of 3
+2026-03-13 21:40:08.704 | bulk_apply_editor_value.begin | col_name=pack_size | raw=3 | row_id=0
+2026-03-13 21:40:08.704 | bulk_apply_editor_value.pack_size | item_code=5VX560 | line_code=GDY- | new_final=3 | new_pack=3 | new_policy=standard | new_suggested=3 | old_final=2 | old_pack=None | old_policy=exact_qty | old_suggested=2 | row_id=0 | rule={"pack_size": 3} | why=Stock after open POs: 1 | Target stock: 3 | Based on current max | Rounded up to pack of 3
+2026-03-13 21:40:08.705 | bulk_apply_editor_value.begin | col_name=pack_size | raw=6 | row_id=0
+2026-03-13 21:40:08.705 | bulk_apply_editor_value.pack_size | item_code=GH781-4 | line_code=AER- | new_final=12 | new_pack=6 | new_policy=standard | new_suggested=12 | old_final=10 | old_pack=5 | old_policy=standard | old_suggested=10 | row_id=0 | rule={"pack_size": 6} | why=Stock after open POs: 0 | Target stock: 10 | Based on current max | Rounded up to pack of 6
+2026-03-13 21:40:08.705 | bulk_apply_editor_value.begin | col_name=qoh | raw=10 | row_id=0
+2026-03-13 21:40:08.706 | bulk_apply_editor_value.qoh | final=0 | new_qoh=10.0 | old_qoh=2 | raw_need=0 | row_id=0 | suggested=0
+2026-03-13 21:40:08.706 | buy_rule_editor.open | idx=0 | item_code=5VX560 | item_pack=12 | item_policy=standard | line_code=GDY- | rule={}
+2026-03-13 21:40:08.707 | buy_rule_editor.save.begin | acceptable_overstock_pct= | acceptable_overstock_qty= | allow_below_pack=True | idx=0 | initial_policy=standard | initial_policy_locked=False | item_code=5VX560 | line_code=GDY- | min_order_qty=2 | pack_qty=12 | reorder_trigger_pct= | reorder_trigger_qty= | selected_policy=standard
+2026-03-13 21:40:08.707 | buy_rule_editor.save.applied | final=4 | idx=0 | inferred_policy=soft_pack | item_code=5VX560 | line_code=GDY- | raw_need=3 | result_policy=soft_pack | saved_rule={'allow_below_pack': True, 'notes': '', 'min_order_qty': 2, 'pack_size': 12} | suggested=4 | why=Stock after open POs: 0 | Target stock: 3 | Based on current max | Soft pack: min order 2
+2026-03-13 21:40:08.707 | buy_rule_editor.save.rendered_row | idx=0 | row=
+2026-03-13 21:40:08.708 | buy_rule_editor.open | idx=0 | item_code=GH781-4 | item_pack=12 | item_policy=standard | line_code=AER- | rule={}
+2026-03-13 21:40:08.708 | buy_rule_editor.save.begin | acceptable_overstock_pct=10 | acceptable_overstock_qty=12 | allow_below_pack=False | idx=0 | initial_policy=standard | initial_policy_locked=False | item_code=GH781-4 | line_code=AER- | min_order_qty=2 | pack_qty=12 | reorder_trigger_pct=20 | reorder_trigger_qty=60 | selected_policy=standard
+2026-03-13 21:40:08.708 | buy_rule_editor.save.applied | final=24 | idx=0 | inferred_policy=standard | item_code=GH781-4 | line_code=AER- | raw_need=18 | result_policy=standard | saved_rule={'allow_below_pack': False, 'notes': '', 'min_order_qty': 2, 'pack_size': 12, 'reorder_trigger_qty': 60, 'reorder_trigger_pct': 20.0, 'acceptable_overstock_qty': 12, 'acceptable_overstock_pct': 10.0} | suggested=24 | why=Stock after open POs: 0 | Target stock: 18 | Based on current max | Reorder trigger: 60 | Rounded up to pack of 12
+2026-03-13 21:40:08.709 | buy_rule_editor.save.rendered_row | idx=0 | row=
+2026-03-13 21:40:08.714 | bulk_filter.applied | sample=AER-:GH781-4 | total=1
+2026-03-13 21:40:30.210 | bulk_apply_editor_value.begin | col_name=cur_max | raw=14 | row_id=0
+2026-03-13 21:40:30.211 | bulk_apply_editor_value.minmax | col_name=cur_max | final=12 | parsed=14 | raw_need=12 | row_id=0 | suggested=12
+2026-03-13 21:40:30.211 | bulk_apply_editor_value.begin | col_name=final_qty | raw=3 | row_id=0
+2026-03-13 21:40:30.211 | bulk_apply_editor_value.final_qty | final=3 | qty=3 | row_id=0 | suggested=8 | why=Stock after open POs: 2 | Target stock: 10 | Based on current max | Rounded up to pack of 4
+2026-03-13 21:40:30.212 | bulk_apply_editor_value.begin | col_name=pack_size | raw=3 | row_id=0
+2026-03-13 21:40:30.212 | bulk_apply_editor_value.pack_size | item_code=5VX560 | line_code=GDY- | new_final=3 | new_pack=3 | new_policy=standard | new_suggested=3 | old_final=2 | old_pack=None | old_policy= | old_suggested=None | row_id=0 | rule={"pack_size": 3} | why=Stock after open POs: 1 | Target stock: 3 | Based on current max | Rounded up to pack of 3
+2026-03-13 21:40:30.212 | bulk_apply_editor_value.begin | col_name=pack_size | raw=3 | row_id=0
+2026-03-13 21:40:30.212 | bulk_apply_editor_value.pack_size | item_code=5VX560 | line_code=GDY- | new_final=3 | new_pack=3 | new_policy=standard | new_suggested=3 | old_final=2 | old_pack=None | old_policy=exact_qty | old_suggested=2 | row_id=0 | rule={"pack_size": 3} | why=Stock after open POs: 1 | Target stock: 3 | Based on current max | Rounded up to pack of 3
+2026-03-13 21:40:30.213 | bulk_apply_editor_value.begin | col_name=pack_size | raw=6 | row_id=0
+2026-03-13 21:40:30.213 | bulk_apply_editor_value.pack_size | item_code=GH781-4 | line_code=AER- | new_final=12 | new_pack=6 | new_policy=standard | new_suggested=12 | old_final=10 | old_pack=5 | old_policy=standard | old_suggested=10 | row_id=0 | rule={"pack_size": 6} | why=Stock after open POs: 0 | Target stock: 10 | Based on current max | Rounded up to pack of 6
+2026-03-13 21:40:30.213 | bulk_apply_editor_value.begin | col_name=qoh | raw=10 | row_id=0
+2026-03-13 21:40:30.214 | bulk_apply_editor_value.qoh | final=0 | new_qoh=10.0 | old_qoh=2 | raw_need=0 | row_id=0 | suggested=0
+2026-03-13 21:40:30.215 | buy_rule_editor.open | idx=0 | item_code=5VX560 | item_pack=12 | item_policy=standard | line_code=GDY- | rule={}
+2026-03-13 21:40:30.215 | buy_rule_editor.save.begin | acceptable_overstock_pct= | acceptable_overstock_qty= | allow_below_pack=True | idx=0 | initial_policy=standard | initial_policy_locked=False | item_code=5VX560 | line_code=GDY- | min_order_qty=2 | pack_qty=12 | reorder_trigger_pct= | reorder_trigger_qty= | selected_policy=standard
+2026-03-13 21:40:30.215 | buy_rule_editor.save.applied | final=4 | idx=0 | inferred_policy=soft_pack | item_code=5VX560 | line_code=GDY- | raw_need=3 | result_policy=soft_pack | saved_rule={'allow_below_pack': True, 'notes': '', 'min_order_qty': 2, 'pack_size': 12} | suggested=4 | why=Stock after open POs: 0 | Target stock: 3 | Based on current max | Soft pack: min order 2
+2026-03-13 21:40:30.215 | buy_rule_editor.save.rendered_row | idx=0 | row=
+2026-03-13 21:40:30.216 | buy_rule_editor.open | idx=0 | item_code=GH781-4 | item_pack=12 | item_policy=standard | line_code=AER- | rule={}
+2026-03-13 21:40:30.217 | buy_rule_editor.save.begin | acceptable_overstock_pct=10 | acceptable_overstock_qty=12 | allow_below_pack=False | idx=0 | initial_policy=standard | initial_policy_locked=False | item_code=GH781-4 | line_code=AER- | min_order_qty=2 | pack_qty=12 | reorder_trigger_pct=20 | reorder_trigger_qty=60 | selected_policy=standard
+2026-03-13 21:40:30.217 | buy_rule_editor.save.applied | final=24 | idx=0 | inferred_policy=standard | item_code=GH781-4 | line_code=AER- | raw_need=18 | result_policy=standard | saved_rule={'allow_below_pack': False, 'notes': '', 'min_order_qty': 2, 'pack_size': 12, 'reorder_trigger_qty': 60, 'reorder_trigger_pct': 20.0, 'acceptable_overstock_qty': 12, 'acceptable_overstock_pct': 10.0} | suggested=24 | why=Stock after open POs: 0 | Target stock: 18 | Based on current max | Reorder trigger: 60 | Rounded up to pack of 12
+2026-03-13 21:40:30.217 | buy_rule_editor.save.rendered_row | idx=0 | row=
+2026-03-13 21:40:30.223 | bulk_filter.applied | sample=AER-:GH781-4 | total=1
+2026-03-13 21:40:30.237 | bulk_begin_edit | col_name=pack_size | right_click_row_id= | row_count=2 | row_ids=0,1
+2026-03-13 21:40:30.237 | bulk_begin_edit.prompt_result | cancelled=False | col_name=pack_size | value=750
+2026-03-13 21:40:30.238 | bulk_begin_edit.apply | col_name=pack_size | right_click_context={} | row_count=2 | value=750
+2026-03-13 21:40:30.238 | bulk_begin_edit.rendered_row_error | col_name=pack_size | error='types.SimpleNamespace' object has no attribute '_bulk_row_values' | row_id=0
+2026-03-13 21:40:30.238 | bulk_begin_edit.rendered_row_error | col_name=pack_size | error='types.SimpleNamespace' object has no attribute '_bulk_row_values' | row_id=1
+2026-03-13 21:40:30.239 | bulk_begin_edit | col_name=pack_size | right_click_row_id=8 | row_count=1 | row_ids=8
+2026-03-13 21:40:30.239 | bulk_begin_edit.prompt_result | cancelled=False | col_name=pack_size | value=3
+2026-03-13 21:40:30.239 | bulk_begin_edit.apply | col_name=pack_size | right_click_context={'row_id': '8', 'col_name': 'pack_size'} | row_count=1 | value=3
+2026-03-13 21:40:30.239 | bulk_begin_edit.rendered_row_error | col_name=pack_size | error='types.SimpleNamespace' object has no attribute '_bulk_row_values' | row_id=8
+2026-03-13 21:40:30.240 | bulk_begin_edit | col_name=buy_rule | right_click_row_id=7 | row_count=1 | row_ids=7
+2026-03-13 21:40:30.240 | bulk_begin_edit.buy_rule_editor | row_id=7
+2026-03-13 21:40:30.240 | bulk_begin_edit | col_name=pack_size | right_click_row_id=5 | row_count=1 | row_ids=5
+2026-03-13 21:40:30.240 | bulk_begin_edit.prompt_result | cancelled=False | col_name=pack_size | value=5
+2026-03-13 21:40:30.241 | bulk_begin_edit.apply | col_name=pack_size | right_click_context={'row_id': '5', 'col_name': 'pack_size'} | row_count=1 | value=5
+2026-03-13 21:40:30.241 | bulk_begin_edit.rendered_row_error | col_name=pack_size | error='types.SimpleNamespace' object has no attribute '_bulk_row_values' | row_id=5
+2026-03-13 21:40:30.241 | bulk_begin_edit | col_name=pack_size | right_click_row_id=3 | row_count=3 | row_ids=2,3,4
+2026-03-13 21:40:30.242 | bulk_begin_edit.prompt_result | cancelled=False | col_name=pack_size | value=5
+2026-03-13 21:40:30.242 | bulk_begin_edit.apply | col_name=pack_size | right_click_context={'row_id': '3', 'col_name': 'pack_size'} | row_count=3 | value=5
+2026-03-13 21:40:30.242 | bulk_begin_edit.rendered_row_error | col_name=pack_size | error='types.SimpleNamespace' object has no attribute '_bulk_row_values' | row_id=2
+2026-03-13 21:40:30.242 | bulk_begin_edit.rendered_row_error | col_name=pack_size | error='types.SimpleNamespace' object has no attribute '_bulk_row_values' | row_id=3
+2026-03-13 21:40:30.243 | bulk_begin_edit.rendered_row_error | col_name=pack_size | error='types.SimpleNamespace' object has no attribute '_bulk_row_values' | row_id=4
+2026-03-13 21:40:30.243 | bulk_begin_edit | col_name=pack_size | right_click_row_id= | row_count=1 | row_ids=8
+2026-03-13 21:40:30.243 | bulk_begin_edit.prompt_result | cancelled=False | col_name=pack_size | value=3
+2026-03-13 21:40:30.243 | bulk_begin_edit.apply | col_name=pack_size | right_click_context={} | row_count=1 | value=3
+2026-03-13 21:40:30.244 | bulk_begin_edit.rendered_row_error | col_name=pack_size | error='types.SimpleNamespace' object has no attribute '_bulk_row_values' | row_id=8
+2026-03-13 21:40:30.244 | bulk_begin_edit | col_name=pack_size | right_click_row_id= | row_count=1 | row_ids=2
+2026-03-13 21:40:30.244 | bulk_begin_edit.prompt_result | cancelled=False | col_name=pack_size | value=5
+2026-03-13 21:40:30.245 | bulk_begin_edit.apply | col_name=pack_size | right_click_context={} | row_count=1 | value=5
+2026-03-13 21:40:30.245 | bulk_begin_edit.rendered_row_error | col_name=pack_size | error='types.SimpleNamespace' object has no attribute '_bulk_row_values' | row_id=2
+2026-03-13 21:40:30.245 | bulk_begin_edit | col_name=pack_size | right_click_row_id= | row_count=2 | row_ids=0,1
+2026-03-13 21:40:30.245 | bulk_begin_edit.prompt_result | cancelled=False | col_name=pack_size | value=750
+2026-03-13 21:40:30.246 | bulk_begin_edit.apply | col_name=pack_size | right_click_context={} | row_count=2 | value=750
+2026-03-13 21:40:30.246 | bulk_begin_edit.rendered_row_error | col_name=pack_size | error='types.SimpleNamespace' object has no attribute '_bulk_row_values' | row_id=0
+2026-03-13 21:40:30.246 | bulk_begin_edit.rendered_row_error | col_name=pack_size | error='types.SimpleNamespace' object has no attribute '_bulk_row_values' | row_id=1
+2026-03-13 21:40:30.247 | bulk_shortcut_fill | alias=fill_down | col_name=pack_size | row_count=2 | value=500
+2026-03-13 21:40:30.247 | bulk_sheet.handle_edit.begin | col=1 | event_value=500 | row=0
+2026-03-13 21:40:30.248 | bulk_sheet.handle_edit.target | col=1 | col_name=pack_size | row=0 | row_id=4
+2026-03-13 21:40:30.248 | bulk_sheet.handle_edit.queued | col_name=pack_size | row_id=4 | target_row_ids=4,8
+2026-03-13 21:40:30.248 | bulk_sheet.post_edit.schedule | delay_ms=1
+2026-03-13 21:40:30.248 | bulk_sheet.post_edit.commit | col=1 | col_name=pack_size | committed_value=500 | editable=True | row=0 | row_id=4 | sheet_value=500
+2026-03-13 21:40:30.249 | bulk_sheet.post_edit.apply | col_name=pack_size | row_id=4 | value=500
+2026-03-13 21:40:30.249 | bulk_sheet.post_edit.apply | col_name=pack_size | row_id=8 | value=500
+2026-03-13 21:40:30.249 | bulk_sheet.post_edit.filtered | incremental=True
+2026-03-13 21:40:30.249 | bulk_sheet.post_edit.rendered_row_error | error='types.SimpleNamespace' object has no attribute '_bulk_row_values' | row_id=4
+2026-03-13 21:40:30.250 | bulk_sheet.post_edit.drain | col_name=vendor | row_id=4
+2026-03-13 21:40:30.250 | bulk_sheet.post_edit.commit | col=0 | col_name=vendor | committed_value=OLDV | editable=True | row=0 | row_id=4 | sheet_value=VALUE
+2026-03-13 21:40:30.250 | bulk_sheet.post_edit.apply | col_name=vendor | row_id=4 | value=OLDV
+2026-03-13 21:40:30.250 | bulk_sheet.post_edit.filtered | incremental=True
+2026-03-13 21:40:30.251 | bulk_sheet.post_edit.rendered_row_error | error='types.SimpleNamespace' object has no attribute '_bulk_row_values' | row_id=4
+2026-03-13 21:40:30.251 | bulk_sheet.post_edit.keep_selection | current_serial=1 | pending_serial=0
+2026-03-13 21:40:30.251 | bulk_sheet.handle_edit.begin | col=1 | event_value=12 | row=1
+2026-03-13 21:40:30.251 | bulk_sheet.handle_edit.target | col=1 | col_name=pack_size | row=1 | row_id=8
+2026-03-13 21:40:30.252 | bulk_sheet.handle_edit.queued | col_name=pack_size | row_id=8 | target_row_ids=8
+2026-03-13 21:40:30.252 | bulk_sheet.post_edit.schedule | delay_ms=1
+2026-03-13 21:40:30.252 | bulk_sheet.select.clear_right_click_context
+2026-03-13 21:40:30.253 | bulk_sheet.post_edit.commit | col=0 | col_name=vendor | committed_value=ABC | editable=True | row=0 | row_id=4 | sheet_value=ABC
+2026-03-13 21:40:30.253 | bulk_sheet.post_edit.apply | col_name=vendor | row_id=4 | value=ABC
+2026-03-13 21:40:30.253 | bulk_sheet.post_edit.filtered | incremental=True
+2026-03-13 21:40:30.253 | bulk_sheet.post_edit.rendered_row_error | error=list index out of range | row_id=4
+2026-03-13 21:40:30.254 | bulk_sheet.post_edit.keep_selection | current_serial=2 | pending_serial=1
+2026-03-13 21:40:30.254 | bulk_sheet.set_rows.clear_right_click_context
+2026-03-13 21:40:30.292 | bulk_apply_editor_value.begin | col_name=cur_max | raw=14 | row_id=0
+2026-03-13 21:40:30.305 | bulk_apply_editor_value.minmax | col_name=cur_max | final=12 | parsed=14 | raw_need=12 | row_id=0 | suggested=12
+2026-03-13 21:40:30.306 | bulk_apply_editor_value.begin | col_name=final_qty | raw=3 | row_id=0
+2026-03-13 21:40:30.306 | bulk_apply_editor_value.final_qty | final=3 | qty=3 | row_id=0 | suggested=8 | why=Stock after open POs: 2 | Target stock: 10 | Based on current max | Rounded up to pack of 4
+2026-03-13 21:40:30.306 | bulk_apply_editor_value.begin | col_name=pack_size | raw=3 | row_id=0
+2026-03-13 21:40:30.307 | bulk_apply_editor_value.pack_size | item_code=5VX560 | line_code=GDY- | new_final=3 | new_pack=3 | new_policy=standard | new_suggested=3 | old_final=2 | old_pack=None | old_policy= | old_suggested=None | row_id=0 | rule={"pack_size": 3} | why=Stock after open POs: 1 | Target stock: 3 | Based on current max | Rounded up to pack of 3
+2026-03-13 21:40:30.307 | bulk_apply_editor_value.begin | col_name=pack_size | raw=3 | row_id=0
+2026-03-13 21:40:30.307 | bulk_apply_editor_value.pack_size | item_code=5VX560 | line_code=GDY- | new_final=3 | new_pack=3 | new_policy=standard | new_suggested=3 | old_final=2 | old_pack=None | old_policy=exact_qty | old_suggested=2 | row_id=0 | rule={"pack_size": 3} | why=Stock after open POs: 1 | Target stock: 3 | Based on current max | Rounded up to pack of 3
+2026-03-13 21:40:30.308 | bulk_apply_editor_value.begin | col_name=pack_size | raw=6 | row_id=0
+2026-03-13 21:40:30.308 | bulk_apply_editor_value.pack_size | item_code=GH781-4 | line_code=AER- | new_final=12 | new_pack=6 | new_policy=standard | new_suggested=12 | old_final=10 | old_pack=5 | old_policy=standard | old_suggested=10 | row_id=0 | rule={"pack_size": 6} | why=Stock after open POs: 0 | Target stock: 10 | Based on current max | Rounded up to pack of 6
+2026-03-13 21:40:30.308 | bulk_apply_editor_value.begin | col_name=qoh | raw=10 | row_id=0
+2026-03-13 21:40:30.309 | bulk_apply_editor_value.qoh | final=0 | new_qoh=10.0 | old_qoh=2 | raw_need=0 | row_id=0 | suggested=0
+2026-03-13 21:40:30.310 | buy_rule_editor.open | idx=0 | item_code=5VX560 | item_pack=12 | item_policy=standard | line_code=GDY- | rule={}
+2026-03-13 21:40:30.310 | buy_rule_editor.save.begin | acceptable_overstock_pct= | acceptable_overstock_qty= | allow_below_pack=True | idx=0 | initial_policy=standard | initial_policy_locked=False | item_code=5VX560 | line_code=GDY- | min_order_qty=2 | pack_qty=12 | reorder_trigger_pct= | reorder_trigger_qty= | selected_policy=standard
+2026-03-13 21:40:30.310 | buy_rule_editor.save.applied | final=4 | idx=0 | inferred_policy=soft_pack | item_code=5VX560 | line_code=GDY- | raw_need=3 | result_policy=soft_pack | saved_rule={'allow_below_pack': True, 'notes': '', 'min_order_qty': 2, 'pack_size': 12} | suggested=4 | why=Stock after open POs: 0 | Target stock: 3 | Based on current max | Soft pack: min order 2
+2026-03-13 21:40:30.311 | buy_rule_editor.save.rendered_row | idx=0 | row=
+2026-03-13 21:40:30.311 | buy_rule_editor.open | idx=0 | item_code=GH781-4 | item_pack=12 | item_policy=standard | line_code=AER- | rule={}
+2026-03-13 21:40:30.312 | buy_rule_editor.save.begin | acceptable_overstock_pct=10 | acceptable_overstock_qty=12 | allow_below_pack=False | idx=0 | initial_policy=standard | initial_policy_locked=False | item_code=GH781-4 | line_code=AER- | min_order_qty=2 | pack_qty=12 | reorder_trigger_pct=20 | reorder_trigger_qty=60 | selected_policy=standard
+2026-03-13 21:40:30.312 | buy_rule_editor.save.applied | final=24 | idx=0 | inferred_policy=standard | item_code=GH781-4 | line_code=AER- | raw_need=18 | result_policy=standard | saved_rule={'allow_below_pack': False, 'notes': '', 'min_order_qty': 2, 'pack_size': 12, 'reorder_trigger_qty': 60, 'reorder_trigger_pct': 20.0, 'acceptable_overstock_qty': 12, 'acceptable_overstock_pct': 10.0} | suggested=24 | why=Stock after open POs: 0 | Target stock: 18 | Based on current max | Reorder trigger: 60 | Rounded up to pack of 12
+2026-03-13 21:40:30.312 | buy_rule_editor.save.rendered_row | idx=0 | row=
+2026-03-13 21:40:30.318 | bulk_filter.applied | sample=AER-:GH781-4 | total=1
+2026-03-13 21:43:21.187 | bulk_apply_editor_value.begin | col_name=cur_max | raw=14 | row_id=0
+2026-03-13 21:43:21.188 | bulk_apply_editor_value.minmax | col_name=cur_max | final=12 | parsed=14 | raw_need=12 | row_id=0 | suggested=12
+2026-03-13 21:43:21.188 | bulk_apply_editor_value.begin | col_name=final_qty | raw=3 | row_id=0
+2026-03-13 21:43:21.188 | bulk_apply_editor_value.final_qty | final=3 | qty=3 | row_id=0 | suggested=8 | why=Stock after open POs: 2 | Target stock: 10 | Based on current max | Rounded up to pack of 4
+2026-03-13 21:43:21.189 | bulk_apply_editor_value.begin | col_name=pack_size | raw=3 | row_id=0
+2026-03-13 21:43:21.189 | bulk_apply_editor_value.pack_size | item_code=5VX560 | line_code=GDY- | new_final=3 | new_pack=3 | new_policy=standard | new_suggested=3 | old_final=2 | old_pack=None | old_policy= | old_suggested=None | row_id=0 | rule={"pack_size": 3} | why=Stock after open POs: 1 | Target stock: 3 | Based on current max | Rounded up to pack of 3
+2026-03-13 21:43:21.189 | bulk_apply_editor_value.begin | col_name=pack_size | raw=3 | row_id=0
+2026-03-13 21:43:21.189 | bulk_apply_editor_value.pack_size | item_code=5VX560 | line_code=GDY- | new_final=3 | new_pack=3 | new_policy=standard | new_suggested=3 | old_final=2 | old_pack=None | old_policy=exact_qty | old_suggested=2 | row_id=0 | rule={"pack_size": 3} | why=Stock after open POs: 1 | Target stock: 3 | Based on current max | Rounded up to pack of 3
+2026-03-13 21:43:21.190 | bulk_apply_editor_value.begin | col_name=pack_size | raw=6 | row_id=0
+2026-03-13 21:43:21.190 | bulk_apply_editor_value.pack_size | item_code=GH781-4 | line_code=AER- | new_final=12 | new_pack=6 | new_policy=standard | new_suggested=12 | old_final=10 | old_pack=5 | old_policy=standard | old_suggested=10 | row_id=0 | rule={"pack_size": 6} | why=Stock after open POs: 0 | Target stock: 10 | Based on current max | Rounded up to pack of 6
+2026-03-13 21:43:21.190 | bulk_apply_editor_value.begin | col_name=qoh | raw=10 | row_id=0
+2026-03-13 21:43:21.191 | bulk_apply_editor_value.qoh | final=0 | new_qoh=10.0 | old_qoh=2 | raw_need=0 | row_id=0 | suggested=0
+2026-03-13 21:43:21.192 | buy_rule_editor.open | idx=0 | item_code=5VX560 | item_pack=12 | item_policy=standard | line_code=GDY- | rule={}
+2026-03-13 21:43:21.192 | buy_rule_editor.save.begin | acceptable_overstock_pct= | acceptable_overstock_qty= | allow_below_pack=True | idx=0 | initial_policy=standard | initial_policy_locked=False | item_code=5VX560 | line_code=GDY- | min_order_qty=2 | pack_qty=12 | reorder_trigger_pct= | reorder_trigger_qty= | selected_policy=standard
+2026-03-13 21:43:21.193 | buy_rule_editor.save.applied | final=4 | idx=0 | inferred_policy=soft_pack | item_code=5VX560 | line_code=GDY- | raw_need=3 | result_policy=soft_pack | saved_rule={'allow_below_pack': True, 'notes': '', 'min_order_qty': 2, 'pack_size': 12} | suggested=4 | why=Stock after open POs: 0 | Target stock: 3 | Based on current max | Soft pack: min order 2
+2026-03-13 21:43:21.193 | buy_rule_editor.save.rendered_row | idx=0 | row=
+2026-03-13 21:43:21.194 | buy_rule_editor.open | idx=0 | item_code=GH781-4 | item_pack=300 | item_policy=standard | line_code=AER- | rule={}
+2026-03-13 21:43:21.194 | buy_rule_editor.save.begin | acceptable_overstock_pct= | acceptable_overstock_qty= | allow_below_pack=False | idx=0 | initial_policy=standard | initial_policy_locked=False | item_code=GH781-4 | line_code=AER- | min_order_qty= | pack_qty=300 | reorder_trigger_pct= | reorder_trigger_qty=60 | selected_policy=pack_trigger
+2026-03-13 21:43:21.194 | buy_rule_editor.save.applied | final=300 | idx=0 | inferred_policy=reel_review | item_code=GH781-4 | line_code=AER- | raw_need=35 | result_policy=pack_trigger | saved_rule={'allow_below_pack': False, 'notes': '', 'pack_size': 300, 'reorder_trigger_qty': 60, 'order_policy': 'pack_trigger', 'policy_locked': True} | suggested=300 | why=Stock after open POs: 58 | Target stock: 93 | Based on current max | Reorder trigger: 60 | Pack trigger: rounded to replenishment unit 300
+2026-03-13 21:43:21.195 | buy_rule_editor.save.rendered_row | idx=0 | row=
+2026-03-13 21:43:21.196 | buy_rule_editor.open | idx=0 | item_code=GH781-4 | item_pack=12 | item_policy=standard | line_code=AER- | rule={}
+2026-03-13 21:43:21.196 | buy_rule_editor.save.begin | acceptable_overstock_pct=10 | acceptable_overstock_qty=12 | allow_below_pack=False | idx=0 | initial_policy=standard | initial_policy_locked=False | item_code=GH781-4 | line_code=AER- | min_order_qty=2 | pack_qty=12 | reorder_trigger_pct=20 | reorder_trigger_qty=60 | selected_policy=standard
+2026-03-13 21:43:21.196 | buy_rule_editor.save.applied | final=24 | idx=0 | inferred_policy=standard | item_code=GH781-4 | line_code=AER- | raw_need=18 | result_policy=standard | saved_rule={'allow_below_pack': False, 'notes': '', 'min_order_qty': 2, 'pack_size': 12, 'reorder_trigger_qty': 60, 'reorder_trigger_pct': 20.0, 'acceptable_overstock_qty': 12, 'acceptable_overstock_pct': 10.0} | suggested=24 | why=Stock after open POs: 0 | Target stock: 18 | Based on current max | Reorder trigger: 60 | Rounded up to pack of 12
+2026-03-13 21:43:21.197 | buy_rule_editor.save.rendered_row | idx=0 | row=
+2026-03-13 21:43:21.203 | bulk_filter.applied | sample=AER-:GH781-4 | total=1
+2026-03-13 21:43:21.219 | bulk_begin_edit | col_name=pack_size | right_click_row_id= | row_count=2 | row_ids=0,1
+2026-03-13 21:43:21.219 | bulk_begin_edit.prompt_result | cancelled=False | col_name=pack_size | value=750
+2026-03-13 21:43:21.220 | bulk_begin_edit.apply | col_name=pack_size | right_click_context={} | row_count=2 | value=750
+2026-03-13 21:43:21.220 | bulk_begin_edit.rendered_row_error | col_name=pack_size | error='types.SimpleNamespace' object has no attribute '_bulk_row_values' | row_id=0
+2026-03-13 21:43:21.220 | bulk_begin_edit.rendered_row_error | col_name=pack_size | error='types.SimpleNamespace' object has no attribute '_bulk_row_values' | row_id=1
+2026-03-13 21:43:21.221 | bulk_begin_edit | col_name=pack_size | right_click_row_id=8 | row_count=1 | row_ids=8
+2026-03-13 21:43:21.221 | bulk_begin_edit.prompt_result | cancelled=False | col_name=pack_size | value=3
+2026-03-13 21:43:21.221 | bulk_begin_edit.apply | col_name=pack_size | right_click_context={'row_id': '8', 'col_name': 'pack_size'} | row_count=1 | value=3
+2026-03-13 21:43:21.221 | bulk_begin_edit.rendered_row_error | col_name=pack_size | error='types.SimpleNamespace' object has no attribute '_bulk_row_values' | row_id=8
+2026-03-13 21:43:21.222 | bulk_begin_edit | col_name=buy_rule | right_click_row_id=7 | row_count=1 | row_ids=7
+2026-03-13 21:43:21.222 | bulk_begin_edit.buy_rule_editor | row_id=7
+2026-03-13 21:43:21.222 | bulk_begin_edit | col_name=pack_size | right_click_row_id=5 | row_count=1 | row_ids=5
+2026-03-13 21:43:21.222 | bulk_begin_edit.prompt_result | cancelled=False | col_name=pack_size | value=5
+2026-03-13 21:43:21.223 | bulk_begin_edit.apply | col_name=pack_size | right_click_context={'row_id': '5', 'col_name': 'pack_size'} | row_count=1 | value=5
+2026-03-13 21:43:21.223 | bulk_begin_edit.rendered_row_error | col_name=pack_size | error='types.SimpleNamespace' object has no attribute '_bulk_row_values' | row_id=5
+2026-03-13 21:43:21.224 | bulk_begin_edit | col_name=pack_size | right_click_row_id=3 | row_count=3 | row_ids=2,3,4
+2026-03-13 21:43:21.224 | bulk_begin_edit.prompt_result | cancelled=False | col_name=pack_size | value=5
+2026-03-13 21:43:21.224 | bulk_begin_edit.apply | col_name=pack_size | right_click_context={'row_id': '3', 'col_name': 'pack_size'} | row_count=3 | value=5
+2026-03-13 21:43:21.225 | bulk_begin_edit.rendered_row_error | col_name=pack_size | error='types.SimpleNamespace' object has no attribute '_bulk_row_values' | row_id=2
+2026-03-13 21:43:21.225 | bulk_begin_edit.rendered_row_error | col_name=pack_size | error='types.SimpleNamespace' object has no attribute '_bulk_row_values' | row_id=3
+2026-03-13 21:43:21.225 | bulk_begin_edit.rendered_row_error | col_name=pack_size | error='types.SimpleNamespace' object has no attribute '_bulk_row_values' | row_id=4
+2026-03-13 21:43:21.226 | bulk_begin_edit | col_name=pack_size | right_click_row_id= | row_count=1 | row_ids=8
+2026-03-13 21:43:21.226 | bulk_begin_edit.prompt_result | cancelled=False | col_name=pack_size | value=3
+2026-03-13 21:43:21.226 | bulk_begin_edit.apply | col_name=pack_size | right_click_context={} | row_count=1 | value=3
+2026-03-13 21:43:21.226 | bulk_begin_edit.rendered_row_error | col_name=pack_size | error='types.SimpleNamespace' object has no attribute '_bulk_row_values' | row_id=8
+2026-03-13 21:43:21.227 | bulk_begin_edit | col_name=pack_size | right_click_row_id= | row_count=1 | row_ids=2
+2026-03-13 21:43:21.227 | bulk_begin_edit.prompt_result | cancelled=False | col_name=pack_size | value=5
+2026-03-13 21:43:21.227 | bulk_begin_edit.apply | col_name=pack_size | right_click_context={} | row_count=1 | value=5
+2026-03-13 21:43:21.227 | bulk_begin_edit.rendered_row_error | col_name=pack_size | error='types.SimpleNamespace' object has no attribute '_bulk_row_values' | row_id=2
+2026-03-13 21:43:21.228 | bulk_begin_edit | col_name=pack_size | right_click_row_id= | row_count=2 | row_ids=0,1
+2026-03-13 21:43:21.229 | bulk_begin_edit.prompt_result | cancelled=False | col_name=pack_size | value=750
+2026-03-13 21:43:21.229 | bulk_begin_edit.apply | col_name=pack_size | right_click_context={} | row_count=2 | value=750
+2026-03-13 21:43:21.229 | bulk_begin_edit.rendered_row_error | col_name=pack_size | error='types.SimpleNamespace' object has no attribute '_bulk_row_values' | row_id=0
+2026-03-13 21:43:21.229 | bulk_begin_edit.rendered_row_error | col_name=pack_size | error='types.SimpleNamespace' object has no attribute '_bulk_row_values' | row_id=1
+2026-03-13 21:43:21.230 | bulk_shortcut_fill | alias=fill_down | col_name=pack_size | row_count=2 | value=500
+2026-03-13 21:43:21.231 | bulk_sheet.handle_edit.begin | col=1 | event_value=500 | row=0
+2026-03-13 21:43:21.231 | bulk_sheet.handle_edit.target | col=1 | col_name=pack_size | row=0 | row_id=4
+2026-03-13 21:43:21.231 | bulk_sheet.handle_edit.queued | col_name=pack_size | row_id=4 | target_row_ids=4,8
+2026-03-13 21:43:21.232 | bulk_sheet.post_edit.schedule | delay_ms=1
+2026-03-13 21:43:21.232 | bulk_sheet.post_edit.commit | col=1 | col_name=pack_size | committed_value=500 | editable=True | row=0 | row_id=4 | sheet_value=500
+2026-03-13 21:43:21.232 | bulk_sheet.post_edit.apply | col_name=pack_size | row_id=4 | value=500
+2026-03-13 21:43:21.232 | bulk_sheet.post_edit.apply | col_name=pack_size | row_id=8 | value=500
+2026-03-13 21:43:21.232 | bulk_sheet.post_edit.filtered | incremental=True
+2026-03-13 21:43:21.233 | bulk_sheet.post_edit.rendered_row_error | error='types.SimpleNamespace' object has no attribute '_bulk_row_values' | row_id=4
+2026-03-13 21:43:21.233 | bulk_sheet.post_edit.drain | col_name=vendor | row_id=4
+2026-03-13 21:43:21.233 | bulk_sheet.post_edit.commit | col=0 | col_name=vendor | committed_value=OLDV | editable=True | row=0 | row_id=4 | sheet_value=VALUE
+2026-03-13 21:43:21.233 | bulk_sheet.post_edit.apply | col_name=vendor | row_id=4 | value=OLDV
+2026-03-13 21:43:21.234 | bulk_sheet.post_edit.filtered | incremental=True
+2026-03-13 21:43:21.234 | bulk_sheet.post_edit.rendered_row_error | error='types.SimpleNamespace' object has no attribute '_bulk_row_values' | row_id=4
+2026-03-13 21:43:21.234 | bulk_sheet.post_edit.keep_selection | current_serial=1 | pending_serial=0
+2026-03-13 21:43:21.234 | bulk_sheet.handle_edit.begin | col=1 | event_value=12 | row=1
+2026-03-13 21:43:21.235 | bulk_sheet.handle_edit.target | col=1 | col_name=pack_size | row=1 | row_id=8
+2026-03-13 21:43:21.235 | bulk_sheet.handle_edit.queued | col_name=pack_size | row_id=8 | target_row_ids=8
+2026-03-13 21:43:21.235 | bulk_sheet.post_edit.schedule | delay_ms=1
+2026-03-13 21:43:21.236 | bulk_sheet.select.clear_right_click_context
+2026-03-13 21:43:21.236 | bulk_sheet.post_edit.commit | col=0 | col_name=vendor | committed_value=ABC | editable=True | row=0 | row_id=4 | sheet_value=ABC
+2026-03-13 21:43:21.236 | bulk_sheet.post_edit.apply | col_name=vendor | row_id=4 | value=ABC
+2026-03-13 21:43:21.237 | bulk_sheet.post_edit.filtered | incremental=True
+2026-03-13 21:43:21.237 | bulk_sheet.post_edit.rendered_row_error | error=list index out of range | row_id=4
+2026-03-13 21:43:21.237 | bulk_sheet.post_edit.keep_selection | current_serial=2 | pending_serial=1
+2026-03-13 21:43:21.238 | bulk_sheet.set_rows.clear_right_click_context
+2026-03-13 21:43:21.274 | bulk_apply_editor_value.begin | col_name=cur_max | raw=14 | row_id=0
+2026-03-13 21:43:21.274 | bulk_apply_editor_value.minmax | col_name=cur_max | final=12 | parsed=14 | raw_need=12 | row_id=0 | suggested=12
+2026-03-13 21:43:21.274 | bulk_apply_editor_value.begin | col_name=final_qty | raw=3 | row_id=0
+2026-03-13 21:43:21.274 | bulk_apply_editor_value.final_qty | final=3 | qty=3 | row_id=0 | suggested=8 | why=Stock after open POs: 2 | Target stock: 10 | Based on current max | Rounded up to pack of 4
+2026-03-13 21:43:21.275 | bulk_apply_editor_value.begin | col_name=pack_size | raw=3 | row_id=0
+2026-03-13 21:43:21.275 | bulk_apply_editor_value.pack_size | item_code=5VX560 | line_code=GDY- | new_final=3 | new_pack=3 | new_policy=standard | new_suggested=3 | old_final=2 | old_pack=None | old_policy= | old_suggested=None | row_id=0 | rule={"pack_size": 3} | why=Stock after open POs: 1 | Target stock: 3 | Based on current max | Rounded up to pack of 3
+2026-03-13 21:43:21.275 | bulk_apply_editor_value.begin | col_name=pack_size | raw=3 | row_id=0
+2026-03-13 21:43:21.276 | bulk_apply_editor_value.pack_size | item_code=5VX560 | line_code=GDY- | new_final=3 | new_pack=3 | new_policy=standard | new_suggested=3 | old_final=2 | old_pack=None | old_policy=exact_qty | old_suggested=2 | row_id=0 | rule={"pack_size": 3} | why=Stock after open POs: 1 | Target stock: 3 | Based on current max | Rounded up to pack of 3
+2026-03-13 21:43:21.276 | bulk_apply_editor_value.begin | col_name=pack_size | raw=6 | row_id=0
+2026-03-13 21:43:21.276 | bulk_apply_editor_value.pack_size | item_code=GH781-4 | line_code=AER- | new_final=12 | new_pack=6 | new_policy=standard | new_suggested=12 | old_final=10 | old_pack=5 | old_policy=standard | old_suggested=10 | row_id=0 | rule={"pack_size": 6} | why=Stock after open POs: 0 | Target stock: 10 | Based on current max | Rounded up to pack of 6
+2026-03-13 21:43:21.277 | bulk_apply_editor_value.begin | col_name=qoh | raw=10 | row_id=0
+2026-03-13 21:43:21.277 | bulk_apply_editor_value.qoh | final=0 | new_qoh=10.0 | old_qoh=2 | raw_need=0 | row_id=0 | suggested=0
+2026-03-13 21:43:21.278 | buy_rule_editor.open | idx=0 | item_code=5VX560 | item_pack=12 | item_policy=standard | line_code=GDY- | rule={}
+2026-03-13 21:43:21.278 | buy_rule_editor.save.begin | acceptable_overstock_pct= | acceptable_overstock_qty= | allow_below_pack=True | idx=0 | initial_policy=standard | initial_policy_locked=False | item_code=5VX560 | line_code=GDY- | min_order_qty=2 | pack_qty=12 | reorder_trigger_pct= | reorder_trigger_qty= | selected_policy=standard
+2026-03-13 21:43:21.278 | buy_rule_editor.save.applied | final=4 | idx=0 | inferred_policy=soft_pack | item_code=5VX560 | line_code=GDY- | raw_need=3 | result_policy=soft_pack | saved_rule={'allow_below_pack': True, 'notes': '', 'min_order_qty': 2, 'pack_size': 12} | suggested=4 | why=Stock after open POs: 0 | Target stock: 3 | Based on current max | Soft pack: min order 2
+2026-03-13 21:43:21.278 | buy_rule_editor.save.rendered_row | idx=0 | row=
+2026-03-13 21:43:21.279 | buy_rule_editor.open | idx=0 | item_code=GH781-4 | item_pack=300 | item_policy=standard | line_code=AER- | rule={}
+2026-03-13 21:43:21.280 | buy_rule_editor.save.begin | acceptable_overstock_pct= | acceptable_overstock_qty= | allow_below_pack=False | idx=0 | initial_policy=standard | initial_policy_locked=False | item_code=GH781-4 | line_code=AER- | min_order_qty= | pack_qty=300 | reorder_trigger_pct= | reorder_trigger_qty=60 | selected_policy=pack_trigger
+2026-03-13 21:43:21.280 | buy_rule_editor.save.applied | final=300 | idx=0 | inferred_policy=reel_review | item_code=GH781-4 | line_code=AER- | raw_need=35 | result_policy=pack_trigger | saved_rule={'allow_below_pack': False, 'notes': '', 'pack_size': 300, 'reorder_trigger_qty': 60, 'order_policy': 'pack_trigger', 'policy_locked': True} | suggested=300 | why=Stock after open POs: 58 | Target stock: 93 | Based on current max | Reorder trigger: 60 | Pack trigger: rounded to replenishment unit 300
+2026-03-13 21:43:21.280 | buy_rule_editor.save.rendered_row | idx=0 | row=
+2026-03-13 21:43:21.281 | buy_rule_editor.open | idx=0 | item_code=GH781-4 | item_pack=12 | item_policy=standard | line_code=AER- | rule={}
+2026-03-13 21:43:21.281 | buy_rule_editor.save.begin | acceptable_overstock_pct=10 | acceptable_overstock_qty=12 | allow_below_pack=False | idx=0 | initial_policy=standard | initial_policy_locked=False | item_code=GH781-4 | line_code=AER- | min_order_qty=2 | pack_qty=12 | reorder_trigger_pct=20 | reorder_trigger_qty=60 | selected_policy=standard
+2026-03-13 21:43:21.282 | buy_rule_editor.save.applied | final=24 | idx=0 | inferred_policy=standard | item_code=GH781-4 | line_code=AER- | raw_need=18 | result_policy=standard | saved_rule={'allow_below_pack': False, 'notes': '', 'min_order_qty': 2, 'pack_size': 12, 'reorder_trigger_qty': 60, 'reorder_trigger_pct': 20.0, 'acceptable_overstock_qty': 12, 'acceptable_overstock_pct': 10.0} | suggested=24 | why=Stock after open POs: 0 | Target stock: 18 | Based on current max | Reorder trigger: 60 | Rounded up to pack of 12
+2026-03-13 21:43:21.282 | buy_rule_editor.save.rendered_row | idx=0 | row=
+2026-03-13 21:43:21.287 | bulk_filter.applied | sample=AER-:GH781-4 | total=1

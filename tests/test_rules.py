@@ -11,6 +11,7 @@ from rules import (
     calculate_inventory_position,
     calculate_raw_need,
     calculate_suggested_qty,
+    determine_reorder_trigger_threshold,
     determine_order_policy,
     determine_target_stock,
     enrich_item,
@@ -59,6 +60,16 @@ class RulesTests(unittest.TestCase):
         self.assertEqual(item["acceptable_overstock_qty"], 12)
         self.assertEqual(item["acceptable_overstock_pct"], 10.0)
 
+    def test_determine_reorder_trigger_threshold_uses_max_of_trigger_fields(self):
+        item = {
+            "inventory": {"min": 10},
+            "pack_size": 300,
+            "reorder_trigger_qty": 60,
+            "reorder_trigger_pct": 20,
+        }
+        self.assertEqual(determine_reorder_trigger_threshold(item), 60)
+        self.assertEqual(item["reorder_trigger_basis"], "trigger_qty")
+
     def test_reel_review_when_pack_far_exceeds_max(self):
         policy = determine_order_policy({"description": '1/4" 2WIRE 6500PSI HOSE'}, {"max": 100}, 500, None)
         self.assertEqual(policy, "reel_review")
@@ -93,6 +104,11 @@ class RulesTests(unittest.TestCase):
         qty, why = calculate_suggested_qty(3, 500, "soft_pack", {"min_order_qty": 250}, {"max": 100})
         self.assertEqual(qty, 250)
         self.assertIn("Soft pack: min order 250", why)
+
+    def test_pack_trigger_rounds_to_full_pack(self):
+        qty, why = calculate_suggested_qty(35, 300, "pack_trigger", None, {"max": 93})
+        self.assertEqual(qty, 300)
+        self.assertIn("Pack trigger", why)
 
     def test_standard_policy_rounds_up_but_at_least_one_pack(self):
         qty, why = calculate_suggested_qty(14, 12, "standard", None, {})
@@ -141,6 +157,19 @@ class RulesTests(unittest.TestCase):
         }
         self.assertEqual(calculate_raw_need(item), 0)
 
+    def test_calculate_raw_need_respects_trigger_qty_gate_before_target_gap(self):
+        item = {
+            "inventory": {"qoh": 70, "max": 93},
+            "qty_on_po": 0,
+            "demand_signal": 12,
+            "pack_size": 300,
+            "reorder_trigger_qty": 60,
+        }
+        self.assertEqual(calculate_raw_need(item), 0)
+
+        item["inventory"]["qoh"] = 58
+        self.assertEqual(calculate_raw_need(item), 35)
+
     def test_evaluate_reorder_trigger_false_when_no_demand_and_min_is_covered(self):
         item = {
             "inventory": {"qoh": 5, "min": 4, "max": None},
@@ -165,6 +194,38 @@ class RulesTests(unittest.TestCase):
         determine_target_stock(item)
         self.assertTrue(evaluate_reorder_trigger(item))
         self.assertEqual(item["target_stock"], 6)
+
+    def test_evaluate_reorder_trigger_uses_configured_trigger_qty_for_active_item(self):
+        item = {
+            "inventory": {"qoh": 70, "min": 10, "max": 93},
+            "qty_on_po": 0,
+            "demand_signal": 12,
+            "pack_size": 300,
+            "reorder_trigger_qty": 60,
+        }
+        calculate_inventory_position(item)
+        determine_target_stock(item)
+        self.assertFalse(evaluate_reorder_trigger(item))
+
+        item["inventory"]["qoh"] = 58
+        calculate_inventory_position(item)
+        self.assertTrue(evaluate_reorder_trigger(item))
+
+    def test_evaluate_reorder_trigger_uses_configured_trigger_pct_for_active_item(self):
+        item = {
+            "inventory": {"qoh": 25, "min": 5, "max": 20},
+            "qty_on_po": 0,
+            "demand_signal": 4,
+            "pack_size": 100,
+            "reorder_trigger_pct": 20,
+        }
+        calculate_inventory_position(item)
+        determine_target_stock(item)
+        self.assertFalse(evaluate_reorder_trigger(item))
+
+        item["inventory"]["qoh"] = 18
+        calculate_inventory_position(item)
+        self.assertTrue(evaluate_reorder_trigger(item))
 
     def test_calculate_raw_need_treats_negative_qoh_as_zero(self):
         item = {
@@ -260,6 +321,14 @@ class RulesTests(unittest.TestCase):
         self.assertIn("Trg:60", summary)
         self.assertIn("Trg:20%", summary)
 
+    def test_buy_rule_summary_labels_pack_trigger_policy(self):
+        summary = get_buy_rule_summary(
+            {"order_policy": "pack_trigger", "pack_size": 300},
+            {"reorder_trigger_qty": 60},
+        )
+        self.assertIn("TrigPk:300", summary)
+        self.assertIn("Trg:60", summary)
+
 
     def test_enrich_item_adds_inventory_and_suspense_reason_codes(self):
         item = {
@@ -315,6 +384,46 @@ class RulesTests(unittest.TestCase):
         self.assertEqual(item["reorder_trigger_pct"], 20.0)
         self.assertEqual(item["acceptable_overstock_qty"], 12)
         self.assertEqual(item["acceptable_overstock_pct"], 10.0)
+
+    def test_enrich_item_uses_configured_trigger_gate_and_reason_text(self):
+        item = {
+            "description": "HYD HOSE",
+            "qty_sold": 12,
+            "qty_suspended": 0,
+            "qty_on_po": 0,
+            "pack_size": 300,
+            "suggested_max": 93,
+            "demand_signal": 12,
+        }
+        rule = {"reorder_trigger_qty": 60}
+
+        enrich_item(item, {"qoh": 70, "max": 93, "min": 10}, 300, rule)
+        self.assertFalse(item["reorder_needed"])
+        self.assertEqual(item["raw_need"], 0)
+        self.assertIn("Reorder trigger: 60", item["why"])
+
+        enrich_item(item, {"qoh": 58, "max": 93, "min": 10}, 300, rule)
+        self.assertTrue(item["reorder_needed"])
+        self.assertEqual(item["raw_need"], 35)
+        self.assertIn("trigger_trigger_qty", item["reason_codes"])
+
+    def test_enrich_item_with_explicit_pack_trigger_policy_rounds_to_pack(self):
+        item = {
+            "description": "HYD HOSE",
+            "qty_sold": 12,
+            "qty_suspended": 0,
+            "qty_on_po": 0,
+            "pack_size": 300,
+            "suggested_max": 93,
+            "demand_signal": 12,
+        }
+        rule = {"order_policy": "pack_trigger", "reorder_trigger_qty": 60}
+
+        enrich_item(item, {"qoh": 58, "max": 93, "min": 10}, 300, rule)
+        self.assertEqual(item["order_policy"], "pack_trigger")
+        self.assertEqual(item["suggested_qty"], 300)
+        self.assertEqual(item["final_qty"], 300)
+        self.assertIn("pack_trigger", item["reason_codes"])
 
 
 if __name__ == "__main__":

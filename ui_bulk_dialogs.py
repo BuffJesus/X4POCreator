@@ -371,7 +371,7 @@ def open_buy_rule_editor(app, idx, order_rules_file):
     var_policy = tk.StringVar(value=initial_policy)
     combo_policy = ttk.Combobox(
         form, textvariable=var_policy, state="readonly", width=16,
-        values=["standard", "soft_pack", "exact_qty", "reel_review", "manual_only"]
+        values=["standard", "pack_trigger", "soft_pack", "exact_qty", "reel_review", "manual_only"]
     )
     combo_policy.grid(row=0, column=1, sticky="w", padx=8, pady=4)
 
