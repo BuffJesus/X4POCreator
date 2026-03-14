@@ -1,7 +1,7 @@
 @echo off
 setlocal
 echo ========================================
-echo   PO Builder - Build Executable
+echo   POBuilder - Build Executable
 echo ========================================
 echo.
 
@@ -58,11 +58,11 @@ if /i "%BUILD_MODE%"=="debug" (
         echo   BUILD FAILED - check errors above
     )
 ) else (
-    if exist "dist\PO Builder.exe" (
+    if exist "dist\POBuilder.exe" (
         echo   BUILD SUCCESSFUL!
-        echo   Executable: dist\PO Builder.exe
+        echo   Executable: dist\POBuilder.exe
         echo.
-        echo   Just share "PO Builder.exe" with your coworker.
+        echo   Just share "POBuilder.exe" with your coworker.
         echo.
         echo   These files are created automatically next
         echo   to the .exe on first use:

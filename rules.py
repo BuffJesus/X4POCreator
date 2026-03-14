@@ -93,14 +93,19 @@ def get_rule_pack_size(rule):
         return None
 
 
-def calculate_raw_need(item):
-    """Calculate the unconstrained order need from inventory position."""
+def calculate_inventory_position(item):
+    """Calculate and persist the item's inventory position."""
     inv = item.get("inventory", {}) or {}
     qoh = max(0, inv.get("qoh", 0) or 0)
     on_po = item.get("qty_on_po", 0) or 0
     inventory_position = qoh + on_po
     item["inventory_position"] = inventory_position
+    return inventory_position
 
+
+def determine_target_stock(item):
+    """Choose and persist the target stock basis for the item."""
+    inv = item.get("inventory", {}) or {}
     current_min = inv.get("min")
     current_max = inv.get("max")
     suggested_min = item.get("suggested_min")
@@ -129,14 +134,44 @@ def calculate_raw_need(item):
         else:
             item["target_basis"] = "none"
 
+    item["target_stock"] = target_stock if target_stock else 0
+    return item["target_stock"]
+
+
+def evaluate_reorder_trigger(item):
+    """Return whether the current inventory position warrants a reorder suggestion."""
+    inv = item.get("inventory", {}) or {}
+    inventory_position = item.get("inventory_position")
+    if inventory_position is None:
+        inventory_position = calculate_inventory_position(item)
+
+    target_stock = item.get("target_stock")
+    if target_stock is None:
+        target_stock = determine_target_stock(item)
+
+    current_min = inv.get("min")
+    demand_signal = item.get("demand_signal")
+    if demand_signal is None:
+        demand_signal = item.get("qty_sold", 0) + item.get("qty_suspended", 0)
+        item["demand_signal"] = demand_signal
+
     if demand_signal <= 0:
         if isinstance(current_min, (int, float)) and inventory_position < current_min:
             target_stock = max(value for value in (target_stock, current_min) if isinstance(value, (int, float)))
-        else:
-            item["target_stock"] = target_stock if target_stock else 0
-            return 0
+            item["target_stock"] = target_stock
+            return True
+        return False
 
-    item["target_stock"] = target_stock
+    return True
+
+
+def calculate_raw_need(item):
+    """Calculate the unconstrained order need from inventory position."""
+    inventory_position = calculate_inventory_position(item)
+    determine_target_stock(item)
+    if not evaluate_reorder_trigger(item):
+        return 0
+    target_stock = item.get("target_stock", 0)
     return max(0, int(math.ceil(target_stock - inventory_position)))
 
 
@@ -245,6 +280,9 @@ def enrich_item(item, inv, pack_qty, rule):
     Mutates the item dict in place with calculated fields.
     """
     item["inventory"] = inv or {}
+    calculate_inventory_position(item)
+    determine_target_stock(item)
+    item["reorder_needed"] = evaluate_reorder_trigger(item)
     raw_need = calculate_raw_need(item)
     item["raw_need"] = raw_need
 

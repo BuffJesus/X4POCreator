@@ -7,10 +7,13 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from rules import (
+    calculate_inventory_position,
     calculate_raw_need,
     calculate_suggested_qty,
     determine_order_policy,
+    determine_target_stock,
     enrich_item,
+    evaluate_reorder_trigger,
     evaluate_item_status,
     get_buy_rule_summary,
     get_rule_pack_size,
@@ -80,6 +83,24 @@ class RulesTests(unittest.TestCase):
         self.assertEqual(item["target_stock"], 20)
         self.assertEqual(item["target_basis"], "current_max")
 
+    def test_calculate_inventory_position_uses_qoh_plus_on_po(self):
+        item = {
+            "inventory": {"qoh": 8, "max": 20},
+            "qty_on_po": 4,
+        }
+        self.assertEqual(calculate_inventory_position(item), 12)
+        self.assertEqual(item["inventory_position"], 12)
+
+    def test_determine_target_stock_prefers_current_max_then_suggested_max(self):
+        item = {
+            "inventory": {"qoh": 8, "min": 5, "max": 20},
+            "qty_on_po": 4,
+            "demand_signal": 6,
+            "suggested_max": 18,
+        }
+        self.assertEqual(determine_target_stock(item), 20)
+        self.assertEqual(item["target_basis"], "current_max")
+
     def test_calculate_raw_need_returns_zero_when_qoh_and_on_po_cover_target(self):
         item = {
             "inventory": {"qoh": 12, "max": 20},
@@ -88,6 +109,31 @@ class RulesTests(unittest.TestCase):
             "suggested_max": 18,
         }
         self.assertEqual(calculate_raw_need(item), 0)
+
+    def test_evaluate_reorder_trigger_false_when_no_demand_and_min_is_covered(self):
+        item = {
+            "inventory": {"qoh": 5, "min": 4, "max": None},
+            "qty_on_po": 0,
+            "demand_signal": 0,
+            "suggested_min": None,
+            "suggested_max": None,
+        }
+        calculate_inventory_position(item)
+        determine_target_stock(item)
+        self.assertFalse(evaluate_reorder_trigger(item))
+
+    def test_evaluate_reorder_trigger_uses_min_floor_when_no_demand_and_below_min(self):
+        item = {
+            "inventory": {"qoh": 2, "min": 6, "max": None},
+            "qty_on_po": 0,
+            "demand_signal": 0,
+            "suggested_min": 4,
+            "suggested_max": None,
+        }
+        calculate_inventory_position(item)
+        determine_target_stock(item)
+        self.assertTrue(evaluate_reorder_trigger(item))
+        self.assertEqual(item["target_stock"], 6)
 
     def test_calculate_raw_need_treats_negative_qoh_as_zero(self):
         item = {
@@ -149,6 +195,7 @@ class RulesTests(unittest.TestCase):
         enrich_item(item, {"max": 100}, 500, None)
         self.assertEqual(item["order_policy"], "reel_review")
         self.assertEqual(item["status"], "review")
+        self.assertTrue(item["reorder_needed"])
         self.assertIn("reel_review", item["data_flags"])
         self.assertIn("Target stock", item["why"])
 

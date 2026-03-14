@@ -35,7 +35,7 @@ exe = EXE(
     a.binaries,
     a.datas,
     [],
-    name='PO Builder',
+    name='POBuilder',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,

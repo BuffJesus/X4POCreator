@@ -28,14 +28,14 @@ Use this checklist for every tagged release.
 ## 5. Build The Executable
 
 - run `build.bat`
-- confirm `dist\PO Builder.exe` is created successfully
+- confirm `dist\POBuilder.exe` is created successfully
 - confirm optional asset behavior is acceptable if `loading.gif`, `loading.wav`, or `icon.ico` are missing
 
 ## 6. Smoke Test The Packaged App
 
 Test the built `.exe`, not only source execution.
 
-- launch `dist\PO Builder.exe`
+- launch `dist\POBuilder.exe`
 - verify the app opens without blocking startup errors
 - load representative X4 CSV exports
 - walk through load -> assign -> review -> export

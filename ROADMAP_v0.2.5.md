@@ -2,7 +2,7 @@
 
 Status: proposed
 
-Current version: `0.1.9`
+Current version: `0.1.10`
 
 Target line: `0.2.0` through `0.2.5`
 
@@ -48,6 +48,9 @@ What is missing is an explicit concept of:
 - replenishment unit
 - acceptable intentional overstock
 - low-stock reserve threshold
+- vendor shipping policy
+- shipment release timing
+- free-freight threshold consolidation
 
 ## Bulk editor correctness risk
 
@@ -200,6 +203,110 @@ For `v0.2.5`, the ordering model should separate these ideas:
 5. review gate
 - whether the app should auto-order, suggest, or require review
 
+## Execution phases
+
+The remaining road to `v0.2.5` should be executed in phases, not as one flat checklist.
+
+### Phase 0. Reconcile roadmap and preserve current stability
+
+Purpose:
+
+- keep the roadmap truthful about what is already done
+- avoid redoing completed bulk-editor and signal-visibility work
+- keep packaged-app behavior stable while deeper algorithm changes are prepared
+
+Scope:
+
+- mark completed `0.2.0` / `0.2.1` foundation work
+- keep long-window and performance signals conservative
+- treat shipping as a later vendor-release layer, not part of the first reorder-core refactor
+
+### Phase 1. Reorder core refactor
+
+Purpose:
+
+- separate reorder trigger, target stock, quantity rounding, and review gating
+
+Why this comes first:
+
+- pack-trigger logic depends on it
+- shipping-aware release logic depends on it
+- explainability gets much cleaner once the stages are explicit
+
+Target result:
+
+- the code can answer:
+  - should this item reorder at all?
+  - what target stock is it using?
+  - how much would it suggest if it reorders?
+  - does the item require review?
+
+### Phase 2. Rule model expansion
+
+Purpose:
+
+- add explicit fields for trigger-driven replenishment and tolerable overstock
+
+Initial fields:
+
+- `reorder_trigger_qty`
+- `reorder_trigger_pct`
+- `acceptable_overstock_qty`
+- `acceptable_overstock_pct`
+
+### Phase 3. Pack-trigger behavior
+
+Purpose:
+
+- implement the first real behavior change for hose, bags, boxes, and reels
+
+Target result:
+
+- low-max / large-pack items can trigger early without being treated like suspicious over-orders
+
+### Phase 4. Review and removal coherence
+
+Purpose:
+
+- make downstream review and “not needed” logic respect the smarter trigger model
+
+Target result:
+
+- items no longer get good reorder logic upstream and contradictory review logic downstream
+
+### Phase 5. Vendor shipping policy model
+
+Purpose:
+
+- define vendor-level free-shipping days and freight-threshold rules
+
+Target result:
+
+- the app can reason about when a needed item should be released, not just whether it is needed
+
+### Phase 6. Shipping-aware release logic
+
+Purpose:
+
+- apply vendor shipping policy to actual order release recommendations
+
+Target result:
+
+- release now
+- hold for free-shipping day
+- hold for freight threshold
+- bypass the hold if the shortage is urgent
+
+### Phase 7. Remaining bulk-performance cleanup
+
+Purpose:
+
+- keep very large sessions responsive even when rebuilds are still required
+
+Target result:
+
+- separate full-session, active-filtered, and visible-row performance paths more aggressively
+
 ## Proposed policy expansions
 
 ### 1. Add explicit pack-aware reorder timing
@@ -266,6 +373,44 @@ The buy-rule model should eventually support fields such as:
 
 Not every field must ship at once, but `reorder_trigger_qty` and/or `reorder_trigger_pct` are high-value for these edge cases.
 
+### 4. Add vendor shipping and consolidation policy
+
+The app also needs a vendor-level shipping layer so it can help decide when an item should be released into an order, not just whether demand exists.
+
+Examples:
+
+- vendor ships free on a specific weekday
+- vendor ships free above a threshold such as `$2000`
+- urgent shortages should still release immediately even if the preferred free-shipping day has not arrived
+
+The algorithm should eventually separate:
+
+- item demand and reorder need
+- vendor shipment policy
+- order release urgency
+- order consolidation opportunity
+- freight-threshold progress
+
+Recommended future vendor-policy fields:
+
+- `preferred_free_ship_weekdays`
+- `free_freight_threshold`
+- `target_consolidation_order_value`
+- `ship_hold_days`
+- `urgent_release_floor`
+- `shipping_policy`
+
+Candidate shipping policies:
+
+- `release_immediately`
+  - order as soon as the item qualifies
+- `hold_for_free_day`
+  - hold non-urgent items until the vendor's free-shipping weekday
+- `hold_for_threshold`
+  - hold non-urgent items until the order reaches a minimum dollar threshold
+- `hybrid_free_day_threshold`
+  - prefer a free-shipping day, but also release once a threshold is reached
+
 ## Edge cases to support explicitly
 
 ### Reel / spool / coil materials
@@ -318,6 +463,16 @@ Requirements:
 - combine pack logic with dormancy and historical strength
 - prefer review when the item is stale or likely obsolete
 
+### Shipping-aware vendor ordering
+
+Requirements:
+
+- support vendor-specific free-shipping weekdays
+- support vendor-specific freight-free thresholds
+- distinguish urgent replenishment from routine stock consolidation
+- explain why an item was held, released, or split across shipment strategies
+- avoid holding truly urgent shortages just to optimize freight
+
 ## Algorithm work by release
 
 ## `0.2.0`
@@ -326,9 +481,9 @@ Stabilize the app and keep algorithm changes conservative.
 
 Checklist:
 
-- [ ] keep current long-window sales and performance signals stable
-- [ ] keep missed-reorder and dormant-performer logic review-only
-- [ ] do not ship aggressive new quantity logic before packaged-app validation is complete
+- [x] keep current long-window sales and performance signals stable
+- [x] keep missed-reorder and dormant-performer logic review-only
+- [x] do not ship aggressive new quantity logic before packaged-app validation is complete
 
 ## `0.2.1`
 
@@ -336,12 +491,12 @@ Expose the new signals so they can be used operationally.
 
 Checklist:
 
-- [ ] add bulk/review filters for `performance_profile`
-- [ ] add bulk/review filters for `sales_health_signal`
-- [ ] add bulk/review filters for `reorder_attention_signal`
-- [ ] let users find likely missed-reorder items quickly in large datasets
+- [x] add bulk/review filters for `performance_profile`
+- [x] add bulk/review filters for `sales_health_signal`
+- [x] add bulk/review filters for `reorder_attention_signal`
+- [x] let users find likely missed-reorder items quickly in large datasets
 
-## `0.2.2`
+## `0.2.2` - Phase 1: reorder core refactor
 
 Refactor reorder logic so trigger decisions are separate from quantity rounding.
 
@@ -354,10 +509,9 @@ Checklist:
   - review gate
 - [ ] stop relying only on `raw_need > 0` as the decision to place a replenishment order
 - [ ] add tests for full-pack items with small operational max values
-- [ ] audit bulk-sheet in-grid edit flow so commit target is row-id based and independent of later current-cell changes
-- [ ] replace the single deferred edit-slot model if needed with a safer commit-drain model before allowing the next edit target to take over
+- [ ] sketch the vendor shipping-policy model so release timing can be layered on top of reorder need later
 
-## `0.2.3`
+## `0.2.3` - Phases 2-3: rule model expansion and pack-trigger behavior
 
 Introduce pack-aware trigger policies.
 
@@ -365,13 +519,16 @@ Checklist:
 
 - [ ] add `pack_trigger` policy or equivalent
 - [ ] add rule fields for `reorder_trigger_qty` and/or `reorder_trigger_pct`
+- [ ] add rule fields for `acceptable_overstock_qty` and/or `acceptable_overstock_pct`
 - [ ] allow full-pack replenishment without treating the post-receipt overstock as suspicious by default
 - [ ] add explainable `why` text for trigger-driven reorders
-- [ ] add regression tests for rapid consecutive bulk-sheet edits across different rows and editable columns
-- [ ] verify that vendor -> pack size, pack size -> vendor, and qty -> vendor edit sequences never apply to the previous cell
-- [ ] stop rescanning the full active session for simple bulk-summary updates after common edits
+- [ ] add vendor-level shipping rules for:
+  - free-shipping weekdays
+  - freight-free thresholds
+- [ ] model "routine stock" vs "urgent shortage" release behavior at the vendor level
+- [ ] store enough vendor-policy data to explain why an item was held for a later order
 
-## `0.2.4`
+## `0.2.4` - Phases 4-5: review coherence and vendor shipping policy
 
 Generalize reel and large-pack handling.
 
@@ -388,9 +545,17 @@ Checklist:
   - bag of 100 / 20 max
   - stale reel item that should still be review-only
   - active large-pack item that should auto-trigger safely
-- [ ] add regression tests for filtered and sorted bulk-sheet edit correctness so row remaps do not redirect the next edit
+- [ ] introduce shipping-aware consolidation logic:
+  - hold non-urgent items for free-shipping weekdays
+  - hold non-urgent items for freight thresholds
+  - release immediately once threshold is reached
+  - let urgent shortages bypass holding logic when needed
+- [ ] add explainable shipping/release reason text such as:
+  - held for Friday free-shipping order
+  - released now because vendor threshold was reached
+  - released now because the shortage was urgent
 
-## `0.2.5`
+## `0.2.5` - Phases 6-7: shipping-aware release and remaining performance cleanup
 
 Use the new pack-aware trigger system in the final recommendation flow.
 
@@ -401,11 +566,37 @@ Checklist:
 - [ ] ensure “not needed” review respects trigger-based replenishment logic
 - [ ] surface trigger reason, replenishment unit, and confidence in item details / review
 - [ ] verify that edge-case rules remain explainable to the user
+- [ ] integrate shipping-aware release timing into the final recommendation flow
+- [ ] let vendor shipping policy influence whether an item is:
+  - release now
+  - hold for vendor free-shipping day
+  - hold for freight threshold
+- [ ] treat the paid urgent truck as an override path, not the main consolidation target
+- [ ] ensure threshold/free-day holding does not hide urgent shortages or critical service items
+- [ ] surface shipping policy, hold reason, and release reason in item details / review
 
 - [ ] guarantee bulk-editor edit-target integrity under rapid click-edit, keyboard-edit, filtered, sorted, and multi-selection workflows
 - [ ] document the expected precedence between current cell, selected cells, selected rows, and right-click snapshot state
 - [ ] ensure undo/history boundaries still match what the user perceives as one edit
 - [ ] separate full-session, active-filtered, and visible-row performance paths so very large sessions do not penalize small working subsets unnecessarily
+
+## Already completed before the remaining phases
+
+These items should be treated as baseline, not future work.
+
+- bulk/review visibility for:
+  - `performance_profile`
+  - `sales_health_signal`
+  - `reorder_attention_signal`
+- item-details visibility for long-window sales and performance signals
+- conservative missed-reorder and dormant-performer review handling
+- major bulk-editor hardening for:
+  - pending edit flush before actions
+  - filter/sort flush behavior
+  - paste flush behavior
+  - stale right-click context invalidation
+  - bulk-to-dialog and bulk-to-review transition safety
+- bulk summary caching and safer incremental refreshes for many common edit paths
 
 ## Concrete algorithm ideas to test
 
@@ -461,6 +652,33 @@ Cons:
 
 - needs careful UI explanation
 
+### Release by vendor shipping policy
+
+Recommended candidate model:
+
+- determine reorder need at the item level
+- determine urgency at the item level
+- group candidates by vendor
+- apply vendor shipping policy:
+  - free-shipping weekday
+  - freight-free threshold
+- decide per item:
+  - release now
+  - hold for next free shipment window
+  - hold until threshold is reached
+  - bypass the hold if the shortage is urgent
+
+Pros:
+
+- reflects real purchasing behavior better than item-only logic
+- can reduce freight without hiding true shortages
+- gives the app a path to smarter vendor-level consolidation
+
+Cons:
+
+- requires explainable vendor policy configuration
+- can create confusing results if hold logic is too aggressive
+
 ## Testing scenarios that must exist by `0.2.5`
 
 - [ ] 300 ft hose reel with max 93, trigger 60, reorder at 58
@@ -470,6 +688,11 @@ Cons:
 - [ ] reel item with dormant sales and no recency signal, review instead of auto-order
 - [ ] manual override item preserves user quantity
 - [ ] trigger-based item is not auto-removed by “Remove Not Needed”
+- [ ] vendor ships free on Friday only: non-urgent items hold until Friday
+- [ ] vendor reaches free-freight threshold at `$2000`: held items release once threshold is met
+- [ ] vendor below threshold with no urgency: items stay held with an explainable reason
+- [ ] urgent shortage overrides free-day or threshold hold
+- [ ] held-for-shipping item is still visible in review with the release reason
 
 - [ ] edit vendor on one row, then immediately edit pack size on a different row: second edit applies to the intended row on the first attempt
 - [ ] commit with Tab or Enter, then immediately edit the newly focused cell: no previous-cell bleed
@@ -483,5 +706,8 @@ By `v0.2.5`, PO Builder should be able to explain edge cases like these in plain
 - “This hose is ordered by the reel, so the app triggered replenishment early at the configured low-stock threshold.”
 - “This hardware item is bought by the bag, so the app recommends one bag even though operational max is lower.”
 - “This item used to sell well, but recency is weak, so it was flagged for review instead of automatic reorder.”
+- “This item was held for the vendor's Friday free-shipping order because stock is routine, not urgent.”
+- “This item was released immediately even though the vendor has a free-shipping stock order because the shortage was urgent.”
+- “This vendor order was released because the free-freight threshold was reached.”
 
 That is the bar: not just better numbers, but better reasoning users can trust.

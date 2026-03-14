@@ -181,7 +181,7 @@ The build script:
 - installs missing dependencies
 - runs the unit test suite
 - bundles optional local assets if present
-- creates `dist\PO Builder.exe`
+- creates `dist\POBuilder.exe`
 
 ## Notes About Public Repos
 
