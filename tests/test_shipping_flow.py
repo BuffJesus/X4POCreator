@@ -32,6 +32,25 @@ class ShippingFlowTests(unittest.TestCase):
         self.assertIn(("hybrid_friday_2000", "Friday + 2000"), options)
         self.assertIn(("paid_urgent_friday_2000", "Friday + 2000 + Paid Urgent"), options)
 
+    def test_resolve_vendor_policy_prefers_saved_policy_over_default_preset(self):
+        policy, source, label = shipping_flow.resolve_vendor_policy(
+            "motion",
+            {"MOTION": {"shipping_policy": "hold_for_threshold", "free_freight_threshold": 2000}},
+            "free_day_friday",
+        )
+
+        self.assertEqual(policy["shipping_policy"], "hold_for_threshold")
+        self.assertEqual(source, "saved_policy")
+        self.assertEqual(label, "")
+
+    def test_resolve_vendor_policy_can_use_default_preset_when_vendor_has_no_saved_policy(self):
+        policy, source, label = shipping_flow.resolve_vendor_policy("motion", {}, "free_day_friday")
+
+        self.assertEqual(policy["shipping_policy"], "hold_for_free_day")
+        self.assertEqual(policy["preferred_free_ship_weekdays"], ["Friday"])
+        self.assertEqual(source, "default_preset")
+        self.assertEqual(label, "Free Day Friday")
+
     def test_normalize_vendor_policy_defaults_unknown_urgent_mode_to_release_now(self):
         policy = shipping_flow.normalize_vendor_policy({
             "shipping_policy": "hold_for_free_day",
@@ -93,6 +112,28 @@ class ShippingFlowTests(unittest.TestCase):
             "planned_today",
         )
         self.assertEqual(shipping_flow.release_bucket({"release_decision": "hold_for_threshold"}), "held")
+
+    def test_item_recommended_action_distinguishes_export_review_and_hold_states(self):
+        self.assertEqual(
+            shipping_flow.item_recommended_action({"release_decision": "release_now"}),
+            "Export Now",
+        )
+        self.assertEqual(
+            shipping_flow.item_recommended_action({"release_decision": "release_now", "status": "review"}),
+            "Review Before Export",
+        )
+        self.assertEqual(
+            shipping_flow.item_recommended_action({"release_decision": "export_next_business_day_for_free_day"}),
+            "Export Planned Today",
+        )
+        self.assertEqual(
+            shipping_flow.item_recommended_action({"release_decision": "hold_for_threshold", "target_order_date": "2026-03-20"}),
+            "Hold Until 2026-03-20",
+        )
+        self.assertEqual(
+            shipping_flow.item_recommended_action({"release_decision": "hold_for_threshold", "status": "review"}),
+            "Review Critical Hold",
+        )
 
     def test_release_timing_mode_maps_policy_shapes(self):
         self.assertEqual(
@@ -217,6 +258,29 @@ class ShippingFlowTests(unittest.TestCase):
         self.assertEqual(row["release_timing_mode"], "same_day_release")
         self.assertEqual(row["release_plan_status"], "release_now")
         self.assertEqual(row["release_plan_label"], "Release Now")
+        self.assertEqual(row["recommended_action"], "Export All Due")
+
+    def test_vendor_recommended_action_prefers_critical_holds_and_threshold_waiting(self):
+        self.assertEqual(
+            shipping_flow.vendor_recommended_action({
+                "critical_held_count": 1,
+                "release_now_count": 0,
+                "planned_today_count": 0,
+                "held_count": 1,
+                "release_plan_status": "hold_accumulating_to_threshold",
+            }),
+            "Review Critical Holds",
+        )
+        self.assertEqual(
+            shipping_flow.vendor_recommended_action({
+                "critical_held_count": 0,
+                "release_now_count": 0,
+                "planned_today_count": 0,
+                "held_count": 2,
+                "release_plan_status": "hold_accumulating_to_threshold",
+            }),
+            "Wait for Threshold",
+        )
 
     def test_annotate_release_decisions_holds_for_free_day_when_not_today(self):
         session = AppSessionState(
@@ -252,11 +316,68 @@ class ShippingFlowTests(unittest.TestCase):
         self.assertEqual(item["planned_export_date"], "2026-03-12")
         self.assertEqual(item["target_order_date"], "2026-03-12")
         self.assertEqual(item["target_release_date"], "2026-03-13")
+        self.assertEqual(item["recommended_action"], "Hold Until 2026-03-12")
         self.assertIn("Release:", item["why"])
         self.assertIn("Release lead days: 1", item["why"])
         self.assertIn("Timing mode: release_one_business_day_before_ship_day", item["why"])
         self.assertIn("Target order date: 2026-03-12", item["why"])
         self.assertIn("Target release date: 2026-03-13", item["why"])
+
+    def test_annotate_release_decisions_can_apply_user_default_vendor_policy_preset(self):
+        session = AppSessionState(
+            default_vendor_policy_preset="free_day_friday",
+            inventory_lookup={("AER-", "GH781-4"): {"repl_cost": 2.0}},
+            vendor_policies={},
+            filtered_items=[{
+                "line_code": "AER-",
+                "item_code": "GH781-4",
+                "vendor": "MOTION",
+                "final_qty": 10,
+                "order_qty": 10,
+                "inventory_position": 6,
+                "core_why": "Base why",
+                "why": "Base why",
+            }],
+        )
+
+        shipping_flow.annotate_release_decisions(session, now=datetime(2026, 3, 11, 12, 0, 0))
+
+        item = session.filtered_items[0]
+        self.assertEqual(item["shipping_policy"], "hold_for_free_day")
+        self.assertEqual(item["shipping_policy_source"], "default_preset")
+        self.assertEqual(item["shipping_policy_preset_label"], "Free Day Friday")
+        self.assertEqual(item["release_decision"], "hold_for_free_day")
+        self.assertEqual(item["recommended_action"], "Hold Until 2026-03-12")
+        self.assertIn("Shipping policy source: default vendor preset (Free Day Friday)", item["why"])
+
+    def test_annotate_release_decisions_saved_vendor_policy_beats_default_preset(self):
+        session = AppSessionState(
+            default_vendor_policy_preset="free_day_friday",
+            inventory_lookup={("AER-", "GH781-4"): {"repl_cost": 2.0}},
+            vendor_policies={
+                "MOTION": {
+                    "shipping_policy": "hold_for_threshold",
+                    "free_freight_threshold": 2000,
+                }
+            },
+            filtered_items=[{
+                "line_code": "AER-",
+                "item_code": "GH781-4",
+                "vendor": "MOTION",
+                "final_qty": 10,
+                "order_qty": 10,
+                "inventory_position": 6,
+                "core_why": "Base why",
+                "why": "Base why",
+            }],
+        )
+
+        shipping_flow.annotate_release_decisions(session, now=datetime(2026, 3, 11, 12, 0, 0))
+
+        item = session.filtered_items[0]
+        self.assertEqual(item["shipping_policy"], "hold_for_threshold")
+        self.assertEqual(item["shipping_policy_source"], "saved_policy")
+        self.assertEqual(item["shipping_policy_preset_label"], "")
 
     def test_annotate_release_decisions_uses_vendor_release_lead_days_for_planned_export(self):
         session = AppSessionState(

@@ -24,22 +24,7 @@ def release_filter_bucket(item):
 
 
 def is_critical_shipping_hold(item):
-    if release_filter_bucket(item) != "Held":
-        return False
-    if str(item.get("status", "") or "").strip().lower() in ("review", "warning", "error"):
-        return True
-    if bool(item.get("review_required")):
-        return True
-    if str(item.get("reorder_attention_signal", "") or "").strip().lower() == "review_missed_reorder":
-        return True
-    if str(item.get("recency_review_bucket", "") or "").strip() in (
-        "critical_min_rule_protected",
-        "critical_rule_protected",
-    ):
-        return True
-    if str(item.get("sales_health_signal", "") or "").strip().lower() in ("critical", "at_risk"):
-        return True
-    return False
+    return shipping_flow.is_critical_shipping_hold(item)
 
 
 def is_review_exception(item):
@@ -197,12 +182,13 @@ def show_release_plan(app):
     frame.pack(fill=tk.BOTH, expand=True, padx=16, pady=(0, 8))
 
     columns = (
-        "vendor", "policy", "plan", "immediate", "planned", "held", "total_value",
+        "vendor", "recommended", "policy", "plan", "immediate", "planned", "held", "total_value",
         "shortfall", "progress", "coverage", "timing", "next_free", "planned_export",
     )
     tree = ttk.Treeview(frame, columns=columns, show="headings", selectmode="browse")
     headings = {
         "vendor": "Vendor",
+        "recommended": "Recommended",
         "policy": "Policy",
         "plan": "Plan",
         "immediate": "Immediate",
@@ -218,6 +204,7 @@ def show_release_plan(app):
     }
     widths = {
         "vendor": 110,
+        "recommended": 170,
         "policy": 150,
         "plan": 180,
         "immediate": 70,
@@ -242,6 +229,7 @@ def show_release_plan(app):
             iid=str(idx),
             values=(
                 row["vendor"],
+                row.get("recommended_action", "") or "-",
                 row.get("shipping_policy", "") or "-",
                 row.get("release_plan_label", "") or "-",
                 row["release_now_count"],

@@ -146,6 +146,20 @@ def vendor_policy_preset_options():
     return [(key, VENDOR_POLICY_PRESETS[key]["label"]) for key in VENDOR_POLICY_PRESETS]
 
 
+def resolve_vendor_policy(vendor, vendor_policies, default_preset_name=""):
+    normalized_vendor = _normalize_vendor(vendor)
+    normalized_policies = vendor_policies or {}
+    raw_policy = normalized_policies.get(normalized_vendor)
+    if raw_policy:
+        return normalize_vendor_policy(raw_policy), "saved_policy", ""
+    preset_name = str(default_preset_name or "").strip()
+    if preset_name:
+        preset = get_vendor_policy_preset(preset_name)
+        if preset.get("label"):
+            return normalize_vendor_policy(preset), "default_preset", preset.get("label", "")
+    return normalize_vendor_policy({}), "none", ""
+
+
 def release_timing_mode(policy_or_item):
     shipping_policy = str((policy_or_item or {}).get("shipping_policy", "") or "").strip() or "release_immediately"
     lead_days = _safe_nonnegative_int((policy_or_item or {}).get("release_lead_business_days"), 1)
@@ -294,6 +308,77 @@ def release_bucket(item):
     return "release_now"
 
 
+def is_critical_shipping_hold(item):
+    if release_bucket(item) != "held":
+        return False
+    if str(item.get("status", "") or "").strip().lower() in ("review", "warning", "error"):
+        return True
+    if bool(item.get("review_required")):
+        return True
+    if str(item.get("reorder_attention_signal", "") or "").strip().lower() == "review_missed_reorder":
+        return True
+    if str(item.get("recency_review_bucket", "") or "").strip() in (
+        "critical_min_rule_protected",
+        "critical_rule_protected",
+    ):
+        return True
+    if str(item.get("sales_health_signal", "") or "").strip().lower() in ("critical", "at_risk"):
+        return True
+    return False
+
+
+def item_recommended_action(item):
+    bucket = release_bucket(item)
+    if bucket == "held":
+        if is_critical_shipping_hold(item):
+            return "Review Critical Hold"
+        target_order_date = str(item.get("target_order_date", "") or "").strip()
+        if target_order_date:
+            return f"Hold Until {target_order_date}"
+        return "Hold"
+    if bucket == "planned_today":
+        return "Export Planned Today"
+    if str(item.get("status", "") or "").strip().lower() in ("review", "warning", "error"):
+        return "Review Before Export"
+    if bool(item.get("review_required")):
+        return "Review Before Export"
+    if str(item.get("recency_confidence", "") or "").strip().lower() == "low":
+        return "Review Before Export"
+    if str(item.get("vendor_value_coverage", "") or "").strip().lower() in ("partial", "missing"):
+        return "Review Before Export"
+    if str(item.get("reorder_attention_signal", "") or "").strip().lower() == "review_missed_reorder":
+        return "Review Before Export"
+    return "Export Now"
+
+
+def vendor_recommended_action(row):
+    release_now_count = int(_safe_float((row or {}).get("release_now_count"), 0.0))
+    planned_today_count = int(_safe_float((row or {}).get("planned_today_count"), 0.0))
+    held_count = int(_safe_float((row or {}).get("held_count"), 0.0))
+    critical_held_count = int(_safe_float((row or {}).get("critical_held_count"), 0.0))
+    status = str((row or {}).get("release_plan_status", "") or "").strip()
+    planned_export_date = str((row or {}).get("planned_export_date", "") or "").strip()
+    next_free_ship_date = str((row or {}).get("next_free_ship_date", "") or "").strip()
+
+    if critical_held_count > 0:
+        return "Review Critical Holds"
+    if release_now_count > 0 and planned_today_count > 0:
+        return "Export All Due"
+    if release_now_count > 0:
+        return "Export Now"
+    if planned_today_count > 0:
+        return "Export Planned Today"
+    if held_count > 0:
+        if status == "hold_accumulating_to_threshold":
+            return "Wait for Threshold"
+        if planned_export_date:
+            return f"Wait for {planned_export_date}"
+        if next_free_ship_date:
+            return f"Wait for {next_free_ship_date}"
+        return "Hold"
+    return "No Action"
+
+
 def build_vendor_order_totals(items, inventory_lookup):
     totals = {}
     for item in items or []:
@@ -324,6 +409,7 @@ def build_vendor_release_plan(items):
                 "release_now_count": 0,
                 "planned_today_count": 0,
                 "held_count": 0,
+                "critical_held_count": 0,
                 "release_now_value": 0.0,
                 "planned_today_value": 0.0,
                 "held_value": 0.0,
@@ -337,11 +423,14 @@ def build_vendor_release_plan(items):
                 "release_lead_business_days": _safe_nonnegative_int(item.get("release_lead_business_days"), 1),
                 "release_timing_mode": item.get("release_timing_mode") or "",
                 "release_plan_status": "",
+                "recommended_action": "",
             },
         )
         value = _safe_float(item.get("estimated_order_value"), 0.0)
         row[f"{bucket}_count"] += 1
         row[f"{bucket}_value"] += value
+        if is_critical_shipping_hold(item):
+            row["critical_held_count"] += 1
         row["vendor_order_value_total"] = max(row["vendor_order_value_total"], _safe_float(item.get("vendor_order_value_total"), 0.0))
         row["vendor_threshold_shortfall"] = max(row["vendor_threshold_shortfall"], _safe_float(item.get("vendor_threshold_shortfall"), 0.0))
         row["vendor_threshold_progress_pct"] = max(row["vendor_threshold_progress_pct"], _safe_float(item.get("vendor_threshold_progress_pct"), 0.0))
@@ -367,11 +456,20 @@ def build_vendor_release_plan(items):
     for row in rows:
         row["release_plan_status"] = vendor_release_plan_status(row)
         row["release_plan_label"] = vendor_release_plan_status_label(row["release_plan_status"])
+        row["recommended_action"] = vendor_recommended_action(row)
     return rows
 
 
 def _build_release_why(base_why, item):
     planning_parts = []
+    if item.get("shipping_policy_source"):
+        source_label = {
+            "saved_policy": "saved vendor policy",
+            "default_preset": "default vendor preset",
+        }.get(item.get("shipping_policy_source"), item.get("shipping_policy_source"))
+        if item.get("shipping_policy_source") == "default_preset" and item.get("shipping_policy_preset_label"):
+            source_label = f"{source_label} ({item['shipping_policy_preset_label']})"
+        planning_parts.append(f"Shipping policy source: {source_label}")
     threshold = _safe_float(item.get("shipping_policy_threshold"), 0.0)
     current_total = _safe_float(item.get("vendor_order_value_total"), 0.0)
     threshold_progress_pct = _safe_float(item.get("vendor_threshold_progress_pct"), 100.0)
@@ -541,6 +639,7 @@ def _choose_release_decision(item, policy, vendor_total, now):
 def annotate_release_decisions(session, now=None):
     inventory_lookup = getattr(session, "inventory_lookup", {}) or {}
     vendor_policies = getattr(session, "vendor_policies", {}) or {}
+    default_policy_preset = str(getattr(session, "default_vendor_policy_preset", "") or "").strip()
     source_items = list(getattr(session, "assigned_items", []) or [])
     if not source_items:
         source_items = list(getattr(session, "filtered_items", []) or [])
@@ -553,7 +652,7 @@ def annotate_release_decisions(session, now=None):
         for item in getattr(session, collection_name, []) or []:
             vendor = _normalize_vendor(item.get("vendor", ""))
             qty = max(0, _safe_float(item.get("final_qty", item.get("order_qty", 0)), 0.0))
-            policy = normalize_vendor_policy(vendor_policies.get(vendor))
+            policy, policy_source, preset_label = resolve_vendor_policy(vendor, vendor_policies, default_policy_preset)
             threshold = max(0.0, _safe_float(policy.get("free_freight_threshold"), 0.0))
             current_total = vendor_totals.get(vendor, 0.0) if vendor else 0.0
             coverage_entry = vendor_value_coverage.get(vendor, {"label": "none", "known": 0, "unknown": 0})
@@ -576,6 +675,8 @@ def annotate_release_decisions(session, now=None):
             item["release_reason"] = ""
             item["release_trigger"] = ""
             item["shipping_policy"] = ""
+            item["shipping_policy_source"] = ""
+            item["shipping_policy_preset_label"] = ""
             item["shipping_policy_weekdays"] = []
             item["shipping_policy_threshold"] = 0.0
             item["urgent_release_mode"] = "release_now"
@@ -586,8 +687,7 @@ def annotate_release_decisions(session, now=None):
             item["_shipping_base_why"] = base_why
             annotated_items.append(item)
 
-            raw_policy = vendor_policies.get(vendor)
-            if not vendor or qty <= 0 or not raw_policy:
+            if not vendor or qty <= 0 or policy_source == "none":
                 continue
 
             decision_data = _choose_release_decision(item, policy, current_total, current_dt)
@@ -597,6 +697,8 @@ def annotate_release_decisions(session, now=None):
             item["release_reason"] = reason
             item["release_trigger"] = decision_data.get("trigger", "")
             item["shipping_policy"] = policy["shipping_policy"]
+            item["shipping_policy_source"] = policy_source
+            item["shipping_policy_preset_label"] = preset_label
             item["shipping_policy_weekdays"] = list(policy["preferred_free_ship_weekdays"])
             item["shipping_policy_threshold"] = policy["free_freight_threshold"]
             item["urgent_release_mode"] = policy.get("urgent_release_mode", "release_now")
@@ -615,6 +717,7 @@ def annotate_release_decisions(session, now=None):
                     order_date=_safe_date(current_dt),
                 )
             item["why"] = _build_release_why(base_why, item)
+            item["recommended_action"] = item_recommended_action(item)
 
     urgent_vendors = {
         _normalize_vendor(item.get("vendor", ""))
@@ -628,9 +731,11 @@ def annotate_release_decisions(session, now=None):
         if not vendor or qty <= 0 or vendor not in urgent_vendors:
             continue
         if item.get("release_trigger") == "urgent_floor":
+            item["recommended_action"] = item_recommended_action(item)
             item["why"] = _build_release_why(item.get("_shipping_base_why", item.get("core_why", "")), item)
             continue
         if item.get("release_decision") == "release_now":
+            item["recommended_action"] = item_recommended_action(item)
             item["why"] = _build_release_why(item.get("_shipping_base_why", item.get("core_why", "")), item)
             continue
         urgent_items = [
@@ -654,7 +759,10 @@ def annotate_release_decisions(session, now=None):
         )
         item["release_trigger"] = "vendor_urgent_consolidation"
         _set_release_targets(item, release_date=current_date, order_date=current_date)
+        item["recommended_action"] = item_recommended_action(item)
         item["why"] = _build_release_why(item.get("_shipping_base_why", item.get("core_why", "")), item)
 
     for item in annotated_items:
+        if not item.get("recommended_action"):
+            item["recommended_action"] = item_recommended_action(item)
         item.pop("_shipping_base_why", None)

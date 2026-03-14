@@ -24,6 +24,7 @@ def prepare_assignment_session(
     suggest_min_max,
     get_cycle_weeks,
     get_rule_key,
+    default_vendor_policy_preset="",
 ):
     """Apply filters, merge source data, and prepare the session for assignment."""
     session.suspended_lookup = defaultdict(list)
@@ -159,6 +160,7 @@ def prepare_assignment_session(
 
     session.assigned_items = []
     session.qoh_adjustments = {}
+    session.default_vendor_policy_preset = str(default_vendor_policy_preset or "").strip()
     session.vendor_codes_used = storage.load_vendor_codes(vendor_codes_path, known_vendors)
     for item in session.filtered_items:
         vendor = item.get("vendor", "").strip().upper()

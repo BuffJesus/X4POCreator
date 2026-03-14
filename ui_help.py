@@ -1,5 +1,6 @@
 import tkinter as tk
 from tkinter import ttk
+import shipping_flow
 from ui_scroll import attach_vertical_mousewheel
 
 
@@ -511,10 +512,34 @@ def build_help_tab(app):
     )
 
     ttk.Label(
+        settings_frame,
+        text="Default vendor shipping preset:",
+        style="Info.TLabel",
+    ).pack(side=tk.LEFT, padx=(18, 8))
+    preset_options = shipping_flow.vendor_policy_preset_options()
+    preset_map = {"": "No Default"}
+    preset_map.update({key: label for key, label in preset_options})
+    reverse_preset_map = {label: key for key, label in preset_map.items()}
+    var_vendor_preset = tk.StringVar(value=preset_map.get(app._get_default_vendor_policy_preset(), "No Default"))
+    combo_vendor_preset = ttk.Combobox(
+        settings_frame,
+        textvariable=var_vendor_preset,
+        state="readonly",
+        width=24,
+        values=list(preset_map.values()),
+    )
+    combo_vendor_preset.pack(side=tk.LEFT)
+    combo_vendor_preset.bind(
+        "<<ComboboxSelected>>",
+        lambda _e: app._set_default_vendor_policy_preset(reverse_preset_map.get(var_vendor_preset.get(), "")),
+    )
+
+    ttk.Label(
         frame,
         text=(
             "Recommended routine path: keep Review & Export on Exceptions Only, use Release Plan for vendor timing decisions, "
-            "and save export defaults so the common path stays one-click."
+            "save export defaults so the common path stays one-click, and use a default vendor shipping preset only when "
+            "most unconfigured vendors should follow the same rule."
         ),
         style="Info.TLabel",
         wraplength=920,

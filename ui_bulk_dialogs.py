@@ -768,6 +768,11 @@ def item_details_rows(app, item, inv, key):
             "rule": " (Saved Rule)",
         }.get(minimum_cover_cycles_source, "")
         minimum_cover_cycles_display = f"{_format_metric(minimum_cover_cycles)}{source_suffix}"
+    shipping_policy_source = {
+        "saved_policy": "Saved Vendor Policy",
+        "default_preset": f"Default Preset ({item.get('shipping_policy_preset_label') or '-'})",
+        "none": "None",
+    }.get(item.get("shipping_policy_source"), item.get("shipping_policy_source") or "-")
 
     details = [
         ("QOH", f"{inv.get('qoh', 0):g}"),
@@ -810,7 +815,9 @@ def item_details_rows(app, item, inv, key):
         ("Overstock %", _format_metric(item.get("acceptable_overstock_pct")) if item.get("acceptable_overstock_pct") is not None else "-"),
         ("Allowed Overstock", str(item.get("acceptable_overstock_qty_effective", "-") if item.get("acceptable_overstock_qty_effective") is not None else "-")),
         ("Projected Overstock", str(item.get("projected_overstock_qty", "-") if item.get("projected_overstock_qty") is not None else "-")),
+        ("Recommended Action", item.get("recommended_action") or "-"),
         ("Shipping Policy", item.get("shipping_policy") or "-"),
+        ("Policy Source", shipping_policy_source),
         ("Urgent Override", item.get("urgent_release_mode") or "-"),
         ("Release Lead Days", str(item.get("release_lead_business_days", "-") if item.get("release_lead_business_days") is not None else "-")),
         ("Timing Mode", item.get("release_timing_mode") or "-"),

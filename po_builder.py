@@ -110,6 +110,7 @@ DEFAULT_MIXED_EXPORT_BEHAVIOR = "all_exportable"
 MIXED_EXPORT_BEHAVIOR_OPTIONS = ("all_exportable", "immediate_only", "ask_when_mixed")
 DEFAULT_REVIEW_EXPORT_FOCUS = "exceptions_only"
 REVIEW_EXPORT_FOCUS_OPTIONS = ("all_items", "exceptions_only")
+DEFAULT_VENDOR_POLICY_PRESET = ""
 BULK_SHORTCUTS_TEXT = """Current bulk-sheet shortcuts
 
 Supported now
@@ -502,6 +503,24 @@ class POBuilderApp:
     def _set_last_export_dir(self, path):
         normalized = str(path or "").strip()
         self.app_settings["last_export_dir"] = normalized
+        self._save_app_settings()
+
+    def _get_default_vendor_policy_preset(self):
+        preset_name = str(self.app_settings.get("default_vendor_policy_preset", DEFAULT_VENDOR_POLICY_PRESET) or "").strip()
+        valid_names = {key for key, _label in shipping_flow.vendor_policy_preset_options()}
+        if preset_name not in valid_names:
+            preset_name = DEFAULT_VENDOR_POLICY_PRESET
+        return preset_name
+
+    def _set_default_vendor_policy_preset(self, preset_name):
+        normalized = str(preset_name or "").strip()
+        valid_names = {key for key, _label in shipping_flow.vendor_policy_preset_options()}
+        if normalized not in valid_names:
+            normalized = DEFAULT_VENDOR_POLICY_PRESET
+        self.app_settings["default_vendor_policy_preset"] = normalized
+        session = getattr(self, "session", None)
+        if session is not None:
+            session.default_vendor_policy_preset = normalized
         self._save_app_settings()
 
     def _start_update_check(self):
@@ -942,6 +961,7 @@ class POBuilderApp:
                 suggest_min_max=self._suggest_min_max,
                 get_cycle_weeks=self._get_cycle_weeks,
                 get_rule_key=get_rule_key,
+                default_vendor_policy_preset=self._get_default_vendor_policy_preset(),
             )
         except Exception as exc:
             self._hide_loading()
@@ -1073,6 +1093,8 @@ class POBuilderApp:
 
     def _annotate_release_decisions(self):
         session = getattr(self, "session", self)
+        if hasattr(session, "default_vendor_policy_preset"):
+            session.default_vendor_policy_preset = self._get_default_vendor_policy_preset()
         shipping_flow.annotate_release_decisions(session)
 
     def _recalculate_item(self, item, annotate_release=True):

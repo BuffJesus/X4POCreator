@@ -351,7 +351,10 @@ class BulkDialogTests(unittest.TestCase):
             "acceptable_overstock_pct": 10.0,
             "acceptable_overstock_qty_effective": 30,
             "projected_overstock_qty": 18,
+            "recommended_action": "Review Before Export",
             "shipping_policy": "hold_for_threshold",
+            "shipping_policy_source": "default_preset",
+            "shipping_policy_preset_label": "Threshold 2000",
             "urgent_release_mode": "paid_urgent_freight",
             "release_lead_business_days": 1,
             "release_timing_mode": "release_on_threshold",
@@ -383,7 +386,9 @@ class BulkDialogTests(unittest.TestCase):
         self.assertEqual(row_lookup["Overstock %"], "10.00")
         self.assertEqual(row_lookup["Allowed Overstock"], "30")
         self.assertEqual(row_lookup["Projected Overstock"], "18")
+        self.assertEqual(row_lookup["Recommended Action"], "Review Before Export")
         self.assertEqual(row_lookup["Shipping Policy"], "hold_for_threshold")
+        self.assertEqual(row_lookup["Policy Source"], "Default Preset (Threshold 2000)")
         self.assertEqual(row_lookup["Urgent Override"], "paid_urgent_freight")
         self.assertEqual(row_lookup["Release Lead Days"], "1")
         self.assertEqual(row_lookup["Timing Mode"], "release_on_threshold")

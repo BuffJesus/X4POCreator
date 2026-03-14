@@ -50,22 +50,7 @@ def held_item_summary(item):
 
 
 def is_critical_shipping_hold(item):
-    if shipping_flow.release_bucket(item) != "held":
-        return False
-    if str(item.get("status", "") or "").strip().lower() in ("review", "warning", "error"):
-        return True
-    if bool(item.get("review_required")):
-        return True
-    if str(item.get("reorder_attention_signal", "") or "").strip().lower() == "review_missed_reorder":
-        return True
-    if str(item.get("recency_review_bucket", "") or "").strip() in (
-        "critical_min_rule_protected",
-        "critical_rule_protected",
-    ):
-        return True
-    if str(item.get("sales_health_signal", "") or "").strip().lower() in ("critical", "at_risk"):
-        return True
-    return False
+    return shipping_flow.is_critical_shipping_hold(item)
 
 
 def critical_held_items(held_items):

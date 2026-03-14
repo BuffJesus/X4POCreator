@@ -102,6 +102,7 @@ class AppSessionState:
     duplicate_ic_lookup: dict = field(default_factory=dict)
     recent_orders: dict = field(default_factory=dict)
     vendor_policies: dict = field(default_factory=dict)
+    default_vendor_policy_preset: str = ""
     order_rules: dict = field(default_factory=dict)
     suspense_carry: dict = field(default_factory=dict)
     vendor_codes_used: list = field(default_factory=list)

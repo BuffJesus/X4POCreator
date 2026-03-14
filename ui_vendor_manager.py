@@ -60,7 +60,15 @@ def open_vendor_policy_editor(app, vendor, parent):
     normalized_vendor = app._normalize_vendor_code(vendor)
     if not normalized_vendor:
         return
-    policy = shipping_flow.normalize_vendor_policy(app.vendor_policies.get(normalized_vendor, {}))
+    saved_policy = app.vendor_policies.get(normalized_vendor, {})
+    policy = shipping_flow.normalize_vendor_policy(saved_policy)
+    default_preset_name = ""
+    get_default_preset = getattr(app, "_get_default_vendor_policy_preset", None)
+    if callable(get_default_preset):
+        default_preset_name = get_default_preset()
+    default_preset = shipping_flow.get_vendor_policy_preset(default_preset_name) if default_preset_name else {}
+    if not saved_policy and default_preset.get("label"):
+        policy = shipping_flow.normalize_vendor_policy(default_preset)
 
     dlg = tk.Toplevel(parent)
     dlg.title(f"Shipping Policy - {normalized_vendor}")
@@ -92,7 +100,7 @@ def open_vendor_policy_editor(app, vendor, parent):
     var_lead_days = tk.StringVar(value=str(int(policy.get("release_lead_business_days", 1) or 1)))
     preset_options = shipping_flow.vendor_policy_preset_options()
     preset_by_label = {label: key for key, label in preset_options}
-    var_preset = tk.StringVar(value="")
+    var_preset = tk.StringVar(value=default_preset.get("label", "") if not saved_policy else "")
 
     fields = [
         ("Preset", ttk.Combobox(grid, textvariable=var_preset, state="readonly", values=[""] + [label for _, label in preset_options], width=28)),
@@ -121,6 +129,13 @@ def open_vendor_policy_editor(app, vendor, parent):
         style="SubHeader.TLabel",
         wraplength=620,
     ).grid(row=len(fields), column=0, columnspan=2, sticky="w", pady=(6, 0))
+    if not saved_policy and default_preset.get("label"):
+        ttk.Label(
+            grid,
+            text=f"No saved vendor-specific policy yet. Prefilled from default preset: {default_preset['label']}.",
+            style="Info.TLabel",
+            wraplength=620,
+        ).grid(row=len(fields) + 1, column=0, columnspan=2, sticky="w", pady=(4, 0))
 
     def _apply_preset():
         preset_name = preset_by_label.get(var_preset.get().strip(), "")

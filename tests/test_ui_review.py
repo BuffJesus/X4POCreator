@@ -352,6 +352,7 @@ class UIReviewTests(unittest.TestCase):
         self.assertEqual(rows[0]["planned_today_count"], 1)
         self.assertEqual(rows[0]["release_timing_mode"], "same_day_release")
         self.assertEqual(rows[0]["release_plan_label"], "Release Now")
+        self.assertEqual(rows[0]["recommended_action"], "Export All Due")
 
     def test_apply_release_plan_view_sets_review_filters_and_selects_review_tab(self):
         events = []
