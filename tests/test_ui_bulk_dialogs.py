@@ -72,6 +72,33 @@ class BulkDialogTests(unittest.TestCase):
         self.assertIn("Final qty far above suggestion", reason)
         self.assertTrue(auto_remove)
 
+    def test_not_needed_reason_respects_acceptable_overstock_tolerance(self):
+        app = SimpleNamespace(
+            inventory_lookup={("AER-", "GH781-4"): {"qoh": 0, "max": 20}},
+            on_po_qty={("AER-", "GH781-4"): 0},
+            _suggest_min_max=lambda key: (10, 20),
+        )
+        item = {
+            "line_code": "AER-",
+            "item_code": "GH781-4",
+            "pack_size": 100,
+            "final_qty": 100,
+            "order_qty": 100,
+            "suggested_qty": 100,
+            "gross_need": 20,
+            "raw_need": 20,
+            "inventory_position": 0,
+            "target_stock": 20,
+            "acceptable_overstock_qty": 80,
+            "status": "ok",
+        }
+
+        reason, auto_remove = ui_bulk_dialogs.not_needed_reason(app, item, max_exceed_abs_buffer=5)
+
+        self.assertIn("intentional overstock is within tolerance", reason)
+        self.assertNotIn("Strong target exceed", reason)
+        self.assertFalse(auto_remove)
+
     def test_not_needed_reason_flags_inventory_position_already_at_target(self):
         app = SimpleNamespace(
             inventory_lookup={("AER-", "GH781-4"): {"qoh": 18, "max": 20}},
@@ -318,6 +345,8 @@ class BulkDialogTests(unittest.TestCase):
             "data_completeness": "partial_recency",
             "acceptable_overstock_qty": 12,
             "acceptable_overstock_pct": 10.0,
+            "acceptable_overstock_qty_effective": 30,
+            "projected_overstock_qty": 18,
         }
         inv = {"qoh": 6, "min": 2, "max": 18}
 
@@ -331,6 +360,8 @@ class BulkDialogTests(unittest.TestCase):
         self.assertEqual(row_lookup["Data Completeness"], "partial_recency")
         self.assertEqual(row_lookup["Overstock Qty"], "12")
         self.assertEqual(row_lookup["Overstock %"], "10.00")
+        self.assertEqual(row_lookup["Allowed Overstock"], "30")
+        self.assertEqual(row_lookup["Projected Overstock"], "18")
 
     def test_item_details_rows_label_inferred_min_packs(self):
         app = SimpleNamespace(

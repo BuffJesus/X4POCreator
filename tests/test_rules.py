@@ -7,10 +7,12 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from rules import (
+    assess_post_receipt_overstock,
     apply_rule_fields,
     calculate_inventory_position,
     calculate_raw_need,
     calculate_suggested_qty,
+    determine_acceptable_overstock_qty,
     determine_reorder_trigger_threshold,
     determine_order_policy,
     determine_target_stock,
@@ -91,6 +93,26 @@ class RulesTests(unittest.TestCase):
         }
         self.assertEqual(determine_reorder_trigger_threshold(item), 200)
         self.assertEqual(item["reorder_trigger_basis"], "minimum_packs_on_hand")
+
+    def test_determine_acceptable_overstock_qty_uses_max_of_qty_and_pct(self):
+        item = {
+            "pack_size": 100,
+            "acceptable_overstock_qty": 12,
+            "acceptable_overstock_pct": 30,
+        }
+        self.assertEqual(determine_acceptable_overstock_qty(item), 30)
+        self.assertEqual(item["acceptable_overstock_basis"], "pct")
+
+    def test_assess_post_receipt_overstock_tracks_tolerance(self):
+        item = {
+            "inventory_position": 0,
+            "effective_target_stock": 20,
+            "acceptable_overstock_qty_effective": 80,
+        }
+        overstock_qty, within_tolerance = assess_post_receipt_overstock(item, 100)
+        self.assertEqual(overstock_qty, 80)
+        self.assertTrue(within_tolerance)
+        self.assertEqual(item["projected_post_receipt_stock"], 100)
 
     def test_infer_minimum_packs_on_hand_for_active_hardware_pack_mismatch(self):
         item = {
@@ -501,6 +523,7 @@ class RulesTests(unittest.TestCase):
         self.assertEqual(item["minimum_packs_on_hand"], 2)
         self.assertEqual(item["acceptable_overstock_qty"], 12)
         self.assertEqual(item["acceptable_overstock_pct"], 10.0)
+        self.assertEqual(item["acceptable_overstock_qty_effective"], 12)
 
     def test_enrich_item_uses_configured_trigger_gate_and_reason_text(self):
         item = {
@@ -584,6 +607,44 @@ class RulesTests(unittest.TestCase):
         self.assertEqual(item["suggested_qty"], 100)
         self.assertIn("trigger_minimum_packs_on_hand", item["reason_codes"])
         self.assertIn("Minimum packs on hand: 2 (saved rule)", item["why"])
+
+    def test_enrich_item_surfaces_acceptable_overstock_tolerance(self):
+        item = {
+            "description": "FILTER KIT",
+            "qty_sold": 30,
+            "qty_suspended": 0,
+            "qty_on_po": 0,
+            "pack_size": 100,
+            "suggested_max": 20,
+            "demand_signal": 30,
+        }
+        rule = {"acceptable_overstock_qty": 80, "acceptable_overstock_pct": 25}
+
+        enrich_item(item, {"qoh": 0, "max": 20, "min": 5, "last_sale": "05-Mar-2026", "last_receipt": "01-Mar-2026"}, 100, rule)
+        self.assertEqual(item["acceptable_overstock_qty_effective"], 80)
+        self.assertEqual(item["acceptable_overstock_basis"], "qty")
+        self.assertEqual(item["projected_overstock_qty"], 80)
+        self.assertIn("acceptable_overstock_configured", item["reason_codes"])
+        self.assertIn("Acceptable overstock: 80 (saved qty)", item["why"])
+        self.assertIn("Projected overstock after receipt: 80 (within tolerance)", item["why"])
+
+    def test_enrich_item_routes_to_manual_review_when_configured_overstock_tolerance_is_exceeded(self):
+        item = {
+            "description": "FILTER KIT",
+            "qty_sold": 30,
+            "qty_suspended": 0,
+            "qty_on_po": 0,
+            "pack_size": 100,
+            "suggested_max": 20,
+            "demand_signal": 30,
+        }
+        rule = {"acceptable_overstock_qty": 10}
+
+        enrich_item(item, {"qoh": 0, "max": 20, "min": 5, "last_sale": "05-Mar-2026", "last_receipt": "01-Mar-2026"}, 100, rule)
+        self.assertEqual(item["order_policy"], "manual_only")
+        self.assertTrue(item["review_required"])
+        self.assertIn("acceptable_overstock_exceeded", item["reason_codes"])
+        self.assertIn("Auto-order projection: 80 (exceeds tolerance)", item["why"])
 
     def test_active_hardware_pack_mismatch_can_infer_two_pack_floor_without_rule(self):
         item = {

@@ -343,6 +343,51 @@ def determine_reorder_trigger_threshold(item):
     return threshold
 
 
+def determine_acceptable_overstock_qty(item):
+    """Compute tolerated post-receipt overstock from explicit qty or pack percent settings."""
+    pack_size = item.get("pack_size")
+    overstock_qty = item.get("acceptable_overstock_qty")
+    overstock_pct = item.get("acceptable_overstock_pct")
+
+    candidates = []
+    if isinstance(overstock_qty, (int, float)) and overstock_qty > 0:
+        candidates.append(("qty", float(overstock_qty)))
+    if (
+        isinstance(pack_size, (int, float))
+        and pack_size > 0
+        and isinstance(overstock_pct, (int, float))
+        and overstock_pct > 0
+    ):
+        candidates.append(("pct", float(pack_size) * (overstock_pct / 100.0)))
+
+    if not candidates:
+        item["acceptable_overstock_qty_effective"] = 0
+        item["acceptable_overstock_basis"] = None
+        return 0
+
+    basis, tolerance = max(candidates, key=lambda entry: entry[1])
+    effective_tolerance = int(math.ceil(tolerance))
+    item["acceptable_overstock_qty_effective"] = effective_tolerance
+    item["acceptable_overstock_basis"] = basis
+    return effective_tolerance
+
+
+def assess_post_receipt_overstock(item, suggested_qty):
+    """Compare projected post-receipt stock against the effective target plus tolerated overstock."""
+    inventory_position = item.get("inventory_position", 0) or 0
+    effective_target_stock = item.get("effective_target_stock", item.get("target_stock", 0)) or 0
+    acceptable_overstock = item.get("acceptable_overstock_qty_effective", 0) or 0
+    resulting_stock = inventory_position + max(0, suggested_qty or 0)
+    overstock_qty = max(0, resulting_stock - effective_target_stock)
+    within_tolerance = overstock_qty <= acceptable_overstock
+
+    item["projected_post_receipt_stock"] = resulting_stock
+    item["projected_overstock_qty"] = overstock_qty
+    item["overstock_within_tolerance"] = within_tolerance
+    item["max_allowed_post_receipt_stock"] = effective_target_stock + acceptable_overstock
+    return overstock_qty, within_tolerance
+
+
 def calculate_inventory_position(item):
     """Calculate and persist the item's inventory position."""
     inv = item.get("inventory", {}) or {}
@@ -585,13 +630,26 @@ def enrich_item(item, inv, pack_qty, rule):
     item["reorder_needed"] = evaluate_reorder_trigger(item)
     raw_need = calculate_raw_need(item)
     item["raw_need"] = raw_need
+    acceptable_overstock = determine_acceptable_overstock_qty(item)
 
     policy = determine_order_policy(item, inv, pack_qty, rule)
     if policy not in ("manual_only", "reel_review", "large_pack_review") and should_force_recency_review(item, inv, rule):
         policy = "manual_only"
-    item["order_policy"] = policy
-
     suggested, why = calculate_suggested_qty(raw_need, pack_qty, policy, rule, inv)
+    projected_overstock, overstock_within_tolerance = assess_post_receipt_overstock(item, suggested)
+    auto_order_projected_overstock = projected_overstock
+    auto_order_overstock_within_tolerance = overstock_within_tolerance
+    overstock_exceeded_for_auto_order = (
+        acceptable_overstock > 0 and projected_overstock > acceptable_overstock
+    )
+    if (
+        policy not in ("manual_only", "reel_review", "large_pack_review")
+        and overstock_exceeded_for_auto_order
+    ):
+        policy = "manual_only"
+        suggested, why = calculate_suggested_qty(raw_need, pack_qty, policy, rule, inv)
+        projected_overstock, overstock_within_tolerance = assess_post_receipt_overstock(item, suggested)
+    item["order_policy"] = policy
     reason_codes = []
     inventory_position = item.get("inventory_position", 0)
     target_stock = item.get("target_stock", 0)
@@ -628,6 +686,10 @@ def enrich_item(item, inv, pack_qty, rule):
     data_completeness = item.get("data_completeness", "")
     if data_completeness:
         reason_codes.append(f"data_{data_completeness}")
+    if acceptable_overstock > 0:
+        reason_codes.append("acceptable_overstock_configured")
+        if overstock_exceeded_for_auto_order:
+            reason_codes.append("acceptable_overstock_exceeded")
 
     detail_parts = [f"Stock after open POs: {inventory_position:g}", f"Target stock: {target_stock:g}"]
     if effective_target_stock != target_stock:
@@ -660,6 +722,23 @@ def enrich_item(item, inv, pack_qty, rule):
             "missing_recency_activity_protected": "No sale or receipt history, but protected by other evidence",
         }
         detail_parts.append(completeness_labels.get(data_completeness, data_completeness))
+    if acceptable_overstock > 0:
+        overstock_basis = item.get("acceptable_overstock_basis")
+        basis_label = {
+            "qty": "saved qty",
+            "pct": "percent of pack",
+        }.get(overstock_basis, "configured")
+        detail_parts.append(f"Acceptable overstock: {acceptable_overstock:g} ({basis_label})")
+        detail_parts.append(
+            f"Projected overstock after receipt: {projected_overstock:g} "
+            f"({'within tolerance' if overstock_within_tolerance else 'exceeds tolerance'})"
+        )
+        if overstock_exceeded_for_auto_order:
+            detail_parts.append(
+                f"Auto-order projection: {auto_order_projected_overstock:g} "
+                f"({'within tolerance' if auto_order_overstock_within_tolerance else 'exceeds tolerance'})"
+            )
+            detail_parts.append("Auto-order blocked because projected overstock exceeds configured tolerance")
     minimum_packs = item.get("minimum_packs_on_hand")
     minimum_packs_source = item.get("minimum_packs_on_hand_source")
     if isinstance(minimum_packs, (int, float)) and minimum_packs > 0:

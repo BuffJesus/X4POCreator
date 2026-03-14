@@ -6,6 +6,7 @@ from tkinter import ttk, messagebox
 import storage
 from debug_log import write_debug
 from rules import (
+    determine_acceptable_overstock_qty,
     enrich_item,
     evaluate_item_status,
     get_rule_float,
@@ -48,6 +49,9 @@ def not_needed_reason(app, item, max_exceed_abs_buffer):
     reorder_trigger_threshold = item.get("reorder_trigger_threshold")
     reorder_trigger_basis = item.get("reorder_trigger_basis", "")
     reorder_needed = bool(item.get("reorder_needed"))
+    acceptable_overstock = item.get("acceptable_overstock_qty_effective")
+    if acceptable_overstock in (None, ""):
+        acceptable_overstock = determine_acceptable_overstock_qty(item)
 
     if item.get("status") == "skip" or final_qty <= 0:
         reasons.append("No net need (skip/zero final qty)")
@@ -111,13 +115,13 @@ def not_needed_reason(app, item, max_exceed_abs_buffer):
     hard_excess = False
     soft_excess = False
     if hard_max is not None:
-        hard_threshold = hard_max + _margin(hard_max)
+        hard_threshold = hard_max + _margin(hard_max) + acceptable_overstock
         hard_excess = resulting_stock > hard_threshold
     else:
         hard_threshold = None
 
     if soft_max is not None:
-        soft_threshold = soft_max + _margin(soft_max)
+        soft_threshold = soft_max + _margin(soft_max) + acceptable_overstock
         soft_excess = resulting_stock > soft_threshold
     else:
         soft_threshold = None
@@ -129,6 +133,10 @@ def not_needed_reason(app, item, max_exceed_abs_buffer):
             f"cur max {hard_max if hard_max is not None else '-'}, sug max {sug_max if sug_max is not None else '-'})"
         )
         auto_remove = True
+    elif acceptable_overstock > 0 and resulting_stock > (soft_max or 0):
+        reasons.append(
+            f"Review: intentional overstock is within tolerance (stock {resulting_stock:g}; allowed over target {acceptable_overstock:g})"
+        )
     elif hard_excess:
         reasons.append(
             f"Review: exceeds current max (stock {resulting_stock:g} > hard limit {hard_threshold:g}; "
@@ -690,6 +698,8 @@ def item_details_rows(app, item, inv, key):
         ("Min Packs", minimum_packs_display),
         ("Overstock Qty", str(item.get("acceptable_overstock_qty", "-") if item.get("acceptable_overstock_qty") is not None else "-")),
         ("Overstock %", _format_metric(item.get("acceptable_overstock_pct")) if item.get("acceptable_overstock_pct") is not None else "-"),
+        ("Allowed Overstock", str(item.get("acceptable_overstock_qty_effective", "-") if item.get("acceptable_overstock_qty_effective") is not None else "-")),
+        ("Projected Overstock", str(item.get("projected_overstock_qty", "-") if item.get("projected_overstock_qty") is not None else "-")),
         ("Status", item.get("status", "-")),
         ("Flags", ", ".join(item.get("data_flags", [])) or "none"),
     ]
