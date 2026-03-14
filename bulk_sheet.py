@@ -619,6 +619,7 @@ class BulkSheetView:
         return True
 
     def select_current_row(self):
+        self._flush_pending_before_navigation()
         row, col = self.current_cell()
         if row is None:
             return False
@@ -630,6 +631,7 @@ class BulkSheetView:
         return True
 
     def select_current_column(self):
+        self._flush_pending_before_navigation()
         row, col = self.current_cell()
         if col is None:
             return False
@@ -660,19 +662,7 @@ class BulkSheetView:
                 target_col = editable_positions[-1]
             else:
                 target_col = editable_positions[next_pos]
-        try:
-            self.sheet.deselect("all", redraw=False)
-        except Exception:
-            pass
-        try:
-            self.sheet.set_currently_selected(row=row, column=target_col)
-        except Exception:
-            return False
-        self._remember_selection()
-        self.sheet.refresh()
-        self.sheet.redraw()
-        self.app._update_bulk_sheet_status()
-        return True
+        return self._set_current_cell(row, target_col)
 
     def _close_open_text_editor(self, *, keysym="Commit"):
         try:
@@ -689,6 +679,7 @@ class BulkSheetView:
     def commit_editor_and_move(self, direction):
         if not self._close_open_text_editor(keysym="Commit"):
             return None
+        self._flush_pending_before_navigation()
         if direction == "next":
             moved = self.move_current_editable_cell(1)
         elif direction == "prev":
@@ -702,6 +693,7 @@ class BulkSheetView:
     def _set_current_cell(self, row, col):
         if not self.row_ids or row < 0 or row >= len(self.row_ids) or col < 0 or col >= len(self.columns):
             return False
+        self._flush_pending_before_navigation()
         try:
             self.sheet.deselect("all", redraw=False)
         except Exception:
@@ -719,6 +711,7 @@ class BulkSheetView:
     def extend_selection(self, row_delta, col_delta):
         if not self.row_ids or not self.columns:
             return False
+        self._flush_pending_before_navigation()
         row, col = self.current_cell()
         if row is None or col is None:
             row, col = 0, 0
@@ -750,6 +743,10 @@ class BulkSheetView:
         self.sheet.redraw()
         self.app._update_bulk_sheet_status()
         return True
+
+    def _flush_pending_before_navigation(self):
+        if getattr(self, "_pending_edit", None):
+            self.flush_pending_edit()
 
     def jump_current_cell(self, direction, ctrl=False):
         editable_positions = [idx for idx, name in enumerate(self.columns) if name in self.editable_cols]
