@@ -15,6 +15,59 @@ def refresh_bulk_view_after_edit(app, row_ids, col_name):
         return app._refresh_bulk_view_after_edit(row_ids)
 
 
+def resolve_bulk_edit_context(app, *, include_current_row=False):
+    bulk_sheet = getattr(app, "bulk_sheet", None)
+    right_click_context = getattr(app, "_right_click_bulk_context", None) or {}
+    if not bulk_sheet:
+        return {
+            "col_name": "",
+            "row_ids": [],
+            "clicked_row_id": right_click_context.get("row_id"),
+            "row_source": "none",
+        }
+    col_name = (
+        right_click_context.get("col_name", "")
+        or bulk_sheet.selected_editable_column_name()
+        or bulk_sheet.current_editable_column_name()
+    )
+    row_ids = list(bulk_sheet.selected_target_row_ids(col_name)) if col_name else []
+    row_source = "target_rows" if row_ids else "none"
+    clicked_row_id = right_click_context.get("row_id")
+    if clicked_row_id:
+        if not row_ids:
+            row_ids = [clicked_row_id]
+            row_source = "right_click_row"
+        elif clicked_row_id not in row_ids:
+            row_ids = [clicked_row_id]
+            row_source = "right_click_override"
+        else:
+            row_source = "selection_including_right_click"
+    if not row_ids:
+        explicit_selected = getattr(bulk_sheet, "explicit_selected_row_ids", None)
+        explicit_rows = list(explicit_selected()) if callable(explicit_selected) else []
+        if explicit_rows:
+            row_ids = explicit_rows
+            row_source = "explicit_rows"
+    if not row_ids:
+        selected_selected = getattr(bulk_sheet, "selected_row_ids", None)
+        selected_rows = list(selected_selected()) if callable(selected_selected) else []
+        if selected_rows:
+            row_ids = selected_rows
+            row_source = "selected_rows"
+    if not row_ids and include_current_row:
+        current_row = getattr(bulk_sheet, "current_row_id", None)
+        current_row_id = current_row() if callable(current_row) else None
+        if current_row_id is not None:
+            row_ids = [current_row_id]
+            row_source = "current_row"
+    return {
+        "col_name": col_name,
+        "row_ids": row_ids,
+        "clicked_row_id": clicked_row_id,
+        "row_source": row_source,
+    }
+
+
 def bulk_select_all(app):
     return maybe_break(app.bulk_sheet and app.bulk_sheet.select_all_visible())
 
@@ -95,11 +148,9 @@ def bulk_fill_selection_with_current_value(app, editable_cols, write_debug, even
     if not app.bulk_sheet:
         return None
     flush_pending_bulk_sheet_edit(app)
-    col_name = (
-        app.bulk_sheet.selected_editable_column_name()
-        or app.bulk_sheet.current_editable_column_name()
-    )
-    row_ids = list(app.bulk_sheet.selected_target_row_ids(col_name)) if col_name else []
+    edit_context = resolve_bulk_edit_context(app)
+    col_name = edit_context["col_name"]
+    row_ids = list(edit_context["row_ids"])
     if col_name not in editable_cols or not row_ids:
         return "break"
     value = app.bulk_sheet.current_cell_value().strip()
@@ -109,6 +160,7 @@ def bulk_fill_selection_with_current_value(app, editable_cols, write_debug, even
         alias=alias,
         col_name=col_name,
         row_count=len(row_ids),
+        row_source=edit_context["row_source"],
         value=value,
     )
     for row_id in row_ids:
@@ -126,27 +178,17 @@ def bulk_begin_edit(app, editable_cols, askstring, write_debug, event=None):
     if not app.bulk_sheet:
         return None
     flush_pending_bulk_sheet_edit(app)
-    right_click_context = getattr(app, "_right_click_bulk_context", None) or {}
-    col_name = (
-        right_click_context.get("col_name", "")
-        or app.bulk_sheet.selected_editable_column_name()
-        or app.bulk_sheet.current_editable_column_name()
-    )
-    row_ids = []
-    if col_name:
-        row_ids = list(app.bulk_sheet.selected_target_row_ids(col_name))
-    clicked_row_id = right_click_context.get("row_id")
-    if clicked_row_id:
-        if not row_ids or clicked_row_id not in row_ids:
-            row_ids = [clicked_row_id]
-    if not row_ids and app.bulk_sheet:
-        row_ids = list(app.bulk_sheet.selected_row_ids())
+    edit_context = resolve_bulk_edit_context(app)
+    col_name = edit_context["col_name"]
+    row_ids = list(edit_context["row_ids"])
+    clicked_row_id = edit_context["clicked_row_id"]
     write_debug(
         "bulk_begin_edit",
         col_name=col_name,
         row_ids=",".join(row_ids),
         row_count=len(row_ids),
         right_click_row_id=clicked_row_id or "",
+        row_source=edit_context["row_source"],
     )
     if col_name == "buy_rule" and clicked_row_id:
         resolve_row = getattr(app, "_resolve_bulk_row_id", None)
@@ -191,8 +233,9 @@ def bulk_begin_edit(app, editable_cols, askstring, write_debug, event=None):
         "bulk_begin_edit.apply",
         col_name=col_name,
         row_count=len(row_ids),
+        row_source=edit_context["row_source"],
         value=value,
-        right_click_context=repr(right_click_context),
+        right_click_context=repr(getattr(app, "_right_click_bulk_context", None)),
     )
     for row_id in row_ids:
         app._bulk_apply_editor_value(row_id, col_name, value)
@@ -269,13 +312,12 @@ def bulk_remove_selected_rows(app, deepcopy, askyesno, event=None):
 
 def bulk_fill_selected_cells(app, editable_cols, askstring, showinfo):
     flush_pending_bulk_sheet_edit(app)
-    col_name = (
-        (app.bulk_sheet.selected_editable_column_name() if app.bulk_sheet else "")
-        or (app.bulk_sheet.current_editable_column_name() if app.bulk_sheet else "")
-    )
     if app.bulk_sheet:
-        row_ids = list(app.bulk_sheet.selected_target_row_ids(col_name))
+        edit_context = resolve_bulk_edit_context(app)
+        col_name = edit_context["col_name"]
+        row_ids = list(edit_context["row_ids"])
     else:
+        col_name = ""
         row_ids = list(app.bulk_tree.selection())
     if col_name not in editable_cols or not row_ids:
         showinfo("No Cell Selection", "Select one or more rows or cells in a single editable column first.")
@@ -297,13 +339,12 @@ def bulk_fill_selected_cells(app, editable_cols, askstring, showinfo):
 
 def bulk_clear_selected_cells(app, editable_cols, showinfo):
     flush_pending_bulk_sheet_edit(app)
-    col_name = (
-        (app.bulk_sheet.selected_editable_column_name() if app.bulk_sheet else "")
-        or (app.bulk_sheet.current_editable_column_name() if app.bulk_sheet else "")
-    )
     if app.bulk_sheet:
-        row_ids = list(app.bulk_sheet.selected_target_row_ids(col_name))
+        edit_context = resolve_bulk_edit_context(app)
+        col_name = edit_context["col_name"]
+        row_ids = list(edit_context["row_ids"])
     else:
+        col_name = ""
         row_ids = list(app.bulk_tree.selection())
     if col_name not in editable_cols or not row_ids:
         showinfo("No Cell Selection", "Select one or more rows or cells in a single editable column first.")

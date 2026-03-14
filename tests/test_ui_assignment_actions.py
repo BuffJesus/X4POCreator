@@ -9,6 +9,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 import ui_assignment_actions
+import ui_bulk
 
 
 class DummyVar:
@@ -114,6 +115,60 @@ class AssignmentActionTests(unittest.TestCase):
         self.assertEqual([item["vendor"] for item in app.filtered_items], ["MOTION", "MOTION", "MOTION"])
         self.assertIn("MOTION", app.vendor_codes_used)
         self.assertEqual(calls, ["flush", ("refresh", ("0", "1", "2")), "summary", ("vendor:visible", {"before": True})])
+
+    def test_bulk_apply_selected_resolves_stable_bulk_row_ids(self):
+        calls = []
+        item_a = {"line_code": "AER-", "item_code": "A", "vendor": ""}
+        item_b = {"line_code": "MOT-", "item_code": "B", "vendor": ""}
+        row_id_a = ui_bulk.bulk_row_id(item_a)
+        row_id_b = ui_bulk.bulk_row_id(item_b)
+        app = SimpleNamespace(
+            var_bulk_vendor=DummyVar("gregdist"),
+            bulk_sheet=SimpleNamespace(
+                flush_pending_edit=lambda: calls.append("flush"),
+                selected_row_ids=lambda: (row_id_b, row_id_a),
+            ),
+            filtered_items=[item_a, item_b],
+            vendor_codes_used=[],
+            _capture_bulk_history_state=lambda: {"before": True},
+            _refresh_bulk_view_after_edit=lambda row_ids: calls.append(("refresh", tuple(row_ids))),
+            _finalize_bulk_history_action=lambda label, before: calls.append((label, before)),
+            _update_bulk_summary=lambda: calls.append("summary"),
+            _find_filtered_item=lambda key: next((item for item in (item_a, item_b) if (item["line_code"], item["item_code"]) == key), None),
+        )
+
+        ui_assignment_actions.bulk_apply_selected(app)
+
+        self.assertEqual(item_a["vendor"], "GREGDIST")
+        self.assertEqual(item_b["vendor"], "GREGDIST")
+        self.assertEqual(calls, ["flush", ("refresh", (row_id_b, row_id_a)), "summary", ("vendor:selected", {"before": True})])
+
+    def test_bulk_apply_visible_resolves_stable_bulk_row_ids(self):
+        calls = []
+        item_a = {"line_code": "AER-", "item_code": "A", "vendor": ""}
+        item_b = {"line_code": "MOT-", "item_code": "B", "vendor": ""}
+        row_id_a = ui_bulk.bulk_row_id(item_a)
+        row_id_b = ui_bulk.bulk_row_id(item_b)
+        app = SimpleNamespace(
+            var_bulk_vendor=DummyVar("motion"),
+            bulk_sheet=SimpleNamespace(
+                flush_pending_edit=lambda: calls.append("flush"),
+                visible_row_ids=lambda: (row_id_a, row_id_b),
+            ),
+            filtered_items=[item_b, item_a],
+            vendor_codes_used=[],
+            _capture_bulk_history_state=lambda: {"before": True},
+            _refresh_bulk_view_after_edit=lambda row_ids: calls.append(("refresh", tuple(row_ids))),
+            _finalize_bulk_history_action=lambda label, before: calls.append((label, before)),
+            _update_bulk_summary=lambda: calls.append("summary"),
+            _find_filtered_item=lambda key: next((item for item in (item_a, item_b) if (item["line_code"], item["item_code"]) == key), None),
+        )
+
+        ui_assignment_actions.bulk_apply_visible(app)
+
+        self.assertEqual(item_a["vendor"], "MOTION")
+        self.assertEqual(item_b["vendor"], "MOTION")
+        self.assertEqual(calls, ["flush", ("refresh", (row_id_a, row_id_b)), "summary", ("vendor:visible", {"before": True})])
 
     def test_go_to_individual_flushes_pending_sheet_edit_before_switching_tabs(self):
         calls = []

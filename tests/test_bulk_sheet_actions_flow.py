@@ -82,6 +82,47 @@ class BulkSheetActionsFlowTests(unittest.TestCase):
             ],
         )
 
+    def test_resolve_bulk_edit_context_right_click_overrides_selection_outside_target_rows(self):
+        row_id_a = ui_bulk.bulk_row_id({"line_code": "AER-", "item_code": "A"})
+        row_id_b = ui_bulk.bulk_row_id({"line_code": "AER-", "item_code": "B"})
+        fake_app = SimpleNamespace(
+            bulk_sheet=SimpleNamespace(
+                selected_editable_column_name=lambda: "pack_size",
+                current_editable_column_name=lambda: "pack_size",
+                selected_target_row_ids=lambda col_name: (row_id_a,),
+                explicit_selected_row_ids=lambda: (row_id_a,),
+                selected_row_ids=lambda: (row_id_a,),
+                current_row_id=lambda: row_id_a,
+            ),
+            _right_click_bulk_context={"row_id": row_id_b, "col_name": "pack_size"},
+        )
+
+        context = bulk_sheet_actions_flow.resolve_bulk_edit_context(fake_app, include_current_row=True)
+
+        self.assertEqual(context["col_name"], "pack_size")
+        self.assertEqual(context["row_ids"], [row_id_b])
+        self.assertEqual(context["row_source"], "right_click_override")
+
+    def test_resolve_bulk_edit_context_keeps_selection_when_right_click_is_within_it(self):
+        row_id_a = ui_bulk.bulk_row_id({"line_code": "AER-", "item_code": "A"})
+        row_id_b = ui_bulk.bulk_row_id({"line_code": "AER-", "item_code": "B"})
+        fake_app = SimpleNamespace(
+            bulk_sheet=SimpleNamespace(
+                selected_editable_column_name=lambda: "pack_size",
+                current_editable_column_name=lambda: "pack_size",
+                selected_target_row_ids=lambda col_name: (row_id_a, row_id_b),
+                explicit_selected_row_ids=lambda: (row_id_a, row_id_b),
+                selected_row_ids=lambda: (row_id_a, row_id_b),
+                current_row_id=lambda: row_id_a,
+            ),
+            _right_click_bulk_context={"row_id": row_id_b, "col_name": "pack_size"},
+        )
+
+        context = bulk_sheet_actions_flow.resolve_bulk_edit_context(fake_app, include_current_row=True)
+
+        self.assertEqual(context["row_ids"], [row_id_a, row_id_b])
+        self.assertEqual(context["row_source"], "selection_including_right_click")
+
     def test_bulk_begin_edit_opens_buy_rule_editor_from_right_click(self):
         events = []
         row_id = ui_bulk.bulk_row_id({"line_code": "AER-", "item_code": "GH781-4"})
@@ -186,14 +227,20 @@ class BulkSheetActionsFlowTests(unittest.TestCase):
 
     def test_bulk_fill_selected_cells_applies_value_and_finalizes_history(self):
         events = []
+        row_id_a = ui_bulk.bulk_row_id({"line_code": "AER-", "item_code": "A"})
+        row_id_b = ui_bulk.bulk_row_id({"line_code": "AER-", "item_code": "B"})
         fake_app = SimpleNamespace(
             bulk_sheet=SimpleNamespace(
                 flush_pending_edit=lambda: events.append("flush"),
                 selected_editable_column_name=lambda: "pack_size",
                 current_editable_column_name=lambda: "pack_size",
-                selected_target_row_ids=lambda col_name: ("0", "1"),
+                selected_target_row_ids=lambda col_name: (row_id_a, row_id_b),
+                explicit_selected_row_ids=lambda: (row_id_a, row_id_b),
+                selected_row_ids=lambda: (row_id_a, row_id_b),
+                current_row_id=lambda: row_id_a,
                 clear_selection=lambda: events.append("clear"),
             ),
+            _right_click_bulk_context=None,
             root=None,
             _capture_bulk_history_state=lambda: {"before": True},
             _bulk_apply_editor_value=lambda row_id, col_name, value: events.append((row_id, col_name, value)),
@@ -214,9 +261,9 @@ class BulkSheetActionsFlowTests(unittest.TestCase):
             events,
             [
                 "flush",
-                ("0", "pack_size", "6"),
-                ("1", "pack_size", "6"),
-                ("refresh", ("0", "1")),
+                (row_id_a, "pack_size", "6"),
+                (row_id_b, "pack_size", "6"),
+                ("refresh", (row_id_a, row_id_b)),
                 "clear",
                 "summary",
                 "status",
@@ -226,14 +273,20 @@ class BulkSheetActionsFlowTests(unittest.TestCase):
 
     def test_bulk_clear_selected_cells_clears_values_and_finalizes_history(self):
         events = []
+        row_id_a = ui_bulk.bulk_row_id({"line_code": "AER-", "item_code": "A"})
+        row_id_b = ui_bulk.bulk_row_id({"line_code": "AER-", "item_code": "B"})
         fake_app = SimpleNamespace(
             bulk_sheet=SimpleNamespace(
                 flush_pending_edit=lambda: events.append("flush"),
                 selected_editable_column_name=lambda: "vendor",
                 current_editable_column_name=lambda: "vendor",
-                selected_target_row_ids=lambda col_name: ("0",),
+                selected_target_row_ids=lambda col_name: (row_id_a,),
+                explicit_selected_row_ids=lambda: (row_id_a,),
+                selected_row_ids=lambda: (row_id_a, row_id_b),
+                current_row_id=lambda: row_id_b,
                 clear_selection=lambda: events.append("clear"),
             ),
+            _right_click_bulk_context=None,
             _capture_bulk_history_state=lambda: {"before": True},
             _bulk_apply_editor_value=lambda row_id, col_name, value: events.append((row_id, col_name, value)),
             _refresh_bulk_view_after_edit=lambda row_ids: events.append(("refresh", tuple(row_ids))),
@@ -252,12 +305,57 @@ class BulkSheetActionsFlowTests(unittest.TestCase):
             events,
             [
                 "flush",
-                ("0", "vendor", ""),
-                ("refresh", ("0",)),
+                (row_id_a, "vendor", ""),
+                ("refresh", (row_id_a,)),
                 "clear",
                 "summary",
                 "status",
                 ("clear:vendor", {"before": True}),
+            ],
+        )
+
+    def test_bulk_fill_selected_cells_right_click_outside_selection_targets_clicked_row_only(self):
+        events = []
+        row_id_a = ui_bulk.bulk_row_id({"line_code": "AER-", "item_code": "A"})
+        row_id_b = ui_bulk.bulk_row_id({"line_code": "AER-", "item_code": "B"})
+        fake_app = SimpleNamespace(
+            bulk_sheet=SimpleNamespace(
+                flush_pending_edit=lambda: events.append("flush"),
+                selected_editable_column_name=lambda: "pack_size",
+                current_editable_column_name=lambda: "pack_size",
+                selected_target_row_ids=lambda col_name: (row_id_a,),
+                explicit_selected_row_ids=lambda: (row_id_a,),
+                selected_row_ids=lambda: (row_id_a,),
+                current_row_id=lambda: row_id_a,
+                clear_selection=lambda: events.append("clear"),
+            ),
+            _right_click_bulk_context={"row_id": row_id_b, "col_name": "pack_size"},
+            root=None,
+            _capture_bulk_history_state=lambda: {"before": True},
+            _bulk_apply_editor_value=lambda row_id, col_name, value: events.append((row_id, col_name, value)),
+            _refresh_bulk_view_after_edit=lambda row_ids: events.append(("refresh", tuple(row_ids))),
+            _update_bulk_summary=lambda: events.append("summary"),
+            _update_bulk_cell_status=lambda: events.append("status"),
+            _finalize_bulk_history_action=lambda label, before: events.append((label, before)),
+        )
+
+        bulk_sheet_actions_flow.bulk_fill_selected_cells(
+            fake_app,
+            ("pack_size",),
+            lambda title, prompt, parent=None: " 6 ",
+            lambda title, message: events.append((title, message)),
+        )
+
+        self.assertEqual(
+            events,
+            [
+                "flush",
+                (row_id_b, "pack_size", "6"),
+                ("refresh", (row_id_b,)),
+                "clear",
+                "summary",
+                "status",
+                ("fill:pack_size", {"before": True}),
             ],
         )
 

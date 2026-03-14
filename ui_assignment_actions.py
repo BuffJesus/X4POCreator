@@ -41,16 +41,22 @@ def bulk_apply_selected(app):
         return
     before_state = app._capture_bulk_history_state() if hasattr(app, "_capture_bulk_history_state") else None
     for item_id in selected:
-        idx = int(item_id)
+        resolver = getattr(app, "_resolve_bulk_row_id", None)
+        if callable(resolver):
+            idx, item = resolver(item_id)
+        else:
+            idx, item = ui_bulk.resolve_bulk_row_id(app, item_id)
+        if idx is None or item is None:
+            continue
         before_summary_item = {
-            "vendor": app.filtered_items[idx].get("vendor", ""),
-            "status": app.filtered_items[idx].get("status", ""),
+            "vendor": item.get("vendor", ""),
+            "status": item.get("status", ""),
         }
-        app.filtered_items[idx]["vendor"] = vendor
+        item["vendor"] = vendor
         ui_bulk.adjust_bulk_summary_for_item_change(
             app,
             before_summary_item,
-            {"vendor": app.filtered_items[idx].get("vendor", ""), "status": app.filtered_items[idx].get("status", "")},
+            {"vendor": item.get("vendor", ""), "status": item.get("status", "")},
         )
         if not getattr(app, "bulk_sheet", None):
             app.bulk_tree.set(item_id, "vendor", vendor)
@@ -77,16 +83,22 @@ def bulk_apply_visible(app):
         return
     before_state = app._capture_bulk_history_state() if hasattr(app, "_capture_bulk_history_state") else None
     for item_id in visible:
-        idx = int(item_id)
+        resolver = getattr(app, "_resolve_bulk_row_id", None)
+        if callable(resolver):
+            idx, item = resolver(item_id)
+        else:
+            idx, item = ui_bulk.resolve_bulk_row_id(app, item_id)
+        if idx is None or item is None:
+            continue
         before_summary_item = {
-            "vendor": app.filtered_items[idx].get("vendor", ""),
-            "status": app.filtered_items[idx].get("status", ""),
+            "vendor": item.get("vendor", ""),
+            "status": item.get("status", ""),
         }
-        app.filtered_items[idx]["vendor"] = vendor
+        item["vendor"] = vendor
         ui_bulk.adjust_bulk_summary_for_item_change(
             app,
             before_summary_item,
-            {"vendor": app.filtered_items[idx].get("vendor", ""), "status": app.filtered_items[idx].get("status", "")},
+            {"vendor": item.get("vendor", ""), "status": item.get("status", "")},
         )
         if not getattr(app, "bulk_sheet", None):
             app.bulk_tree.set(item_id, "vendor", vendor)

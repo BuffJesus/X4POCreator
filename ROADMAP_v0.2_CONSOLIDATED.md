@@ -237,9 +237,10 @@ This is the next high-value shipping slice. The current model already uses `repl
 - [x] Improve bulk summary caching and safer incremental refresh paths for common edits.
 - [x] Move bulk row identity from positional indices to stable item keys so filtered/sorted refreshes, context actions, and row removals keep hitting the intended item.
 - [x] Treat in-sheet navigation and selection changes as edit boundaries so queued cell commits drain before focus moves.
+- [x] Carry stable bulk row-id resolution through vendor assignment actions so selected/visible sheet updates keep targeting the correct items.
 - [ ] Eliminate remaining previous-cell / rapid-click commit bleed under real timing pressure.
 - [ ] Guarantee edit-target integrity under rapid click-edit, keyboard-edit, filtered, sorted, and multi-selection workflows.
-- [ ] Document final precedence between current cell, selected cells, selected rows, and right-click snapshot state.
+- [x] Document and centralize final precedence between current cell, selected cells, selected rows, and right-click snapshot state.
 - [ ] Tighten undo/history boundaries so they always match the user's perceived edit unit.
 - [ ] Separate full-session, active-filtered, and visible-row performance paths more aggressively for very large sessions.
 
