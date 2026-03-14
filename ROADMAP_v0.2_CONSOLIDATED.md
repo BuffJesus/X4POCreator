@@ -259,7 +259,7 @@ This phase is about reducing required operator input. Humans will consistently c
   - export all exportable
   - ask when mixed
 - [ ] Reduce repeated vendor-policy setup by preferring inherited or inferred defaults where safe.
-- [ ] Add policy templates / presets for common vendor behaviors so shipping rules can be configured with one click instead of field-by-field entry.
+- [x] Add policy templates / presets for common vendor behaviors so shipping rules can be configured with one click instead of field-by-field entry.
 - [ ] Make missing policy data fail soft with safe defaults instead of forcing immediate user intervention.
 - [ ] Prefer auto-filled values from current reports and saved history before asking for manual entry.
 - [ ] Collapse low-value fields behind an "Advanced" affordance in dialogs where the common workflow only needs one or two inputs.
@@ -286,7 +286,7 @@ These are the best next steps after reconciliation.
 
 - [ ] Define the default export behavior for mixed immediate/planned batches so routine users do not need to choose every time.
 - [ ] Add saved user preferences for export-scope prompting vs auto-selection.
-- [ ] Add vendor-policy presets and safer defaulting to reduce setup friction.
+- [ ] Add broader vendor-policy defaulting beyond explicit presets to reduce setup friction without guessing unsafe values.
 - [ ] Add a compact exception-first review workflow that highlights only the items/vendors needing human judgment.
 - [ ] Add cost-confidence and threshold-progress signals to vendor shipping decisions.
 - [ ] Add planned release dates and "export the day before free-freight day" workflow for vendor policies.

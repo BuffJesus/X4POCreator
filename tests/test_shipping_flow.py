@@ -12,6 +12,23 @@ from models import AppSessionState
 
 
 class ShippingFlowTests(unittest.TestCase):
+    def test_get_vendor_policy_preset_returns_normalized_common_template(self):
+        preset = shipping_flow.get_vendor_policy_preset("hybrid_friday_2000")
+
+        self.assertEqual(preset["label"], "Friday + 2000")
+        self.assertEqual(preset["shipping_policy"], "hybrid_free_day_threshold")
+        self.assertEqual(preset["preferred_free_ship_weekdays"], ["Friday"])
+        self.assertEqual(preset["free_freight_threshold"], 2000.0)
+        self.assertEqual(preset["urgent_release_floor"], 0.0)
+
+    def test_vendor_policy_preset_options_expose_labels_for_ui(self):
+        options = shipping_flow.vendor_policy_preset_options()
+
+        self.assertIn(("release_now", "Release Now"), options)
+        self.assertIn(("free_day_friday", "Free Day Friday"), options)
+        self.assertIn(("threshold_2000", "Threshold 2000"), options)
+        self.assertIn(("hybrid_friday_2000", "Friday + 2000"), options)
+
     def test_release_bucket_classifies_release_states(self):
         self.assertEqual(shipping_flow.release_bucket({"release_decision": "release_now"}), "release_now")
         self.assertEqual(

@@ -4,6 +4,20 @@ from tkinter import ttk, messagebox, simpledialog
 import shipping_flow
 
 
+def apply_vendor_policy_preset(app, vendor, preset_name):
+    preset = shipping_flow.get_vendor_policy_preset(preset_name)
+    if not preset or not preset.get("label"):
+        return False
+    return apply_vendor_policy_changes(
+        app,
+        vendor,
+        shipping_policy=preset.get("shipping_policy", "release_immediately"),
+        weekdays=", ".join(preset.get("preferred_free_ship_weekdays", [])),
+        threshold=preset.get("free_freight_threshold", 0.0),
+        urgent_floor=preset.get("urgent_release_floor", 0.0),
+    )
+
+
 def apply_vendor_policy_changes(app, vendor, *, shipping_policy, weekdays, threshold, urgent_floor):
     normalized_vendor = app._normalize_vendor_code(vendor)
     if not normalized_vendor:
@@ -68,8 +82,12 @@ def open_vendor_policy_editor(app, vendor, parent):
     var_urgent = tk.StringVar(
         value=str(int(policy["urgent_release_floor"])) if float(policy.get("urgent_release_floor", 0) or 0).is_integer() and policy.get("urgent_release_floor", 0) else (str(policy.get("urgent_release_floor", "")) if policy.get("urgent_release_floor", 0) else "")
     )
+    preset_options = shipping_flow.vendor_policy_preset_options()
+    preset_by_label = {label: key for key, label in preset_options}
+    var_preset = tk.StringVar(value="")
 
     fields = [
+        ("Preset", ttk.Combobox(grid, textvariable=var_preset, state="readonly", values=[""] + [label for _, label in preset_options], width=28)),
         ("Policy", ttk.Combobox(grid, textvariable=var_policy, state="readonly", values=[
             "release_immediately",
             "hold_for_free_day",
@@ -86,10 +104,22 @@ def open_vendor_policy_editor(app, vendor, parent):
 
     ttk.Label(
         grid,
-        text="Examples: Friday or Mon,Fri. Threshold and urgent floor are numeric.",
+        text="Use a preset for the common case, or edit fields directly. Examples: Friday or Mon,Fri. Threshold and urgent floor are numeric.",
         style="SubHeader.TLabel",
         wraplength=620,
     ).grid(row=len(fields), column=0, columnspan=2, sticky="w", pady=(6, 0))
+
+    def _apply_preset():
+        preset_name = preset_by_label.get(var_preset.get().strip(), "")
+        preset = shipping_flow.get_vendor_policy_preset(preset_name)
+        if not preset:
+            return
+        var_policy.set(preset.get("shipping_policy", "release_immediately"))
+        var_weekdays.set(", ".join(preset.get("preferred_free_ship_weekdays", [])))
+        threshold = preset.get("free_freight_threshold", 0.0)
+        urgent_floor = preset.get("urgent_release_floor", 0.0)
+        var_threshold.set("" if not threshold else (str(int(threshold)) if float(threshold).is_integer() else str(threshold)))
+        var_urgent.set("" if not urgent_floor else (str(int(urgent_floor)) if float(urgent_floor).is_integer() else str(urgent_floor)))
 
     def _save():
         apply_vendor_policy_changes(
@@ -110,6 +140,7 @@ def open_vendor_policy_editor(app, vendor, parent):
 
     btn_frame = ttk.Frame(dlg)
     btn_frame.pack(fill=tk.X, padx=16, pady=12)
+    ttk.Button(btn_frame, text="Apply Preset", command=_apply_preset).pack(side=tk.LEFT, padx=4)
     ttk.Button(btn_frame, text="Clear Policy", command=_clear).pack(side=tk.LEFT, padx=4)
     ttk.Button(btn_frame, text="Save Policy", command=_save).pack(side=tk.RIGHT, padx=4)
     ttk.Button(btn_frame, text="Close", command=dlg.destroy).pack(side=tk.RIGHT, padx=4)

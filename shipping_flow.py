@@ -3,6 +3,37 @@ from datetime import datetime, timedelta
 
 WEEKDAY_NAMES = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
 
+VENDOR_POLICY_PRESETS = {
+    "release_now": {
+        "label": "Release Now",
+        "shipping_policy": "release_immediately",
+        "preferred_free_ship_weekdays": [],
+        "free_freight_threshold": 0.0,
+        "urgent_release_floor": 0.0,
+    },
+    "free_day_friday": {
+        "label": "Free Day Friday",
+        "shipping_policy": "hold_for_free_day",
+        "preferred_free_ship_weekdays": ["Friday"],
+        "free_freight_threshold": 0.0,
+        "urgent_release_floor": 0.0,
+    },
+    "threshold_2000": {
+        "label": "Threshold 2000",
+        "shipping_policy": "hold_for_threshold",
+        "preferred_free_ship_weekdays": [],
+        "free_freight_threshold": 2000.0,
+        "urgent_release_floor": 0.0,
+    },
+    "hybrid_friday_2000": {
+        "label": "Friday + 2000",
+        "shipping_policy": "hybrid_free_day_threshold",
+        "preferred_free_ship_weekdays": ["Friday"],
+        "free_freight_threshold": 2000.0,
+        "urgent_release_floor": 0.0,
+    },
+}
+
 
 def _normalize_vendor(value):
     return str(value or "").strip().upper()
@@ -52,6 +83,17 @@ def normalize_vendor_policy(policy):
         "urgent_release_floor": _safe_float(policy.get("urgent_release_floor"), 0.0),
     }
     return normalized
+
+
+def get_vendor_policy_preset(preset_name):
+    preset = VENDOR_POLICY_PRESETS.get(str(preset_name or "").strip(), {})
+    normalized = normalize_vendor_policy(preset)
+    normalized["label"] = preset.get("label", "")
+    return normalized
+
+
+def vendor_policy_preset_options():
+    return [(key, VENDOR_POLICY_PRESETS[key]["label"]) for key in VENDOR_POLICY_PRESETS]
 
 
 def estimate_item_order_value(item, inventory_lookup):
