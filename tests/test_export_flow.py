@@ -45,6 +45,37 @@ class ExportFlowTests(unittest.TestCase):
         self.assertEqual([item["item_code"] for item in exportable], ["A", "E", "D"])
         self.assertEqual([item["item_code"] for item in held], ["B", "C"])
 
+    def test_choose_export_items_returns_all_when_no_planned_items_exist(self):
+        items = [
+            {"item_code": "A", "release_decision": "release_now"},
+            {"item_code": "D", "release_decision": ""},
+        ]
+
+        selected = export_flow.choose_export_items(SimpleNamespace(), items)
+
+        self.assertEqual(selected, items)
+
+    def test_choose_export_items_can_limit_to_immediate_items(self):
+        items = [
+            {"item_code": "A", "release_decision": "release_now"},
+            {"item_code": "E", "release_decision": "export_next_business_day_for_free_day"},
+        ]
+
+        with patch("export_flow.messagebox.askyesnocancel", return_value=False):
+            selected = export_flow.choose_export_items(SimpleNamespace(), items)
+
+        self.assertEqual([item["item_code"] for item in selected], ["A"])
+
+    def test_choose_export_items_can_export_planned_only_when_no_immediate_items_exist(self):
+        items = [
+            {"item_code": "E", "release_decision": "export_next_business_day_for_free_day"},
+        ]
+
+        with patch("export_flow.messagebox.askyesno", return_value=True):
+            selected = export_flow.choose_export_items(SimpleNamespace(), items)
+
+        self.assertEqual([item["item_code"] for item in selected], ["E"])
+
     def test_build_session_snapshot_captures_expected_fields(self):
         app = SimpleNamespace(
             var_sales_path=SimpleNamespace(get=lambda: "C:\\Reports\\sales.csv"),
@@ -245,6 +276,7 @@ class ExportFlowTests(unittest.TestCase):
         )
 
         with tempfile.TemporaryDirectory() as tmp, \
+             patch("export_flow.messagebox.askyesnocancel", return_value=True), \
              patch("export_flow.filedialog.askdirectory", return_value=tmp), \
              patch("export_flow.storage.append_order_history") as mocked_history, \
              patch("export_flow.storage.save_session_snapshot"), \
@@ -263,6 +295,61 @@ class ExportFlowTests(unittest.TestCase):
         self.assertEqual(exported_items[1]["item_code"], "GH781-6")
         self.assertIn("planned-release POs", mocked_info.call_args.args[1])
         self.assertIn("were held by shipping policy and were not exported", mocked_info.call_args.args[1])
+
+    def test_do_export_can_skip_planned_items_and_export_immediate_only(self):
+        session = AppSessionState(
+            assigned_items=[
+                {
+                    "vendor": "MOTION",
+                    "line_code": "AER-",
+                    "item_code": "GH781-4",
+                    "order_qty": 2,
+                    "release_decision": "release_now",
+                },
+                {
+                    "vendor": "MOTION",
+                    "line_code": "AER-",
+                    "item_code": "GH781-6",
+                    "order_qty": 1,
+                    "release_decision": "export_next_business_day_for_free_day",
+                },
+            ],
+            startup_warning_rows=[],
+            qoh_adjustments={},
+            order_rules={},
+        )
+        app = SimpleNamespace(
+            session=session,
+            root=SimpleNamespace(update=lambda: None),
+            _show_loading=lambda message: None,
+            _hide_loading=lambda: None,
+            _persist_suspense_carry=lambda: {"conflict": False},
+            _build_maintenance_report=lambda: [],
+            _show_maintenance_report=lambda output_dir, issues: None,
+            var_sales_path=SimpleNamespace(get=lambda: ""),
+            var_po_path=SimpleNamespace(get=lambda: ""),
+            var_susp_path=SimpleNamespace(get=lambda: ""),
+            var_onhand_path=SimpleNamespace(get=lambda: ""),
+            var_minmax_path=SimpleNamespace(get=lambda: ""),
+            var_packsize_path=SimpleNamespace(get=lambda: ""),
+        )
+
+        with tempfile.TemporaryDirectory() as tmp, \
+             patch("export_flow.messagebox.askyesnocancel", return_value=False), \
+             patch("export_flow.filedialog.askdirectory", return_value=tmp), \
+             patch("export_flow.storage.append_order_history") as mocked_history, \
+             patch("export_flow.storage.save_session_snapshot"), \
+             patch("export_flow.messagebox.showinfo"):
+            export_flow.do_export(
+                app,
+                lambda vendor, items, output_dir: str(Path(output_dir) / f"{vendor}_{len(items)}.xlsx"),
+                str(Path(tmp) / "order_history.json"),
+                str(Path(tmp) / "sessions"),
+            )
+
+        mocked_history.assert_called_once()
+        exported_items = mocked_history.call_args.args[1]
+        self.assertEqual([item["item_code"] for item in exported_items], ["GH781-4"])
 
     def test_do_export_stops_when_all_items_are_held(self):
         session = AppSessionState(

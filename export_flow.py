@@ -37,6 +37,39 @@ def partition_export_items(assigned_items):
     return exportable, held
 
 
+def choose_export_items(app, exportable_items):
+    immediate_items = [item for item in exportable_items if export_bucket(item) == "release_now"]
+    planned_items = [item for item in exportable_items if export_bucket(item) == "planned_today"]
+
+    if not planned_items:
+        return exportable_items
+
+    if not immediate_items:
+        proceed = messagebox.askyesno(
+            "Export Planned POs?",
+            (
+                f"{len(planned_items)} item(s) are planned-release POs for an upcoming free-freight day.\n\n"
+                "Export these planned items now?"
+            ),
+        )
+        return planned_items if proceed else []
+
+    choice = messagebox.askyesnocancel(
+        "Export Scope",
+        (
+            f"{len(immediate_items)} immediate-release item(s) and {len(planned_items)} planned-release item(s) are exportable.\n\n"
+            "Yes = export all exportable items\n"
+            "No = export immediate-release items only\n"
+            "Cancel = do nothing"
+        ),
+    )
+    if choice is None:
+        return []
+    if choice:
+        return exportable_items
+    return immediate_items
+
+
 def loaded_report_paths_from_app(app):
     return {
         "sales": app.var_sales_path.get().strip(),
@@ -55,8 +88,6 @@ def do_export(app, export_vendor_po, order_history_file, sessions_dir):
         return
 
     exportable_items, held_items = partition_export_items(session.assigned_items)
-    planned_items = [item for item in exportable_items if export_bucket(item) == "planned_today"]
-    immediate_items = [item for item in exportable_items if export_bucket(item) == "release_now"]
     if not exportable_items:
         if held_items:
             held_lines = "\n".join(
@@ -76,6 +107,13 @@ def do_export(app, export_vendor_po, order_history_file, sessions_dir):
             messagebox.showwarning("No Items", "No items are currently eligible for export.")
         return
 
+    selected_export_items = choose_export_items(app, exportable_items)
+    if not selected_export_items:
+        return
+
+    planned_items = [item for item in selected_export_items if export_bucket(item) == "planned_today"]
+    immediate_items = [item for item in selected_export_items if export_bucket(item) == "release_now"]
+
     output_dir = filedialog.askdirectory(title="Select Output Folder for PO Files")
     if not output_dir:
         return
@@ -83,7 +121,7 @@ def do_export(app, export_vendor_po, order_history_file, sessions_dir):
     app._show_loading("Exporting POs...")
     app.root.update()
 
-    vendor_groups = group_assigned_items(exportable_items)
+    vendor_groups = group_assigned_items(selected_export_items)
 
     created_files = []
     for vendor, items in sorted(vendor_groups.items()):
@@ -95,7 +133,7 @@ def do_export(app, export_vendor_po, order_history_file, sessions_dir):
             messagebox.showerror("Export Error", f"Failed to export PO for {vendor}:\n{exc}")
             return
 
-    storage.append_order_history(order_history_file, exportable_items)
+    storage.append_order_history(order_history_file, selected_export_items)
     suspense_carry_result = None
     if hasattr(app, "_persist_suspense_carry"):
         suspense_carry_result = app._persist_suspense_carry()
