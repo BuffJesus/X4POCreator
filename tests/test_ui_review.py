@@ -401,6 +401,44 @@ class UIReviewTests(unittest.TestCase):
         scoped_items = captured["kwargs"]["assigned_items"]
         self.assertEqual([item["item_code"] for item in scoped_items], ["A"])
         self.assertEqual(captured["kwargs"]["export_scope_label"], "MOTION release now items")
+        self.assertEqual(captured["kwargs"]["selection_mode"], "all_exportable")
+
+    def test_export_review_scope_can_export_planned_items_only(self):
+        captured = {}
+        fake_app = SimpleNamespace(
+            assigned_items=[
+                {"vendor": "MOTION", "item_code": "A", "release_decision": "release_now"},
+                {"vendor": "MOTION", "item_code": "B", "release_decision": "export_next_business_day_for_free_day"},
+                {"vendor": "SOURCE", "item_code": "C", "release_decision": "hold_for_threshold"},
+            ],
+            _export_vendor_po=object(),
+            _data_path=lambda key: f"/tmp/{key}",
+        )
+
+        with patch("ui_review.export_flow.do_export", side_effect=lambda *args, **kwargs: captured.update({"args": args, "kwargs": kwargs})):
+            ui_review.export_review_scope(fake_app, "planned_only")
+
+        scoped_items = captured["kwargs"]["assigned_items"]
+        self.assertEqual([item["item_code"] for item in scoped_items], ["B"])
+        self.assertEqual(captured["kwargs"]["export_scope_label"], "planned today items")
+        self.assertEqual(captured["kwargs"]["selection_mode"], "all_exportable")
+
+    def test_export_review_scope_reports_when_no_matching_items_exist(self):
+        fake_app = SimpleNamespace(
+            assigned_items=[
+                {"vendor": "MOTION", "item_code": "A", "release_decision": "hold_for_threshold"},
+            ],
+            _export_vendor_po=object(),
+            _data_path=lambda key: f"/tmp/{key}",
+        )
+
+        with patch("ui_review.messagebox.showinfo") as mocked_info, \
+             patch("ui_review.export_flow.do_export") as mocked_export:
+            ui_review.export_review_scope(fake_app, "planned_only")
+
+        mocked_export.assert_not_called()
+        mocked_info.assert_called_once()
+        self.assertIn("No planned today items", mocked_info.call_args.args[1])
 
     def test_sort_tree_flushes_pending_bulk_sheet_edit(self):
         events = []

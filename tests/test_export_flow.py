@@ -125,6 +125,21 @@ class ExportFlowTests(unittest.TestCase):
 
         self.assertEqual([item["item_code"] for item in selected], ["E"])
 
+    def test_select_export_items_supports_explicit_immediate_and_planned_modes(self):
+        items = [
+            {"item_code": "A", "release_decision": "release_now"},
+            {"item_code": "B", "release_decision": "export_next_business_day_for_free_day"},
+            {"item_code": "C", "release_decision": "hold_for_threshold"},
+        ]
+
+        immediate = export_flow.select_export_items(SimpleNamespace(), items, selection_mode="immediate_only")
+        planned = export_flow.select_export_items(SimpleNamespace(), items, selection_mode="planned_only")
+        all_exportable = export_flow.select_export_items(SimpleNamespace(), items, selection_mode="all_exportable")
+
+        self.assertEqual([item["item_code"] for item in immediate], ["A"])
+        self.assertEqual([item["item_code"] for item in planned], ["B"])
+        self.assertEqual([item["item_code"] for item in all_exportable], ["A", "B", "C"])
+
     def test_choose_output_dir_uses_saved_last_export_dir_when_it_exists(self):
         app = SimpleNamespace(
             app_settings={"last_export_dir": "C:\\Exports"},
@@ -452,6 +467,70 @@ class ExportFlowTests(unittest.TestCase):
         mocked_history.assert_called_once()
         exported_items = mocked_history.call_args.args[1]
         self.assertEqual([item["item_code"] for item in exported_items], ["GH781-4"])
+
+    def test_do_export_can_export_planned_only_without_prompt_when_scope_is_explicit(self):
+        session = AppSessionState(
+            assigned_items=[
+                {
+                    "vendor": "MOTION",
+                    "line_code": "AER-",
+                    "item_code": "GH781-4",
+                    "order_qty": 2,
+                    "release_decision": "release_now",
+                },
+                {
+                    "vendor": "MOTION",
+                    "line_code": "AER-",
+                    "item_code": "GH781-6",
+                    "order_qty": 1,
+                    "release_decision": "export_next_business_day_for_free_day",
+                    "target_order_date": "2026-03-10",
+                    "target_release_date": "2026-03-11",
+                },
+            ],
+            startup_warning_rows=[],
+            qoh_adjustments={},
+            order_rules={},
+        )
+        app = SimpleNamespace(
+            session=session,
+            app_settings={"mixed_export_behavior": "ask_when_mixed"},
+            root=SimpleNamespace(update=lambda: None),
+            _show_loading=lambda message: None,
+            _hide_loading=lambda: None,
+            _persist_suspense_carry=lambda: {"conflict": False},
+            _build_maintenance_report=lambda: [],
+            _show_maintenance_report=lambda output_dir, issues: None,
+            var_sales_path=SimpleNamespace(get=lambda: ""),
+            var_po_path=SimpleNamespace(get=lambda: ""),
+            var_susp_path=SimpleNamespace(get=lambda: ""),
+            var_onhand_path=SimpleNamespace(get=lambda: ""),
+            var_minmax_path=SimpleNamespace(get=lambda: ""),
+            var_packsize_path=SimpleNamespace(get=lambda: ""),
+        )
+
+        with tempfile.TemporaryDirectory() as tmp, \
+             patch("export_flow.messagebox.askyesnocancel") as ask_mixed, \
+             patch("export_flow.messagebox.askyesno") as ask_planned, \
+             patch("export_flow.filedialog.askdirectory", return_value=tmp), \
+             patch("export_flow.storage.append_order_history") as mocked_history, \
+             patch("export_flow.storage.save_session_snapshot"), \
+             patch("export_flow.messagebox.showinfo"):
+            export_flow.do_export(
+                app,
+                lambda vendor, items, output_dir: str(Path(output_dir) / f"{vendor}_{len(items)}.xlsx"),
+                str(Path(tmp) / "order_history.json"),
+                str(Path(tmp) / "sessions"),
+                assigned_items=[session.assigned_items[1]],
+                export_scope_label="planned today items",
+                selection_mode="all_exportable",
+            )
+
+        ask_mixed.assert_not_called()
+        ask_planned.assert_not_called()
+        exported_items = mocked_history.call_args.args[1]
+        self.assertEqual([item["item_code"] for item in exported_items], ["GH781-6"])
+        self.assertEqual(exported_items[0]["export_batch_type"], "planned_release")
 
     def test_do_export_stops_when_all_items_are_held(self):
         session = AppSessionState(

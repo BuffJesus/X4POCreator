@@ -127,6 +127,49 @@ def export_release_plan_scope(app, vendor, *, release):
         app._data_path("sessions"),
         assigned_items=scoped_items,
         export_scope_label=f"{vendor} {release.lower()} items",
+        selection_mode="all_exportable",
+    )
+
+
+def export_review_scope(app, scope):
+    bucket_map = {
+        "all_exportable": None,
+        "immediate_only": "release_now",
+        "planned_only": "planned_today",
+    }
+    scope_label_map = {
+        "all_exportable": "all exportable items",
+        "immediate_only": "immediate release items",
+        "planned_only": "planned today items",
+    }
+    target_bucket = bucket_map.get(scope)
+    if scope not in scope_label_map:
+        raise ValueError(f"Unknown review export scope: {scope}")
+
+    scoped_items = list(getattr(app, "assigned_items", []))
+    if target_bucket:
+        scoped_items = [
+            item for item in scoped_items
+            if shipping_flow.release_bucket(item) == target_bucket
+        ]
+    else:
+        scoped_items = [
+            item for item in scoped_items
+            if shipping_flow.release_bucket(item) != "held"
+        ]
+
+    if not scoped_items:
+        messagebox.showinfo("Review Export", f"No {scope_label_map[scope]} are currently available.")
+        return
+
+    export_flow.do_export(
+        app,
+        app._export_vendor_po,
+        app._data_path("order_history"),
+        app._data_path("sessions"),
+        assigned_items=scoped_items,
+        export_scope_label=scope_label_map[scope],
+        selection_mode="all_exportable",
     )
 
 
@@ -412,9 +455,22 @@ def build_review_tab(app):
 
     right_btn_row = ttk.Frame(btn_frame)
     right_btn_row.pack(anchor="e", fill=tk.X, pady=(8, 0))
-    ttk.Button(right_btn_row, text="Export POs", style="Big.TButton", command=app._do_export).pack(
-        side=tk.RIGHT, padx=4
-    )
+    ttk.Button(
+        right_btn_row,
+        text="Export POs",
+        style="Big.TButton",
+        command=app._do_export,
+    ).pack(side=tk.RIGHT, padx=4)
+    ttk.Button(
+        right_btn_row,
+        text="Export Planned",
+        command=lambda: export_review_scope(app, "planned_only"),
+    ).pack(side=tk.RIGHT, padx=4)
+    ttk.Button(
+        right_btn_row,
+        text="Export Immediate",
+        command=lambda: export_review_scope(app, "immediate_only"),
+    ).pack(side=tk.RIGHT, padx=4)
 
 
 def review_row_values(item):

@@ -117,6 +117,16 @@ def choose_export_items(app, exportable_items):
     return immediate_items
 
 
+def select_export_items(app, exportable_items, *, selection_mode="default"):
+    if selection_mode == "all_exportable":
+        return list(exportable_items)
+    if selection_mode == "immediate_only":
+        return [item for item in exportable_items if export_bucket(item) == "release_now"]
+    if selection_mode == "planned_only":
+        return [item for item in exportable_items if export_bucket(item) == "planned_today"]
+    return choose_export_items(app, exportable_items)
+
+
 def loaded_report_paths_from_app(app):
     return {
         "sales": app.var_sales_path.get().strip(),
@@ -161,7 +171,16 @@ def build_export_audit_items(items, export_scope_label):
     return audited
 
 
-def do_export(app, export_vendor_po, order_history_file, sessions_dir, *, assigned_items=None, export_scope_label="selected items"):
+def do_export(
+    app,
+    export_vendor_po,
+    order_history_file,
+    sessions_dir,
+    *,
+    assigned_items=None,
+    export_scope_label="selected items",
+    selection_mode="default",
+):
     session = getattr(app, "session", app)
     source_items = list(assigned_items if assigned_items is not None else session.assigned_items)
     if not source_items:
@@ -195,7 +214,7 @@ def do_export(app, export_vendor_po, order_history_file, sessions_dir, *, assign
             messagebox.showwarning("No Items", "No items are currently eligible for export.")
         return
 
-    selected_export_items = choose_export_items(app, exportable_items)
+    selected_export_items = select_export_items(app, exportable_items, selection_mode=selection_mode)
     if not selected_export_items:
         return
     audited_export_items = build_export_audit_items(selected_export_items, export_scope_label)

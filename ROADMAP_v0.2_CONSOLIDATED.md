@@ -162,7 +162,7 @@ The goal is to keep one phased checklist that reflects what is actually done in 
   - release on next preferred free-freight day
   - release one business day before the preferred free-freight day so the PO lands on time
 - [x] Add explicit "target release date" / "target order date" annotations to held items, not only abstract hold reasons.
-- [ ] Add export support for planned-release batches so users can intentionally export tomorrow's free-freight POs one day early when policy requires it.
+- [x] Add export support for planned-release batches so users can intentionally export tomorrow's free-freight POs one day early when policy requires it.
 
 ## Phase 6A. Cost- and Date-Aware Shipping Planning
 
@@ -200,7 +200,7 @@ This is the next high-value shipping slice. The current model already uses `repl
   - next free-freight day
   - planned export date
   - why this date was chosen
-- [ ] Add an export mode that can include:
+- [x] Add an export mode that can include:
   - release-ready POs only
   - release-ready plus due-soon planned POs
   - a filtered "planned for tomorrow" batch
@@ -292,7 +292,7 @@ These are the best next steps after reconciliation.
 - [ ] Add cost-confidence and threshold-progress signals to vendor shipping decisions.
 - [ ] Add planned release dates and "export the day before free-freight day" workflow for vendor policies.
 - [ ] Add stronger vendor-group release consolidation and explicit urgent paid-freight override workflow.
-- [ ] Deepen shipping review/export options so users can export immediate, planned-tomorrow, or all-due batches intentionally.
+- [x] Deepen shipping review/export options so users can export immediate, planned-tomorrow, or all-due batches intentionally.
 - [x] Deepen recency-confidence classification for new-item / stale-item / critical-item distinctions.
 - [x] Keep missing-recency activity-protected items visible with zero default qty instead of letting them ride through as implicitly orderable rows.
 - [x] Treat recent local PO history as protective recency evidence for review bucketing, while still keeping missing-recency items review-first by default.
