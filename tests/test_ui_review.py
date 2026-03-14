@@ -21,7 +21,7 @@ class UIReviewTests(unittest.TestCase):
 
         self.assertEqual(events, ["flush"])
 
-    def test_apply_review_filter_honors_vendor_performance_and_attention(self):
+    def test_apply_review_filter_honors_vendor_performance_attention_and_release_bucket(self):
         events = []
 
         class Tree:
@@ -47,6 +47,7 @@ class UIReviewTests(unittest.TestCase):
                     "pack_size": 6,
                     "performance_profile": "steady",
                     "reorder_attention_signal": "review_missed_reorder",
+                    "release_decision": "export_next_business_day_for_free_day",
                 },
                 {
                     "vendor": "SOURCE",
@@ -59,11 +60,13 @@ class UIReviewTests(unittest.TestCase):
                     "pack_size": 6,
                     "performance_profile": "steady",
                     "reorder_attention_signal": "normal",
+                    "release_decision": "hold_for_threshold",
                 },
             ],
             var_vendor_filter=SimpleNamespace(get=lambda: "MOTION"),
             var_review_performance_filter=SimpleNamespace(get=lambda: "Steady"),
             var_review_attention_filter=SimpleNamespace(get=lambda: "Missed Reorder"),
+            var_review_release_filter=SimpleNamespace(get=lambda: "Planned Today"),
         )
 
         ui_review.apply_review_filter(fake_app)
@@ -109,6 +112,7 @@ class UIReviewTests(unittest.TestCase):
             var_vendor_filter=Var(),
             var_review_performance_filter=Var(),
             var_review_attention_filter=Var(),
+            var_review_release_filter=Var(),
             lbl_review_summary=SimpleNamespace(config=lambda **kwargs: events.append(("summary", kwargs.get("text", "")))),
         )
 
@@ -118,11 +122,12 @@ class UIReviewTests(unittest.TestCase):
         self.assertEqual(events[1], ("delete", "old"))
         self.assertEqual(events[2][0], "insert")
 
-    def test_update_review_summary_includes_exportable_and_held_counts(self):
+    def test_update_review_summary_includes_immediate_planned_and_held_counts(self):
         captured = {}
         fake_app = SimpleNamespace(
             assigned_items=[
                 {"vendor": "MOTION", "release_decision": "release_now"},
+                {"vendor": "MOTION", "release_decision": "export_next_business_day_for_free_day"},
                 {"vendor": "MOTION", "release_decision": "hold_for_threshold"},
                 {"vendor": "SOURCE", "release_decision": ""},
             ],
@@ -132,8 +137,24 @@ class UIReviewTests(unittest.TestCase):
         ui_review.update_review_summary(fake_app)
 
         text = captured["text"]
-        self.assertIn("Exportable now: 2", text)
+        self.assertIn("Exportable now: 3", text)
+        self.assertIn("Immediate: 2", text)
+        self.assertIn("Planned today: 1", text)
         self.assertIn("Held by shipping policy: 1", text)
+
+    def test_release_filter_bucket_maps_planned_and_held_states(self):
+        self.assertEqual(
+            ui_review.release_filter_bucket({"release_decision": "export_next_business_day_for_free_day"}),
+            "Planned Today",
+        )
+        self.assertEqual(
+            ui_review.release_filter_bucket({"release_decision": "hold_for_free_day"}),
+            "Held",
+        )
+        self.assertEqual(
+            ui_review.release_filter_bucket({"release_decision": "release_now"}),
+            "Release Now",
+        )
 
     def test_sort_tree_flushes_pending_bulk_sheet_edit(self):
         events = []

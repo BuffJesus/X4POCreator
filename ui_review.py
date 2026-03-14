@@ -12,6 +12,15 @@ def flush_pending_bulk_sheet_edit(app):
         bulk_sheet.flush_pending_edit()
 
 
+def release_filter_bucket(item):
+    decision = str(item.get("release_decision", "") or "").strip()
+    if decision in ("hold_for_free_day", "hold_for_threshold"):
+        return "Held"
+    if decision == "export_next_business_day_for_free_day":
+        return "Planned Today"
+    return "Release Now"
+
+
 def build_review_tab(app):
     frame = ttk.Frame(app.notebook, padding=16)
     app.notebook.add(frame, text="  6. Review & Export  ")
@@ -63,6 +72,18 @@ def build_review_tab(app):
     )
     app.combo_review_attention.pack(side=tk.LEFT)
     app.combo_review_attention.bind("<<ComboboxSelected>>", lambda e: app._apply_review_filter())
+
+    ttk.Label(filter_frame, text="Release:").pack(side=tk.LEFT, padx=(12, 6))
+    app.var_review_release_filter = tk.StringVar(value="ALL")
+    app.combo_review_release = ttk.Combobox(
+        filter_frame,
+        textvariable=app.var_review_release_filter,
+        state="readonly",
+        width=14,
+        values=["ALL", "Release Now", "Planned Today", "Held"],
+    )
+    app.combo_review_release.pack(side=tk.LEFT)
+    app.combo_review_release.bind("<<ComboboxSelected>>", lambda e: app._apply_review_filter())
 
     tree_frame = ttk.Frame(frame)
     tree_frame.pack(fill=tk.BOTH, expand=True, pady=4)
@@ -161,17 +182,19 @@ def populate_review_tab(app):
     app.var_vendor_filter.set("ALL")
     app.var_review_performance_filter.set("ALL")
     app.var_review_attention_filter.set("ALL")
+    app.var_review_release_filter.set("ALL")
     update_review_summary(app)
 
 
 def update_review_summary(app):
     vendors = set(item["vendor"] for item in app.assigned_items)
-    held_count = sum(
-        1 for item in app.assigned_items
-        if str(item.get("release_decision", "") or "").strip() in ("hold_for_free_day", "hold_for_threshold")
-    )
-    exportable_count = max(0, len(app.assigned_items) - held_count)
-    hold_summary = f" | Exportable now: {exportable_count}"
+    held_count = sum(1 for item in app.assigned_items if release_filter_bucket(item) == "Held")
+    planned_count = sum(1 for item in app.assigned_items if release_filter_bucket(item) == "Planned Today")
+    immediate_count = sum(1 for item in app.assigned_items if release_filter_bucket(item) == "Release Now")
+    exportable_count = immediate_count + planned_count
+    hold_summary = f" | Exportable now: {exportable_count} | Immediate: {immediate_count}"
+    if planned_count:
+        hold_summary += f" | Planned today: {planned_count}"
     if held_count:
         hold_summary += f" | Held by shipping policy: {held_count}"
     app.lbl_review_summary.config(
@@ -187,6 +210,7 @@ def apply_review_filter(app):
     vendor_filter = app.var_vendor_filter.get()
     performance_filter = app.var_review_performance_filter.get()
     attention_filter = app.var_review_attention_filter.get()
+    release_filter = app.var_review_release_filter.get()
     for item_id in app.tree.get_children():
         app.tree.delete(item_id)
     for i, item in enumerate(app.assigned_items):
@@ -210,6 +234,8 @@ def apply_review_filter(app):
             }.get(attention_filter, "")
             if attention != expected_attention:
                 continue
+        if release_filter != "ALL" and release_filter_bucket(item) != release_filter:
+            continue
         app.tree.insert("", "end", iid=str(i), values=review_row_values(item))
 
 

@@ -17,12 +17,20 @@ def group_assigned_items(assigned_items):
     return vendor_groups
 
 
+def export_bucket(item):
+    decision = str(item.get("release_decision", "") or "").strip()
+    if decision in ("hold_for_free_day", "hold_for_threshold"):
+        return "held"
+    if decision == "export_next_business_day_for_free_day":
+        return "planned_today"
+    return "release_now"
+
+
 def partition_export_items(assigned_items):
     exportable = []
     held = []
     for item in assigned_items:
-        decision = str(item.get("release_decision", "") or "").strip()
-        if decision in ("hold_for_free_day", "hold_for_threshold"):
+        if export_bucket(item) == "held":
             held.append(item)
         else:
             exportable.append(item)
@@ -47,6 +55,8 @@ def do_export(app, export_vendor_po, order_history_file, sessions_dir):
         return
 
     exportable_items, held_items = partition_export_items(session.assigned_items)
+    planned_items = [item for item in exportable_items if export_bucket(item) == "planned_today"]
+    immediate_items = [item for item in exportable_items if export_bucket(item) == "release_now"]
     if not exportable_items:
         if held_items:
             held_lines = "\n".join(
@@ -117,12 +127,18 @@ def do_export(app, export_vendor_po, order_history_file, sessions_dir):
             f"\n\n{len(held_items)} assigned item(s) were held by shipping policy and were not exported. "
             "They remain in Review & Export with their release reason."
         )
+    planned_note = ""
+    if planned_items:
+        planned_note = (
+            f"\n\n{len(planned_items)} assigned item(s) were exported as planned-release POs for an upcoming free-freight day."
+        )
     messagebox.showinfo(
         "Export Complete",
         f"Created {len(created_files)} PO file(s) in:\n{output_dir}\n\n{file_list}\n\n"
         "Each file is ready for X4 Import from Excel.\n"
         "Remember to set the Vendor field in X4 when importing each file."
-        f"{shared_merge_note}{held_note}\n\n"
+        f"\n\nImmediate-release items exported: {len(immediate_items)}"
+        f"{planned_note}{shared_merge_note}{held_note}\n\n"
         "A maintenance report will open next if the app found supplier, pack, min/max, or QOH differences worth reviewing in X4.",
     )
     app._show_maintenance_report(output_dir, maintenance_issues)

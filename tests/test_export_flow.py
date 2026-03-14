@@ -15,6 +15,14 @@ from models import AppSessionState, MaintenanceIssue
 
 
 class ExportFlowTests(unittest.TestCase):
+    def test_export_bucket_classifies_immediate_planned_and_held(self):
+        self.assertEqual(export_flow.export_bucket({"release_decision": "release_now"}), "release_now")
+        self.assertEqual(
+            export_flow.export_bucket({"release_decision": "export_next_business_day_for_free_day"}),
+            "planned_today",
+        )
+        self.assertEqual(export_flow.export_bucket({"release_decision": "hold_for_threshold"}), "held")
+
     def test_group_assigned_items_groups_by_vendor(self):
         grouped = export_flow.group_assigned_items([
             {"vendor": "MOTION", "item_code": "A"},
@@ -202,6 +210,14 @@ class ExportFlowTests(unittest.TestCase):
                 {
                     "vendor": "MOTION",
                     "line_code": "AER-",
+                    "item_code": "GH781-6",
+                    "order_qty": 1,
+                    "release_decision": "export_next_business_day_for_free_day",
+                    "release_reason": "Export today so the PO is ready for vendor free-shipping day",
+                },
+                {
+                    "vendor": "MOTION",
+                    "line_code": "AER-",
                     "item_code": "GH781-5",
                     "order_qty": 3,
                     "release_decision": "hold_for_threshold",
@@ -242,8 +258,10 @@ class ExportFlowTests(unittest.TestCase):
 
         mocked_history.assert_called_once()
         exported_items = mocked_history.call_args.args[1]
-        self.assertEqual(len(exported_items), 1)
+        self.assertEqual(len(exported_items), 2)
         self.assertEqual(exported_items[0]["item_code"], "GH781-4")
+        self.assertEqual(exported_items[1]["item_code"], "GH781-6")
+        self.assertIn("planned-release POs", mocked_info.call_args.args[1])
         self.assertIn("were held by shipping policy and were not exported", mocked_info.call_args.args[1])
 
     def test_do_export_stops_when_all_items_are_held(self):
