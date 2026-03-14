@@ -295,9 +295,9 @@ These are the best next steps after reconciliation.
 - [x] Deepen recency-confidence classification for new-item / stale-item / critical-item distinctions.
 - [x] Keep missing-recency activity-protected items visible with zero default qty instead of letting them ride through as implicitly orderable rows.
 - [x] Treat recent local PO history as protective recency evidence for review bucketing, while still keeping missing-recency items review-first by default.
+- [x] Distinguish explicit critical min-rule protection from other rule-protected missing-recency cases.
 - [ ] Add remaining edge-case tests called out in the original `0.2.5` roadmap, especially:
   - weekly-order hardware cadence cases
-  - missing-recency + explicit critical min rule
   - held-for-shipping behavior inside the planned-release/export-date flow
 - [ ] Complete packaged-app self-update replacement flow.
 - [ ] Finish bulk edit-target integrity hardening under rapid interactions.

@@ -231,10 +231,10 @@ def classify_recency_confidence(item, inv, rule):
     has_recent_suspense = bool(item.get("effective_qty_suspended", item.get("qty_suspended", 0)))
     has_open_po = bool(item.get("qty_on_po", 0))
     has_recent_local_order = bool(item.get("has_recent_local_order"))
-    has_protective_rule = bool(
+    has_explicit_critical_min_rule = bool(get_rule_int(rule, "min_order_qty"))
+    has_other_protective_rule = bool(
         has_pack_trigger_fields(rule)
         or (rule and rule.get("order_policy"))
-        or get_rule_int(rule, "min_order_qty")
     )
 
     if has_last_sale and has_last_receipt:
@@ -249,7 +249,10 @@ def classify_recency_confidence(item, inv, rule):
     elif has_recent_local_order:
         item["recency_confidence"] = "low"
         item["data_completeness"] = "missing_recency_local_po_protected"
-    elif has_protective_rule:
+    elif has_explicit_critical_min_rule:
+        item["recency_confidence"] = "low"
+        item["data_completeness"] = "missing_recency_critical_min_protected"
+    elif has_other_protective_rule:
         item["recency_confidence"] = "low"
         item["data_completeness"] = "missing_recency_rule_protected"
     else:
@@ -271,7 +274,9 @@ def classify_low_confidence_recency(item, inv, rule):
     historical_rank = item.get("historical_rank_score", 0) or 0
     qoh = (inv or {}).get("qoh", 0) or 0
 
-    if data_completeness == "missing_recency_rule_protected":
+    if data_completeness == "missing_recency_critical_min_protected":
+        bucket = "critical_min_rule_protected"
+    elif data_completeness == "missing_recency_rule_protected":
         bucket = "critical_rule_protected"
     elif data_completeness == "missing_recency_local_po_protected":
         bucket = "recent_local_po_protected"
@@ -296,6 +301,7 @@ def classify_low_confidence_recency(item, inv, rule):
 
 def recency_review_bucket_label(bucket):
     return {
+        "critical_min_rule_protected": "Critical / explicit min rule",
         "critical_rule_protected": "Critical / rule-protected",
         "recent_local_po_protected": "Protected by recent local PO history",
         "activity_protected": "Protected by other activity",
@@ -316,7 +322,7 @@ def should_force_recency_review(item, inv, rule):
 
     if raw_need <= 0:
         return False
-    if data_completeness == "missing_recency_rule_protected":
+    if data_completeness in ("missing_recency_critical_min_protected", "missing_recency_rule_protected"):
         return False
     if data_completeness in (
         "missing_recency_local_po_protected",
@@ -776,10 +782,12 @@ def enrich_item(item, inv, pack_qty, rule):
             "stale_or_likely_dead": "Manual review required before ordering (missing sale/receipt history; likely stale or dead item)",
             "new_or_sparse": "Manual review required before ordering (missing sale/receipt history; may be new or too sparse)",
             "missing_data_uncertain": "Manual review required before ordering (missing sale/receipt history; incomplete data makes demand uncertain)",
+            "critical_min_rule_protected": "Manual review required before ordering (missing sale/receipt history; protected by explicit critical min rule)",
             "recent_local_po_protected": "Manual review required before ordering (missing sale/receipt history; protected by recent local PO history)",
             "activity_protected": "Manual review required before ordering (missing sale/receipt history; protected by other evidence)",
         }.get(recency_bucket, {
             "missing_recency": "Manual review required before ordering (missing sale/receipt history)",
+            "missing_recency_critical_min_protected": "Manual review required before ordering (missing sale/receipt history; protected by explicit critical min rule)",
             "missing_recency_local_po_protected": "Manual review required before ordering (missing sale/receipt history; protected by recent local PO history)",
             "missing_recency_activity_protected": "Manual review required before ordering (missing sale/receipt history; protected by other evidence)",
         }.get(completeness, "Manual review required before ordering"))
@@ -855,6 +863,7 @@ def enrich_item(item, inv, pack_qty, rule):
             "complete": "Sale and receipt history present",
             "partial_recency": "Only one recency signal present",
             "missing_recency": "No sale or receipt history available",
+            "missing_recency_critical_min_protected": "No sale or receipt history, but protected by an explicit critical min rule",
             "missing_recency_local_po_protected": "No sale or receipt history, but recent local PO history exists",
             "missing_recency_rule_protected": "No sale or receipt history, but protected by an explicit stocking rule",
             "missing_recency_activity_protected": "No sale or receipt history, but protected by other evidence",

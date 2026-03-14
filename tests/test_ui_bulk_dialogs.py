@@ -449,6 +449,37 @@ class BulkDialogTests(unittest.TestCase):
 
         self.assertEqual(row_lookup["Recency Review Type"], "Stale / likely dead")
 
+    def test_item_details_rows_show_explicit_min_rule_recency_type(self):
+        app = SimpleNamespace(
+            on_po_qty={("AER-", "GH781-4"): 0},
+            recent_orders={},
+            duplicate_ic_lookup={},
+            _suggest_min_max=lambda key: (None, None),
+        )
+        item = {
+            "line_code": "AER-",
+            "item_code": "GH781-4",
+            "qty_sold": 1,
+            "qty_suspended": 0,
+            "qty_received": 0,
+            "qty_on_po": 0,
+            "raw_need": 1,
+            "suggested_qty": 2,
+            "final_qty": 2,
+            "order_policy": "soft_pack",
+            "status": "ok",
+            "data_flags": [],
+            "recency_confidence": "low",
+            "data_completeness": "missing_recency_critical_min_protected",
+            "recency_review_bucket": "critical_min_rule_protected",
+        }
+        inv = {"qoh": 0, "min": 0, "max": 1}
+
+        rows = ui_bulk_dialogs.item_details_rows(app, item, inv, ("AER-", "GH781-4"))
+        row_lookup = dict(row for row in rows if row[0])
+
+        self.assertEqual(row_lookup["Recency Review Type"], "Critical / explicit min rule")
+
     def test_finish_bulk_final_carries_recency_fields_into_review_items(self):
         events = []
         app = SimpleNamespace(

@@ -139,7 +139,7 @@ class UIReviewTests(unittest.TestCase):
         captured = {}
         fake_app = SimpleNamespace(
             assigned_items=[
-                {"vendor": "MOTION", "release_decision": "release_now", "recency_review_bucket": "critical_rule_protected"},
+                {"vendor": "MOTION", "release_decision": "release_now", "recency_review_bucket": "critical_min_rule_protected"},
                 {"vendor": "MOTION", "release_decision": "export_next_business_day_for_free_day", "recency_review_bucket": "new_or_sparse"},
                 {"vendor": "MOTION", "release_decision": "hold_for_threshold", "recency_review_bucket": "stale_or_likely_dead"},
                 {"vendor": "SOURCE", "release_decision": ""},
@@ -158,7 +158,7 @@ class UIReviewTests(unittest.TestCase):
         self.assertIn("Low-confidence recency: 3", text)
         self.assertIn("1 stale / likely dead", text)
         self.assertIn("1 new / sparse", text)
-        self.assertIn("1 critical / rule-protected", text)
+        self.assertIn("1 critical / explicit min rule", text)
 
     def test_is_review_exception_detects_review_relevant_items(self):
         self.assertTrue(ui_review.is_review_exception({"release_decision": "hold_for_threshold"}))
@@ -238,6 +238,10 @@ class UIReviewTests(unittest.TestCase):
         self.assertEqual(
             ui_review.recency_filter_label({"recency_review_bucket": "missing_data_uncertain"}),
             "Missing-Data / Uncertain",
+        )
+        self.assertEqual(
+            ui_review.recency_filter_label({"recency_review_bucket": "critical_min_rule_protected"}),
+            "Critical / Explicit Min Rule",
         )
         self.assertEqual(
             ui_review.recency_filter_label({"recency_review_bucket": "recent_local_po_protected"}),

@@ -878,6 +878,26 @@ class RulesTests(unittest.TestCase):
         self.assertFalse(item["review_required"])
         self.assertIn("Critical / rule-protected", item["why"])
 
+    def test_missing_recency_with_explicit_critical_min_rule_remains_orderable(self):
+        item = {
+            "description": "CRITICAL MIN ITEM",
+            "qty_sold": 1,
+            "qty_suspended": 0,
+            "qty_on_po": 0,
+            "pack_size": 1,
+            "demand_signal": 1,
+        }
+
+        enrich_item(item, {"qoh": 0, "min": 0, "max": 1}, 1, {"min_order_qty": 2, "allow_below_pack": True})
+        self.assertEqual(item["recency_confidence"], "low")
+        self.assertEqual(item["data_completeness"], "missing_recency_critical_min_protected")
+        self.assertEqual(item["recency_review_bucket"], "critical_min_rule_protected")
+        self.assertNotEqual(item["order_policy"], "manual_only")
+        self.assertGreater(item["suggested_qty"], 0)
+        self.assertGreater(item["final_qty"], 0)
+        self.assertFalse(item["review_required"])
+        self.assertIn("Critical / explicit min rule", item["why"])
+
     def test_missing_recency_with_suspense_demand_routes_to_review_not_skip(self):
         item = {
             "description": "SHOP SUPPLY",

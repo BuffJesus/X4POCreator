@@ -40,6 +40,7 @@ def is_review_exception(item):
 
 
 RECENCY_FILTER_LABELS = {
+    "critical_min_rule_protected": "Critical / Explicit Min Rule",
     "critical_rule_protected": "Critical / Rule-Protected",
     "recent_local_po_protected": "Recent Local PO-Protected",
     "activity_protected": "Activity-Protected",
@@ -448,6 +449,7 @@ def update_review_summary(app):
             "missing_data_uncertain",
             "recent_local_po_protected",
             "activity_protected",
+            "critical_min_rule_protected",
             "critical_rule_protected",
         ):
             count = low_recency_counts.get(bucket)
