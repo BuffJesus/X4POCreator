@@ -12,6 +12,39 @@ import ui_bulk_dialogs
 
 
 class BulkDialogTests(unittest.TestCase):
+    def test_buy_rule_field_visibility_hides_specialized_fields_by_default(self):
+        visibility = ui_bulk_dialogs.buy_rule_field_visibility(advanced=False)
+
+        self.assertFalse(visibility["trigger_qty"])
+        self.assertFalse(visibility["min_packs"])
+        self.assertFalse(visibility["cover_cycles"])
+        self.assertFalse(visibility["overstock_qty"])
+        self.assertFalse(visibility["notes"])
+
+    def test_buy_rule_field_visibility_shows_specialized_fields_in_advanced_mode(self):
+        visibility = ui_bulk_dialogs.buy_rule_field_visibility(advanced=True)
+
+        self.assertTrue(visibility["trigger_qty"])
+        self.assertTrue(visibility["trigger_pct"])
+        self.assertTrue(visibility["min_packs"])
+        self.assertTrue(visibility["cover_days"])
+        self.assertTrue(visibility["cover_cycles"])
+        self.assertTrue(visibility["overstock_qty"])
+        self.assertTrue(visibility["overstock_pct"])
+        self.assertTrue(visibility["notes"])
+
+    def test_should_expand_buy_rule_advanced_only_when_specialized_values_exist(self):
+        self.assertFalse(ui_bulk_dialogs.should_expand_buy_rule_advanced({
+            "min_order_qty": 1,
+            "pack_size": 10,
+        }))
+        self.assertTrue(ui_bulk_dialogs.should_expand_buy_rule_advanced({
+            "minimum_cover_cycles": 2,
+        }))
+        self.assertTrue(ui_bulk_dialogs.should_expand_buy_rule_advanced({
+            "notes": "special handling",
+        }))
+
     def test_flush_pending_bulk_sheet_edit_calls_sheet_hook(self):
         calls = []
         app = SimpleNamespace(

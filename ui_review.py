@@ -65,6 +65,60 @@ def build_vendor_release_plan_rows(app):
     return shipping_flow.build_vendor_release_plan(getattr(app, "assigned_items", []))
 
 
+def compact_review_bucket(row):
+    release_now_count = int(row.get("release_now_count", 0) or 0)
+    planned_today_count = int(row.get("planned_today_count", 0) or 0)
+    held_count = int(row.get("held_count", 0) or 0)
+    critical_held_count = int(row.get("critical_held_count", 0) or 0)
+    if critical_held_count > 0:
+        return "Blocked"
+    if release_now_count > 0:
+        return "Ready Now"
+    if planned_today_count > 0:
+        return "Planned Today"
+    if held_count > 0:
+        return "Blocked"
+    return "Ready Now"
+
+
+def compact_review_reason(row):
+    bucket = compact_review_bucket(row)
+    if bucket == "Blocked":
+        if int(row.get("critical_held_count", 0) or 0) > 0:
+            return "Critical held items need review before waiting on policy."
+        if str(row.get("release_plan_status", "") or "").strip() == "hold_accumulating_to_threshold":
+            shortfall = float(row.get("vendor_threshold_shortfall", 0.0) or 0.0)
+            return f"Held toward freight threshold; short {shortfall:.2f}."
+        next_free = str(row.get("next_free_ship_date", "") or "").strip()
+        planned_export = str(row.get("planned_export_date", "") or "").strip()
+        if planned_export:
+            return f"Held until planned export date {planned_export}."
+        if next_free:
+            return f"Held for free-ship day {next_free}."
+        return "Held by shipping policy."
+    if bucket == "Planned Today":
+        planned_export = str(row.get("planned_export_date", "") or "").strip()
+        if planned_export:
+            return f"Planned batch is due on {planned_export}."
+        return "Planned-release items are ready to export."
+    held_count = int(row.get("held_count", 0) or 0)
+    if held_count > 0:
+        return f"Exportable now; {held_count} held item(s) remain behind policy."
+    return "Vendor has exportable items ready now."
+
+
+def build_compact_review_rows(app):
+    rows = []
+    for row in build_vendor_release_plan_rows(app):
+        compact_row = dict(row)
+        compact_row["compact_bucket"] = compact_review_bucket(row)
+        compact_row["compact_reason"] = compact_review_reason(row)
+        rows.append(compact_row)
+    bucket_order = {"Ready Now": 0, "Planned Today": 1, "Blocked": 2}
+    rows.sort(key=lambda row: (bucket_order.get(row.get("compact_bucket", ""), 9), row.get("vendor", "")))
+    return rows
+
+
 def apply_release_plan_view(app, vendor, *, focus="Exceptions Only", release="ALL"):
     if hasattr(app, "var_vendor_filter"):
         app.var_vendor_filter.set(vendor or "ALL")
@@ -287,6 +341,111 @@ def show_release_plan(app):
     dlg.wait_window()
 
 
+def show_compact_review(app):
+    rows = build_compact_review_rows(app)
+    if not rows:
+        messagebox.showinfo("Compact Review", "No assigned vendor items are available for compact review.")
+        return
+
+    dlg = tk.Toplevel(app.root)
+    dlg.title("Compact Vendor Review")
+    dlg.configure(bg="#1e1e2e")
+    dlg.transient(app.root)
+    dlg.grab_set()
+
+    ttk.Label(dlg, text="Compact Vendor Review", style="Header.TLabel").pack(anchor="w", padx=16, pady=(16, 4))
+    ttk.Label(
+        dlg,
+        text="This view groups vendors into ready-now, planned-today, and blocked states so you can act without scanning every item row.",
+        style="SubHeader.TLabel",
+        wraplength=920,
+    ).pack(anchor="w", padx=16, pady=(0, 10))
+
+    frame = ttk.Frame(dlg)
+    frame.pack(fill=tk.BOTH, expand=True, padx=16, pady=(0, 8))
+
+    columns = ("bucket", "vendor", "recommended", "immediate", "planned", "held", "reason")
+    tree = ttk.Treeview(frame, columns=columns, show="headings", selectmode="browse")
+    headings = {
+        "bucket": "State",
+        "vendor": "Vendor",
+        "recommended": "Recommended",
+        "immediate": "Immediate",
+        "planned": "Planned",
+        "held": "Held",
+        "reason": "Why",
+    }
+    widths = {
+        "bucket": 110,
+        "vendor": 100,
+        "recommended": 170,
+        "immediate": 70,
+        "planned": 70,
+        "held": 70,
+        "reason": 360,
+    }
+    for col in columns:
+        tree.heading(col, text=headings[col])
+        tree.column(col, width=widths[col], anchor="center" if col not in ("vendor", "recommended", "reason") else "w")
+
+    for idx, row in enumerate(rows):
+        tree.insert(
+            "",
+            "end",
+            iid=str(idx),
+            values=(
+                row.get("compact_bucket", ""),
+                row.get("vendor", ""),
+                row.get("recommended_action", "") or "-",
+                row.get("release_now_count", 0),
+                row.get("planned_today_count", 0),
+                row.get("held_count", 0),
+                row.get("compact_reason", "") or "-",
+            ),
+        )
+
+    vsb = ttk.Scrollbar(frame, orient="vertical", command=tree.yview)
+    tree.configure(yscrollcommand=vsb.set)
+    tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+    vsb.pack(side=tk.RIGHT, fill=tk.Y)
+    attach_vertical_mousewheel(tree)
+
+    action_row = ttk.Frame(dlg)
+    action_row.pack(fill=tk.X, padx=16, pady=(4, 12))
+
+    def _selected_vendor_row():
+        selection = tree.selection()
+        if not selection:
+            return None
+        idx = int(selection[0])
+        return rows[idx] if 0 <= idx < len(rows) else None
+
+    def _open_selected(focus, release):
+        row = _selected_vendor_row()
+        if not row:
+            messagebox.showinfo("Compact Review", "Select a vendor first.")
+            return
+        apply_release_plan_view(app, row.get("vendor", ""), focus=focus, release=release)
+        dlg.destroy()
+
+    def _export_selected(release):
+        row = _selected_vendor_row()
+        if not row:
+            messagebox.showinfo("Compact Review", "Select a vendor first.")
+            return
+        export_release_plan_scope(app, row.get("vendor", ""), release=release)
+
+    ttk.Button(action_row, text="View Vendor Exceptions", command=lambda: _open_selected("Exceptions Only", "ALL")).pack(side=tk.LEFT, padx=4)
+    ttk.Button(action_row, text="View Planned Today", command=lambda: _open_selected("All Items", "Planned Today")).pack(side=tk.LEFT, padx=4)
+    ttk.Button(action_row, text="View All Vendor Items", command=lambda: _open_selected("All Items", "ALL")).pack(side=tk.LEFT, padx=4)
+    ttk.Button(action_row, text="Export Immediate", command=lambda: _export_selected("Release Now")).pack(side=tk.LEFT, padx=14)
+    ttk.Button(action_row, text="Export Planned", command=lambda: _export_selected("Planned Today")).pack(side=tk.LEFT, padx=4)
+    ttk.Button(action_row, text="Close", command=dlg.destroy).pack(side=tk.RIGHT, padx=4)
+
+    app._autosize_dialog(dlg, min_w=860, min_h=320, max_w_ratio=0.9, max_h_ratio=0.8)
+    dlg.wait_window()
+
+
 def build_review_tab(app):
     frame = ttk.Frame(app.notebook, padding=16)
     app.notebook.add(frame, text="  6. Review & Export  ")
@@ -439,6 +598,7 @@ def build_review_tab(app):
     left_btn_row.pack(anchor="w", fill=tk.X)
     ttk.Button(left_btn_row, text="Delete Selected", command=app._delete_selected).pack(side=tk.LEFT, padx=4)
     ttk.Button(left_btn_row, text="Back to Assignment", command=app._back_to_assign).pack(side=tk.LEFT, padx=4)
+    ttk.Button(left_btn_row, text="Compact Review", command=lambda: show_compact_review(app)).pack(side=tk.LEFT, padx=4)
     ttk.Button(left_btn_row, text="Release Plan", command=lambda: show_release_plan(app)).pack(side=tk.LEFT, padx=4)
 
     right_btn_row = ttk.Frame(btn_frame)

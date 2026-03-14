@@ -4,6 +4,32 @@ from tkinter import ttk, messagebox, simpledialog
 import shipping_flow
 
 
+def vendor_policy_field_visibility(policy_name, *, advanced=False):
+    policy = str(policy_name or "").strip() or "release_immediately"
+    supports_weekdays = policy in ("hold_for_free_day", "hybrid_free_day_threshold")
+    supports_threshold = policy in ("hold_for_threshold", "hybrid_free_day_threshold")
+    supports_lead_days = supports_weekdays and advanced
+    return {
+        "weekdays": supports_weekdays,
+        "threshold": supports_threshold,
+        "urgent_floor": advanced,
+        "urgent_mode": advanced,
+        "lead_days": supports_lead_days,
+    }
+
+
+def should_expand_vendor_policy_advanced(policy):
+    normalized = shipping_flow.normalize_vendor_policy(policy or {})
+    if normalized.get("urgent_release_floor", 0) > 0:
+        return True
+    if normalized.get("urgent_release_mode", "release_now") != "release_now":
+        return True
+    if normalized.get("shipping_policy") in ("hold_for_free_day", "hybrid_free_day_threshold"):
+        if int(normalized.get("release_lead_business_days", 1) or 1) != 1:
+            return True
+    return False
+
+
 def apply_vendor_policy_preset(app, vendor, preset_name):
     preset = shipping_flow.get_vendor_policy_preset(preset_name)
     if not preset or not preset.get("label"):
@@ -98,44 +124,104 @@ def open_vendor_policy_editor(app, vendor, parent):
     )
     var_urgent_mode = tk.StringVar(value=policy.get("urgent_release_mode", "release_now"))
     var_lead_days = tk.StringVar(value=str(int(policy.get("release_lead_business_days", 1) or 1)))
+    var_show_advanced = tk.BooleanVar(value=should_expand_vendor_policy_advanced(policy))
     preset_options = shipping_flow.vendor_policy_preset_options()
     preset_by_label = {label: key for key, label in preset_options}
     var_preset = tk.StringVar(value=default_preset.get("label", "") if not saved_policy else "")
-
-    fields = [
-        ("Preset", ttk.Combobox(grid, textvariable=var_preset, state="readonly", values=[""] + [label for _, label in preset_options], width=28)),
-        ("Policy", ttk.Combobox(grid, textvariable=var_policy, state="readonly", values=[
-            "release_immediately",
-            "hold_for_free_day",
-            "hold_for_threshold",
-            "hybrid_free_day_threshold",
-        ], width=28)),
-        ("Free-Ship Days", ttk.Entry(grid, textvariable=var_weekdays, width=36)),
-        ("Freight Threshold", ttk.Entry(grid, textvariable=var_threshold, width=20)),
-        ("Urgent Floor", ttk.Entry(grid, textvariable=var_urgent, width=20)),
-        ("Urgent Override", ttk.Combobox(grid, textvariable=var_urgent_mode, state="readonly", values=[
-            "release_now",
-            "paid_urgent_freight",
-        ], width=28)),
-        ("Lead Days", ttk.Entry(grid, textvariable=var_lead_days, width=20)),
-    ]
-    for row_idx, (label, widget) in enumerate(fields):
-        ttk.Label(grid, text=label).grid(row=row_idx, column=0, sticky="w", padx=(0, 8), pady=4)
-        widget.grid(row=row_idx, column=1, sticky="ew", pady=4)
-
-    ttk.Label(
+    widgets = {
+        "preset": (
+            ttk.Label(grid, text="Preset"),
+            ttk.Combobox(grid, textvariable=var_preset, state="readonly", values=[""] + [label for _, label in preset_options], width=28),
+        ),
+        "policy": (
+            ttk.Label(grid, text="Policy"),
+            ttk.Combobox(grid, textvariable=var_policy, state="readonly", values=[
+                "release_immediately",
+                "hold_for_free_day",
+                "hold_for_threshold",
+                "hybrid_free_day_threshold",
+            ], width=28),
+        ),
+        "weekdays": (
+            ttk.Label(grid, text="Free-Ship Days"),
+            ttk.Entry(grid, textvariable=var_weekdays, width=36),
+        ),
+        "threshold": (
+            ttk.Label(grid, text="Freight Threshold"),
+            ttk.Entry(grid, textvariable=var_threshold, width=20),
+        ),
+        "urgent_floor": (
+            ttk.Label(grid, text="Urgent Floor"),
+            ttk.Entry(grid, textvariable=var_urgent, width=20),
+        ),
+        "urgent_mode": (
+            ttk.Label(grid, text="Urgent Override"),
+            ttk.Combobox(grid, textvariable=var_urgent_mode, state="readonly", values=[
+                "release_now",
+                "paid_urgent_freight",
+            ], width=28),
+        ),
+        "lead_days": (
+            ttk.Label(grid, text="Lead Days"),
+            ttk.Entry(grid, textvariable=var_lead_days, width=20),
+        ),
+    }
+    advanced_toggle = ttk.Checkbutton(
         grid,
-        text="Use a preset for the common case, or edit fields directly. Examples: Friday or Mon,Fri. Threshold, urgent floor, and lead days are numeric.",
+        text="Show Advanced",
+        variable=var_show_advanced,
+    )
+    helper_label = ttk.Label(
+        grid,
+        text=(
+            "Common path: choose a preset or set Policy plus the matching day/threshold field. "
+            "Use Advanced only for urgent overrides or custom lead days."
+        ),
         style="SubHeader.TLabel",
         wraplength=620,
-    ).grid(row=len(fields), column=0, columnspan=2, sticky="w", pady=(6, 0))
+    )
+    default_label = None
     if not saved_policy and default_preset.get("label"):
-        ttk.Label(
+        default_label = ttk.Label(
             grid,
             text=f"No saved vendor-specific policy yet. Prefilled from default preset: {default_preset['label']}.",
             style="Info.TLabel",
             wraplength=620,
-        ).grid(row=len(fields) + 1, column=0, columnspan=2, sticky="w", pady=(4, 0))
+        )
+
+    def _place_row(row_idx, field_key):
+        label, widget = widgets[field_key]
+        label.grid(row=row_idx, column=0, sticky="w", padx=(0, 8), pady=4)
+        widget.grid(row=row_idx, column=1, sticky="ew", pady=4)
+
+    def _refresh_layout(*_args):
+        for label, widget in widgets.values():
+            label.grid_remove()
+            widget.grid_remove()
+        advanced_toggle.grid_remove()
+        helper_label.grid_remove()
+        if default_label is not None:
+            default_label.grid_remove()
+
+        row_idx = 0
+        _place_row(row_idx, "preset")
+        row_idx += 1
+        _place_row(row_idx, "policy")
+        row_idx += 1
+
+        advanced_toggle.grid(row=row_idx, column=0, columnspan=2, sticky="w", pady=(2, 4))
+        row_idx += 1
+
+        visibility = vendor_policy_field_visibility(var_policy.get(), advanced=var_show_advanced.get())
+        for field_key in ("weekdays", "threshold", "urgent_floor", "urgent_mode", "lead_days"):
+            if visibility.get(field_key):
+                _place_row(row_idx, field_key)
+                row_idx += 1
+
+        helper_label.grid(row=row_idx, column=0, columnspan=2, sticky="w", pady=(6, 0))
+        row_idx += 1
+        if default_label is not None:
+            default_label.grid(row=row_idx, column=0, columnspan=2, sticky="w", pady=(4, 0))
 
     def _apply_preset():
         preset_name = preset_by_label.get(var_preset.get().strip(), "")
@@ -152,6 +238,8 @@ def open_vendor_policy_editor(app, vendor, parent):
         var_urgent.set("" if not urgent_floor else (str(int(urgent_floor)) if float(urgent_floor).is_integer() else str(urgent_floor)))
         var_urgent_mode.set(urgent_mode)
         var_lead_days.set(str(lead_days))
+        var_show_advanced.set(should_expand_vendor_policy_advanced(preset))
+        _refresh_layout()
 
     def _save():
         apply_vendor_policy_changes(
@@ -173,6 +261,12 @@ def open_vendor_policy_editor(app, vendor, parent):
         var_urgent.set("")
         var_urgent_mode.set("release_now")
         var_lead_days.set("1")
+        var_show_advanced.set(False)
+        _refresh_layout()
+
+    widgets["policy"][1].bind("<<ComboboxSelected>>", _refresh_layout)
+    advanced_toggle.configure(command=_refresh_layout)
+    _refresh_layout()
 
     btn_frame = ttk.Frame(dlg)
     btn_frame.pack(fill=tk.X, padx=16, pady=12)

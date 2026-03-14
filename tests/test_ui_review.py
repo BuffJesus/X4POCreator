@@ -354,6 +354,102 @@ class UIReviewTests(unittest.TestCase):
         self.assertEqual(rows[0]["release_plan_label"], "Release Now")
         self.assertEqual(rows[0]["recommended_action"], "Export All Due")
 
+    def test_compact_review_bucket_distinguishes_ready_planned_and_blocked(self):
+        self.assertEqual(
+            ui_review.compact_review_bucket({"release_now_count": 1, "planned_today_count": 0, "held_count": 0}),
+            "Ready Now",
+        )
+        self.assertEqual(
+            ui_review.compact_review_bucket({"release_now_count": 0, "planned_today_count": 1, "held_count": 0}),
+            "Planned Today",
+        )
+        self.assertEqual(
+            ui_review.compact_review_bucket({"release_now_count": 0, "planned_today_count": 0, "held_count": 1}),
+            "Blocked",
+        )
+        self.assertEqual(
+            ui_review.compact_review_bucket({"release_now_count": 0, "planned_today_count": 0, "held_count": 1, "critical_held_count": 1}),
+            "Blocked",
+        )
+
+    def test_compact_review_reason_explains_vendor_state(self):
+        self.assertIn(
+            "short 55.00",
+            ui_review.compact_review_reason({
+                "release_now_count": 0,
+                "planned_today_count": 0,
+                "held_count": 2,
+                "critical_held_count": 0,
+                "release_plan_status": "hold_accumulating_to_threshold",
+                "vendor_threshold_shortfall": 55.0,
+            }),
+        )
+        self.assertIn(
+            "planned export date 2026-03-12",
+            ui_review.compact_review_reason({
+                "release_now_count": 0,
+                "planned_today_count": 0,
+                "held_count": 1,
+                "critical_held_count": 0,
+                "planned_export_date": "2026-03-12",
+            }),
+        )
+        self.assertIn(
+            "ready now",
+            ui_review.compact_review_reason({
+                "release_now_count": 1,
+                "planned_today_count": 0,
+                "held_count": 0,
+                "critical_held_count": 0,
+            }).lower(),
+        )
+
+    def test_build_compact_review_rows_sorts_ready_planned_then_blocked(self):
+        fake_app = SimpleNamespace(
+            assigned_items=[
+                {
+                    "vendor": "BLOCKED",
+                    "final_qty": 1,
+                    "estimated_order_value": 10.0,
+                    "release_decision": "hold_for_threshold",
+                    "vendor_order_value_total": 10.0,
+                    "vendor_threshold_shortfall": 90.0,
+                    "vendor_threshold_progress_pct": 10.0,
+                    "vendor_value_coverage": "complete",
+                    "release_plan_status": "hold_accumulating_to_threshold",
+                    "shipping_policy": "hold_for_threshold",
+                },
+                {
+                    "vendor": "PLANNED",
+                    "final_qty": 1,
+                    "estimated_order_value": 10.0,
+                    "release_decision": "export_next_business_day_for_free_day",
+                    "vendor_order_value_total": 10.0,
+                    "vendor_threshold_shortfall": 0.0,
+                    "vendor_threshold_progress_pct": 100.0,
+                    "vendor_value_coverage": "complete",
+                    "planned_export_date": "2026-03-12",
+                    "shipping_policy": "hold_for_free_day",
+                },
+                {
+                    "vendor": "READY",
+                    "final_qty": 1,
+                    "estimated_order_value": 10.0,
+                    "release_decision": "release_now",
+                    "vendor_order_value_total": 10.0,
+                    "vendor_threshold_shortfall": 0.0,
+                    "vendor_threshold_progress_pct": 100.0,
+                    "vendor_value_coverage": "complete",
+                    "shipping_policy": "release_immediately",
+                },
+            ],
+        )
+
+        rows = ui_review.build_compact_review_rows(fake_app)
+
+        self.assertEqual([row["vendor"] for row in rows], ["READY", "PLANNED", "BLOCKED"])
+        self.assertEqual([row["compact_bucket"] for row in rows], ["Ready Now", "Planned Today", "Blocked"])
+
     def test_apply_release_plan_view_sets_review_filters_and_selects_review_tab(self):
         events = []
 

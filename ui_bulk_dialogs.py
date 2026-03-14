@@ -26,6 +26,39 @@ def flush_pending_bulk_sheet_edit(app):
         bulk_sheet.flush_pending_edit()
 
 
+def buy_rule_field_visibility(*, advanced=False):
+    return {
+        "trigger_qty": advanced,
+        "trigger_pct": advanced,
+        "min_packs": advanced,
+        "cover_days": advanced,
+        "cover_cycles": advanced,
+        "overstock_qty": advanced,
+        "overstock_pct": advanced,
+        "notes": advanced,
+    }
+
+
+def should_expand_buy_rule_advanced(rule):
+    if not rule:
+        return False
+    advanced_keys = (
+        "reorder_trigger_qty",
+        "reorder_trigger_pct",
+        "minimum_packs_on_hand",
+        "minimum_cover_days",
+        "minimum_cover_cycles",
+        "acceptable_overstock_qty",
+        "acceptable_overstock_pct",
+        "notes",
+    )
+    for key in advanced_keys:
+        value = rule.get(key)
+        if value not in (None, "", 0, 0.0, False):
+            return True
+    return False
+
+
 def not_needed_reason(app, item, max_exceed_abs_buffer):
     reasons = []
     auto_remove = False
@@ -430,46 +463,79 @@ def open_buy_rule_editor(app, idx, order_rules_file):
         row=1, column=0, columnspan=2, sticky="w", pady=4
     )
 
-    ttk.Label(form, text="Min Order Qty:").grid(row=2, column=0, sticky="w", pady=4)
     var_min = tk.StringVar(value=str(rule.get("min_order_qty", "")))
-    ttk.Entry(form, textvariable=var_min, width=10).grid(row=2, column=1, sticky="w", padx=8, pady=4)
-
-    ttk.Label(form, text="Pack Qty:").grid(row=3, column=0, sticky="w", pady=4)
     var_pack = tk.StringVar(value=str(get_rule_pack_size(rule) or item.get("pack_size", "") or ""))
-    ttk.Entry(form, textvariable=var_pack, width=10).grid(row=3, column=1, sticky="w", padx=8, pady=4)
-
-    ttk.Label(form, text="Trigger Qty:").grid(row=4, column=0, sticky="w", pady=4)
     var_trigger_qty = tk.StringVar(value=str(get_rule_int(rule, "reorder_trigger_qty") or ""))
-    ttk.Entry(form, textvariable=var_trigger_qty, width=10).grid(row=4, column=1, sticky="w", padx=8, pady=4)
-
-    ttk.Label(form, text="Trigger %:").grid(row=5, column=0, sticky="w", pady=4)
     var_trigger_pct = tk.StringVar(value=str(get_rule_float(rule, "reorder_trigger_pct") or ""))
-    ttk.Entry(form, textvariable=var_trigger_pct, width=10).grid(row=5, column=1, sticky="w", padx=8, pady=4)
-
-    ttk.Label(form, text="Min Packs:").grid(row=6, column=0, sticky="w", pady=4)
     var_min_packs = tk.StringVar(value=str(get_rule_int(rule, "minimum_packs_on_hand") or ""))
-    ttk.Entry(form, textvariable=var_min_packs, width=10).grid(row=6, column=1, sticky="w", padx=8, pady=4)
-
-    ttk.Label(form, text="Cover Days:").grid(row=7, column=0, sticky="w", pady=4)
     var_cover_days = tk.StringVar(value=str(get_rule_float(rule, "minimum_cover_days") or ""))
-    ttk.Entry(form, textvariable=var_cover_days, width=10).grid(row=7, column=1, sticky="w", padx=8, pady=4)
-
-    ttk.Label(form, text="Cover Cycles:").grid(row=8, column=0, sticky="w", pady=4)
     var_cover_cycles = tk.StringVar(value=str(get_rule_float(rule, "minimum_cover_cycles") or ""))
-    ttk.Entry(form, textvariable=var_cover_cycles, width=10).grid(row=8, column=1, sticky="w", padx=8, pady=4)
-
-    ttk.Label(form, text="Overstock Qty:").grid(row=9, column=0, sticky="w", pady=4)
     var_overstock_qty = tk.StringVar(value=str(get_rule_int(rule, "acceptable_overstock_qty") or ""))
-    ttk.Entry(form, textvariable=var_overstock_qty, width=10).grid(row=9, column=1, sticky="w", padx=8, pady=4)
-
-    ttk.Label(form, text="Overstock %:").grid(row=10, column=0, sticky="w", pady=4)
     var_overstock_pct = tk.StringVar(value=str(get_rule_float(rule, "acceptable_overstock_pct") or ""))
-    ttk.Entry(form, textvariable=var_overstock_pct, width=10).grid(row=10, column=1, sticky="w", padx=8, pady=4)
-
-    ttk.Label(form, text="Notes:").grid(row=11, column=0, sticky="nw", pady=4)
+    var_show_advanced = tk.BooleanVar(value=should_expand_buy_rule_advanced(rule))
     notes_entry = ttk.Entry(form, width=30)
-    notes_entry.grid(row=11, column=1, sticky="w", padx=8, pady=4)
     notes_entry.insert(0, rule.get("notes", ""))
+
+    field_widgets = {
+        "min_order_qty": (ttk.Label(form, text="Min Order Qty:"), ttk.Entry(form, textvariable=var_min, width=10)),
+        "pack_qty": (ttk.Label(form, text="Pack Qty:"), ttk.Entry(form, textvariable=var_pack, width=10)),
+        "trigger_qty": (ttk.Label(form, text="Trigger Qty:"), ttk.Entry(form, textvariable=var_trigger_qty, width=10)),
+        "trigger_pct": (ttk.Label(form, text="Trigger %:"), ttk.Entry(form, textvariable=var_trigger_pct, width=10)),
+        "min_packs": (ttk.Label(form, text="Min Packs:"), ttk.Entry(form, textvariable=var_min_packs, width=10)),
+        "cover_days": (ttk.Label(form, text="Cover Days:"), ttk.Entry(form, textvariable=var_cover_days, width=10)),
+        "cover_cycles": (ttk.Label(form, text="Cover Cycles:"), ttk.Entry(form, textvariable=var_cover_cycles, width=10)),
+        "overstock_qty": (ttk.Label(form, text="Overstock Qty:"), ttk.Entry(form, textvariable=var_overstock_qty, width=10)),
+        "overstock_pct": (ttk.Label(form, text="Overstock %:"), ttk.Entry(form, textvariable=var_overstock_pct, width=10)),
+        "notes": (ttk.Label(form, text="Notes:"), notes_entry),
+    }
+    advanced_toggle = ttk.Checkbutton(form, text="Show Advanced", variable=var_show_advanced)
+    helper_label = ttk.Label(
+        form,
+        text=(
+            "Common path: set policy, allow-below-pack, min order, and pack. "
+            "Use Advanced for trigger floors, cover rules, overstock tolerance, and notes."
+        ),
+        style="Info.TLabel",
+        wraplength=620,
+        justify="left",
+    )
+
+    def _place_field(row_idx, field_key):
+        label, widget = field_widgets[field_key]
+        sticky = "nw" if field_key == "notes" else "w"
+        label.grid(row=row_idx, column=0, sticky=sticky, pady=4)
+        widget.grid(row=row_idx, column=1, sticky="w", padx=8, pady=4)
+
+    def _safe_grid_remove(widget):
+        remover = getattr(widget, "grid_remove", None)
+        if callable(remover):
+            remover()
+
+    def _refresh_rule_layout(*_args):
+        for label, widget in field_widgets.values():
+            _safe_grid_remove(label)
+            _safe_grid_remove(widget)
+        _safe_grid_remove(advanced_toggle)
+        _safe_grid_remove(helper_label)
+
+        row_idx = 2
+        for field_key in ("min_order_qty", "pack_qty"):
+            _place_field(row_idx, field_key)
+            row_idx += 1
+
+        advanced_toggle.grid(row=row_idx, column=0, columnspan=2, sticky="w", pady=(2, 4))
+        row_idx += 1
+
+        visibility = buy_rule_field_visibility(advanced=var_show_advanced.get())
+        for field_key in ("trigger_qty", "trigger_pct", "min_packs", "cover_days", "cover_cycles", "overstock_qty", "overstock_pct", "notes"):
+            if visibility.get(field_key):
+                _place_field(row_idx, field_key)
+                row_idx += 1
+
+        helper_label.grid(row=row_idx, column=0, columnspan=2, sticky="w", pady=(6, 0))
+
+    advanced_toggle.configure(command=_refresh_rule_layout)
+    _refresh_rule_layout()
 
     info = ttk.LabelFrame(dlg, text="Current Data", padding=8)
     info.pack(fill=tk.X, padx=16, pady=8)

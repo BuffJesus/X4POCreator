@@ -263,13 +263,13 @@ This phase is about reducing required operator input. Humans will consistently c
 - [x] Add policy templates / presets for common vendor behaviors so shipping rules can be configured with one click instead of field-by-field entry.
 - [x] Make missing policy data fail soft with safe defaults instead of forcing immediate user intervention.
 - [ ] Prefer auto-filled values from current reports and saved history before asking for manual entry.
-- [ ] Collapse low-value fields behind an "Advanced" affordance in dialogs where the common workflow only needs one or two inputs.
+- [x] Collapse low-value fields behind an "Advanced" affordance in dialogs where the common workflow only needs one or two inputs.
 - [ ] Shift review emphasis from "touch every item" to "touch only exceptions":
   - held vendors with meaningful shortfall
   - urgent overrides
   - low-confidence recommendations
   - policy/data conflicts
-- [ ] Add a compact review mode centered on:
+- [x] Add a compact review mode centered on:
   - vendors ready to export
   - vendors planned today
   - vendors blocked and why
@@ -288,7 +288,7 @@ These are the best next steps after reconciliation.
 - [ ] Define the default export behavior for mixed immediate/planned batches so routine users do not need to choose every time.
 - [ ] Add saved user preferences for export-scope prompting vs auto-selection.
 - [x] Add broader vendor-policy defaulting beyond explicit presets to reduce setup friction without guessing unsafe values.
-- [ ] Add a compact exception-first review workflow that highlights only the items/vendors needing human judgment.
+- [x] Add a compact exception-first review workflow that highlights only the items/vendors needing human judgment.
 - [ ] Add cost-confidence and threshold-progress signals to vendor shipping decisions.
 - [ ] Add planned release dates and "export the day before free-freight day" workflow for vendor policies.
 - [ ] Add stronger vendor-group release consolidation and explicit urgent paid-freight override workflow.

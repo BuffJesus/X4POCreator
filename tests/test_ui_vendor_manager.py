@@ -11,6 +11,46 @@ import ui_vendor_manager
 
 
 class UIVendorManagerTests(unittest.TestCase):
+    def test_vendor_policy_field_visibility_hides_advanced_fields_by_default(self):
+        visibility = ui_vendor_manager.vendor_policy_field_visibility("hold_for_free_day", advanced=False)
+
+        self.assertTrue(visibility["weekdays"])
+        self.assertFalse(visibility["threshold"])
+        self.assertFalse(visibility["urgent_floor"])
+        self.assertFalse(visibility["urgent_mode"])
+        self.assertFalse(visibility["lead_days"])
+
+    def test_vendor_policy_field_visibility_shows_relevant_fields_when_advanced(self):
+        visibility = ui_vendor_manager.vendor_policy_field_visibility("hybrid_free_day_threshold", advanced=True)
+
+        self.assertTrue(visibility["weekdays"])
+        self.assertTrue(visibility["threshold"])
+        self.assertTrue(visibility["urgent_floor"])
+        self.assertTrue(visibility["urgent_mode"])
+        self.assertTrue(visibility["lead_days"])
+
+    def test_should_expand_vendor_policy_advanced_only_for_nondefault_advanced_values(self):
+        self.assertFalse(ui_vendor_manager.should_expand_vendor_policy_advanced({
+            "shipping_policy": "hold_for_free_day",
+            "preferred_free_ship_weekdays": ["Friday"],
+            "release_lead_business_days": 1,
+            "urgent_release_floor": 0,
+            "urgent_release_mode": "release_now",
+        }))
+        self.assertTrue(ui_vendor_manager.should_expand_vendor_policy_advanced({
+            "shipping_policy": "hold_for_free_day",
+            "preferred_free_ship_weekdays": ["Friday"],
+            "release_lead_business_days": 2,
+            "urgent_release_floor": 0,
+            "urgent_release_mode": "release_now",
+        }))
+        self.assertTrue(ui_vendor_manager.should_expand_vendor_policy_advanced({
+            "shipping_policy": "hold_for_threshold",
+            "free_freight_threshold": 2000,
+            "urgent_release_floor": 5,
+            "urgent_release_mode": "release_now",
+        }))
+
     def test_apply_vendor_policy_preset_uses_common_template(self):
         events = []
         fake_app = SimpleNamespace(
