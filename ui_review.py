@@ -65,6 +65,42 @@ def build_vendor_release_plan_rows(app):
     return shipping_flow.build_vendor_release_plan(getattr(app, "assigned_items", []))
 
 
+def tree_selected_values_or_first(tree):
+    selection = tree.selection()
+    target = selection[0] if selection else ""
+    if not target:
+        children = tree.get_children()
+        target = children[0] if children else ""
+        if target and hasattr(tree, "selection_set"):
+            try:
+                tree.selection_set(target)
+            except Exception:
+                pass
+    if not target:
+        return ()
+    values = tree.item(target, "values")
+    return values or ()
+
+
+def tree_selected_index_or_first(tree):
+    selection = tree.selection()
+    target = selection[0] if selection else ""
+    if not target:
+        children = tree.get_children()
+        target = children[0] if children else ""
+        if target and hasattr(tree, "selection_set"):
+            try:
+                tree.selection_set(target)
+            except Exception:
+                pass
+    if target == "":
+        return None
+    try:
+        return int(target)
+    except Exception:
+        return None
+
+
 def compact_review_bucket(row):
     release_now_count = int(row.get("release_now_count", 0) or 0)
     planned_today_count = int(row.get("planned_today_count", 0) or 0)
@@ -308,11 +344,12 @@ def show_release_plan(app):
     action_row = ttk.Frame(dlg)
     action_row.pack(fill=tk.X, padx=16, pady=(4, 12))
 
+    children = tree.get_children()
+    if children:
+        tree.selection_set(children[0])
+
     def _selected_vendor():
-        selection = tree.selection()
-        if not selection:
-            return ""
-        values = tree.item(selection[0], "values")
+        values = tree_selected_values_or_first(tree)
         return values[0] if values else ""
 
     def _open_review(focus, release):
@@ -413,11 +450,14 @@ def show_compact_review(app):
     action_row = ttk.Frame(dlg)
     action_row.pack(fill=tk.X, padx=16, pady=(4, 12))
 
+    children = tree.get_children()
+    if children:
+        tree.selection_set(children[0])
+
     def _selected_vendor_row():
-        selection = tree.selection()
-        if not selection:
+        idx = tree_selected_index_or_first(tree)
+        if idx is None:
             return None
-        idx = int(selection[0])
         return rows[idx] if 0 <= idx < len(rows) else None
 
     def _open_selected(focus, release):

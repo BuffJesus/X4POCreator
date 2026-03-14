@@ -275,7 +275,7 @@ This phase is about reducing required operator input. Humans will consistently c
   - vendors blocked and why
 - [x] Add a single "Recommended Action" concept at both item and vendor level, so the operator can mostly follow one instruction instead of interpreting several fields.
 - [x] Prefer persistent user choices over repeated prompts when the same decision recurs often.
-- [ ] Audit current prompts and dialogs for removal, consolidation, or safe defaulting.
+- [x] Audit current prompts and dialogs for removal, consolidation, or safe defaulting.
 - [ ] Document a UX rule for future features:
   - no new required field unless the app cannot infer or default it safely
   - no new prompt unless different user choices create materially different outcomes

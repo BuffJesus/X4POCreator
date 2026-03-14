@@ -12,6 +12,46 @@ import ui_review
 
 
 class UIReviewTests(unittest.TestCase):
+    def test_tree_selected_values_or_first_uses_first_row_when_nothing_selected(self):
+        class Tree:
+            def __init__(self):
+                self.selected = []
+            def selection(self):
+                return tuple(self.selected)
+            def get_children(self):
+                return ("0", "1")
+            def selection_set(self, item_id):
+                self.selected = [item_id]
+            def item(self, item_id, field):
+                if field != "values":
+                    raise AssertionError(field)
+                return {"0": ("MOTION",), "1": ("SOURCE",)}[item_id]
+
+        tree = Tree()
+
+        values = ui_review.tree_selected_values_or_first(tree)
+
+        self.assertEqual(values, ("MOTION",))
+        self.assertEqual(tree.selected, ["0"])
+
+    def test_tree_selected_index_or_first_uses_first_row_when_nothing_selected(self):
+        class Tree:
+            def __init__(self):
+                self.selected = []
+            def selection(self):
+                return tuple(self.selected)
+            def get_children(self):
+                return ("0", "1")
+            def selection_set(self, item_id):
+                self.selected = [item_id]
+
+        tree = Tree()
+
+        idx = ui_review.tree_selected_index_or_first(tree)
+
+        self.assertEqual(idx, 0)
+        self.assertEqual(tree.selected, ["0"])
+
     def test_flush_pending_bulk_sheet_edit_calls_sheet_hook(self):
         events = []
         fake_app = SimpleNamespace(
