@@ -25,6 +25,17 @@ class ExportFlowTests(unittest.TestCase):
         self.assertEqual(list(grouped.keys()), ["MOTION", "SOURCE"])
         self.assertEqual([item["item_code"] for item in grouped["MOTION"]], ["A", "C"])
 
+    def test_partition_export_items_separates_held_items(self):
+        exportable, held = export_flow.partition_export_items([
+            {"item_code": "A", "release_decision": "release_now"},
+            {"item_code": "B", "release_decision": "hold_for_free_day"},
+            {"item_code": "C", "release_decision": "hold_for_threshold"},
+            {"item_code": "D", "release_decision": ""},
+        ])
+
+        self.assertEqual([item["item_code"] for item in exportable], ["A", "D"])
+        self.assertEqual([item["item_code"] for item in held], ["B", "C"])
+
     def test_build_session_snapshot_captures_expected_fields(self):
         app = SimpleNamespace(
             var_sales_path=SimpleNamespace(get=lambda: "C:\\Reports\\sales.csv"),
@@ -176,6 +187,91 @@ class ExportFlowTests(unittest.TestCase):
 
         mocked_info.assert_called_once()
         self.assertIn("merged your update with newer shared data", mocked_info.call_args.args[1])
+
+    def test_do_export_skips_held_items_and_notes_them_in_completion_message(self):
+        session = AppSessionState(
+            assigned_items=[
+                {
+                    "vendor": "MOTION",
+                    "line_code": "AER-",
+                    "item_code": "GH781-4",
+                    "order_qty": 2,
+                    "release_decision": "release_now",
+                },
+                {
+                    "vendor": "MOTION",
+                    "line_code": "AER-",
+                    "item_code": "GH781-5",
+                    "order_qty": 3,
+                    "release_decision": "hold_for_threshold",
+                    "release_reason": "Held for freight threshold 2000",
+                },
+            ],
+            startup_warning_rows=[],
+            qoh_adjustments={},
+            order_rules={},
+        )
+        app = SimpleNamespace(
+            session=session,
+            root=SimpleNamespace(update=lambda: None),
+            _show_loading=lambda message: None,
+            _hide_loading=lambda: None,
+            _persist_suspense_carry=lambda: {"conflict": False},
+            _build_maintenance_report=lambda: [],
+            _show_maintenance_report=lambda output_dir, issues: None,
+            var_sales_path=SimpleNamespace(get=lambda: ""),
+            var_po_path=SimpleNamespace(get=lambda: ""),
+            var_susp_path=SimpleNamespace(get=lambda: ""),
+            var_onhand_path=SimpleNamespace(get=lambda: ""),
+            var_minmax_path=SimpleNamespace(get=lambda: ""),
+            var_packsize_path=SimpleNamespace(get=lambda: ""),
+        )
+
+        with tempfile.TemporaryDirectory() as tmp, \
+             patch("export_flow.filedialog.askdirectory", return_value=tmp), \
+             patch("export_flow.storage.append_order_history") as mocked_history, \
+             patch("export_flow.storage.save_session_snapshot"), \
+             patch("export_flow.messagebox.showinfo") as mocked_info:
+            export_flow.do_export(
+                app,
+                lambda vendor, items, output_dir: str(Path(output_dir) / f"{vendor}_{len(items)}.xlsx"),
+                str(Path(tmp) / "order_history.json"),
+                str(Path(tmp) / "sessions"),
+            )
+
+        mocked_history.assert_called_once()
+        exported_items = mocked_history.call_args.args[1]
+        self.assertEqual(len(exported_items), 1)
+        self.assertEqual(exported_items[0]["item_code"], "GH781-4")
+        self.assertIn("were held by shipping policy and were not exported", mocked_info.call_args.args[1])
+
+    def test_do_export_stops_when_all_items_are_held(self):
+        session = AppSessionState(
+            assigned_items=[
+                {
+                    "vendor": "MOTION",
+                    "line_code": "AER-",
+                    "item_code": "GH781-5",
+                    "order_qty": 3,
+                    "release_decision": "hold_for_threshold",
+                    "release_reason": "Held for freight threshold 2000",
+                },
+            ],
+        )
+        app = SimpleNamespace(session=session)
+
+        with patch("export_flow.filedialog.askdirectory") as mocked_dir, \
+             patch("export_flow.messagebox.showinfo") as mocked_info:
+            export_flow.do_export(
+                app,
+                lambda vendor, items, output_dir: output_dir,
+                str(ROOT / "order_history.json"),
+                str(ROOT / "sessions"),
+            )
+
+        mocked_dir.assert_not_called()
+        mocked_info.assert_called_once()
+        self.assertIn("currently held by vendor shipping policy", mocked_info.call_args.args[1])
 
 
 if __name__ == "__main__":

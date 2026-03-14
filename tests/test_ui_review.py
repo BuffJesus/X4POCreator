@@ -118,6 +118,23 @@ class UIReviewTests(unittest.TestCase):
         self.assertEqual(events[1], ("delete", "old"))
         self.assertEqual(events[2][0], "insert")
 
+    def test_update_review_summary_includes_exportable_and_held_counts(self):
+        captured = {}
+        fake_app = SimpleNamespace(
+            assigned_items=[
+                {"vendor": "MOTION", "release_decision": "release_now"},
+                {"vendor": "MOTION", "release_decision": "hold_for_threshold"},
+                {"vendor": "SOURCE", "release_decision": ""},
+            ],
+            lbl_review_summary=SimpleNamespace(config=lambda **kwargs: captured.update(kwargs)),
+        )
+
+        ui_review.update_review_summary(fake_app)
+
+        text = captured["text"]
+        self.assertIn("Exportable now: 2", text)
+        self.assertIn("Held by shipping policy: 1", text)
+
     def test_sort_tree_flushes_pending_bulk_sheet_edit(self):
         events = []
 

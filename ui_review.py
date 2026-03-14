@@ -166,10 +166,18 @@ def populate_review_tab(app):
 
 def update_review_summary(app):
     vendors = set(item["vendor"] for item in app.assigned_items)
+    held_count = sum(
+        1 for item in app.assigned_items
+        if str(item.get("release_decision", "") or "").strip() in ("hold_for_free_day", "hold_for_threshold")
+    )
+    exportable_count = max(0, len(app.assigned_items) - held_count)
+    hold_summary = f" | Exportable now: {exportable_count}"
+    if held_count:
+        hold_summary += f" | Held by shipping policy: {held_count}"
     app.lbl_review_summary.config(
         text=(
             f"{len(app.assigned_items)} items across {len(vendors)} vendor PO(s): {', '.join(sorted(vendors))} | "
-            "Final Qty exports. Why This Qty explains the recommendation."
+            f"Final Qty exports. Why This Qty explains the recommendation.{hold_summary}"
         )
     )
 

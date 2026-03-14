@@ -17,6 +17,18 @@ def group_assigned_items(assigned_items):
     return vendor_groups
 
 
+def partition_export_items(assigned_items):
+    exportable = []
+    held = []
+    for item in assigned_items:
+        decision = str(item.get("release_decision", "") or "").strip()
+        if decision in ("hold_for_free_day", "hold_for_threshold"):
+            held.append(item)
+        else:
+            exportable.append(item)
+    return exportable, held
+
+
 def loaded_report_paths_from_app(app):
     return {
         "sales": app.var_sales_path.get().strip(),
@@ -34,6 +46,26 @@ def do_export(app, export_vendor_po, order_history_file, sessions_dir):
         messagebox.showwarning("No Items", "No items to export.")
         return
 
+    exportable_items, held_items = partition_export_items(session.assigned_items)
+    if not exportable_items:
+        if held_items:
+            held_lines = "\n".join(
+                f"  - {item.get('vendor', '')} {item.get('line_code', '')}{item.get('item_code', '')}: {item.get('release_reason', 'Held by shipping policy')}"
+                for item in held_items[:8]
+            )
+            suffix = "\n  - ..." if len(held_items) > 8 else ""
+            messagebox.showinfo(
+                "No Exportable Items",
+                (
+                    "All assigned items are currently held by vendor shipping policy, so no PO files were exported.\n\n"
+                    f"{held_lines}{suffix}\n\n"
+                    "These items remain visible in Review & Export until their release decision changes."
+                ),
+            )
+        else:
+            messagebox.showwarning("No Items", "No items are currently eligible for export.")
+        return
+
     output_dir = filedialog.askdirectory(title="Select Output Folder for PO Files")
     if not output_dir:
         return
@@ -41,7 +73,7 @@ def do_export(app, export_vendor_po, order_history_file, sessions_dir):
     app._show_loading("Exporting POs...")
     app.root.update()
 
-    vendor_groups = group_assigned_items(session.assigned_items)
+    vendor_groups = group_assigned_items(exportable_items)
 
     created_files = []
     for vendor, items in sorted(vendor_groups.items()):
@@ -53,7 +85,7 @@ def do_export(app, export_vendor_po, order_history_file, sessions_dir):
             messagebox.showerror("Export Error", f"Failed to export PO for {vendor}:\n{exc}")
             return
 
-    storage.append_order_history(order_history_file, session.assigned_items)
+    storage.append_order_history(order_history_file, exportable_items)
     suspense_carry_result = None
     if hasattr(app, "_persist_suspense_carry"):
         suspense_carry_result = app._persist_suspense_carry()
@@ -79,12 +111,18 @@ def do_export(app, export_vendor_po, order_history_file, sessions_dir):
         shared_merge_note = (
             "\n\nShared suspense carry changed on disk during export, so PO Builder merged your update with newer shared data."
         )
+    held_note = ""
+    if held_items:
+        held_note = (
+            f"\n\n{len(held_items)} assigned item(s) were held by shipping policy and were not exported. "
+            "They remain in Review & Export with their release reason."
+        )
     messagebox.showinfo(
         "Export Complete",
         f"Created {len(created_files)} PO file(s) in:\n{output_dir}\n\n{file_list}\n\n"
         "Each file is ready for X4 Import from Excel.\n"
         "Remember to set the Vendor field in X4 when importing each file."
-        f"{shared_merge_note}\n\n"
+        f"{shared_merge_note}{held_note}\n\n"
         "A maintenance report will open next if the app found supplier, pack, min/max, or QOH differences worth reviewing in X4.",
     )
     app._show_maintenance_report(output_dir, maintenance_issues)
