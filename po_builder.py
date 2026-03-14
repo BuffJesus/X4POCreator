@@ -106,6 +106,10 @@ MAX_LOADING_GIF_FRAMES = 90
 CORNER_LOADING_GIF_SIZE = (52, 52)
 BULK_EDITABLE_COLS = ("vendor", "final_qty", "qoh", "cur_min", "cur_max", "pack_size")
 REVIEW_EDITABLE_COLS = ("vendor", "order_qty", "pack_size")
+DEFAULT_MIXED_EXPORT_BEHAVIOR = "all_exportable"
+MIXED_EXPORT_BEHAVIOR_OPTIONS = ("all_exportable", "immediate_only", "ask_when_mixed")
+DEFAULT_REVIEW_EXPORT_FOCUS = "exceptions_only"
+REVIEW_EXPORT_FOCUS_OPTIONS = ("all_items", "exceptions_only")
 BULK_SHORTCUTS_TEXT = """Current bulk-sheet shortcuts
 
 Supported now
@@ -464,6 +468,32 @@ class POBuilderApp:
 
     def _set_update_check_enabled(self):
         app_runtime_flow.set_update_check_enabled(self)
+
+    def _get_mixed_export_behavior(self):
+        behavior = str(self.app_settings.get("mixed_export_behavior", DEFAULT_MIXED_EXPORT_BEHAVIOR) or "").strip()
+        if behavior not in MIXED_EXPORT_BEHAVIOR_OPTIONS:
+            behavior = DEFAULT_MIXED_EXPORT_BEHAVIOR
+        return behavior
+
+    def _set_mixed_export_behavior(self, behavior):
+        normalized = str(behavior or "").strip()
+        if normalized not in MIXED_EXPORT_BEHAVIOR_OPTIONS:
+            normalized = DEFAULT_MIXED_EXPORT_BEHAVIOR
+        self.app_settings["mixed_export_behavior"] = normalized
+        self._save_app_settings()
+
+    def _get_review_export_focus(self):
+        focus = str(self.app_settings.get("review_export_focus", DEFAULT_REVIEW_EXPORT_FOCUS) or "").strip()
+        if focus not in REVIEW_EXPORT_FOCUS_OPTIONS:
+            focus = DEFAULT_REVIEW_EXPORT_FOCUS
+        return focus
+
+    def _set_review_export_focus(self, focus):
+        normalized = str(focus or "").strip()
+        if normalized not in REVIEW_EXPORT_FOCUS_OPTIONS:
+            normalized = DEFAULT_REVIEW_EXPORT_FOCUS
+        self.app_settings["review_export_focus"] = normalized
+        self._save_app_settings()
 
     def _start_update_check(self):
         app_runtime_flow.start_update_check(self, APP_VERSION, is_release_version, threading.Thread)

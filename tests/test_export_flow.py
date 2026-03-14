@@ -55,6 +55,32 @@ class ExportFlowTests(unittest.TestCase):
 
         self.assertEqual(selected, items)
 
+    def test_choose_export_items_uses_saved_all_exportable_behavior(self):
+        items = [
+            {"item_code": "A", "release_decision": "release_now"},
+            {"item_code": "E", "release_decision": "export_next_business_day_for_free_day"},
+        ]
+
+        selected = export_flow.choose_export_items(
+            SimpleNamespace(app_settings={"mixed_export_behavior": "all_exportable"}),
+            items,
+        )
+
+        self.assertEqual([item["item_code"] for item in selected], ["A", "E"])
+
+    def test_choose_export_items_uses_saved_immediate_only_behavior(self):
+        items = [
+            {"item_code": "A", "release_decision": "release_now"},
+            {"item_code": "E", "release_decision": "export_next_business_day_for_free_day"},
+        ]
+
+        selected = export_flow.choose_export_items(
+            SimpleNamespace(app_settings={"mixed_export_behavior": "immediate_only"}),
+            items,
+        )
+
+        self.assertEqual([item["item_code"] for item in selected], ["A"])
+
     def test_choose_export_items_can_limit_to_immediate_items(self):
         items = [
             {"item_code": "A", "release_decision": "release_now"},
@@ -62,7 +88,10 @@ class ExportFlowTests(unittest.TestCase):
         ]
 
         with patch("export_flow.messagebox.askyesnocancel", return_value=False):
-            selected = export_flow.choose_export_items(SimpleNamespace(), items)
+            selected = export_flow.choose_export_items(
+                SimpleNamespace(app_settings={"mixed_export_behavior": "ask_when_mixed"}),
+                items,
+            )
 
         self.assertEqual([item["item_code"] for item in selected], ["A"])
 
@@ -199,6 +228,7 @@ class ExportFlowTests(unittest.TestCase):
         )
         app = SimpleNamespace(
             session=session,
+            app_settings={"mixed_export_behavior": "ask_when_mixed"},
             root=SimpleNamespace(update=lambda: None),
             _show_loading=lambda message: None,
             _hide_loading=lambda: None,
@@ -261,6 +291,7 @@ class ExportFlowTests(unittest.TestCase):
         )
         app = SimpleNamespace(
             session=session,
+            app_settings={"mixed_export_behavior": "ask_when_mixed"},
             root=SimpleNamespace(update=lambda: None),
             _show_loading=lambda message: None,
             _hide_loading=lambda: None,
@@ -320,6 +351,7 @@ class ExportFlowTests(unittest.TestCase):
         )
         app = SimpleNamespace(
             session=session,
+            app_settings={"mixed_export_behavior": "ask_when_mixed"},
             root=SimpleNamespace(update=lambda: None),
             _show_loading=lambda message: None,
             _hide_loading=lambda: None,

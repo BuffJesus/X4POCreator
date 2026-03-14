@@ -12,6 +12,70 @@ from models import AppSessionState
 
 
 class ShippingFlowTests(unittest.TestCase):
+    def test_release_bucket_classifies_release_states(self):
+        self.assertEqual(shipping_flow.release_bucket({"release_decision": "release_now"}), "release_now")
+        self.assertEqual(
+            shipping_flow.release_bucket({"release_decision": "export_next_business_day_for_free_day"}),
+            "planned_today",
+        )
+        self.assertEqual(shipping_flow.release_bucket({"release_decision": "hold_for_threshold"}), "held")
+
+    def test_build_vendor_release_plan_aggregates_counts_and_values(self):
+        rows = shipping_flow.build_vendor_release_plan([
+            {
+                "vendor": "MOTION",
+                "final_qty": 2,
+                "estimated_order_value": 20.0,
+                "release_decision": "release_now",
+                "vendor_order_value_total": 45.0,
+                "vendor_threshold_shortfall": 55.0,
+                "vendor_threshold_progress_pct": 45.0,
+                "vendor_value_coverage": "partial",
+                "next_free_ship_date": "2026-03-13",
+                "planned_export_date": "2026-03-12",
+                "shipping_policy": "hybrid_free_day_threshold",
+            },
+            {
+                "vendor": "MOTION",
+                "final_qty": 1,
+                "estimated_order_value": 15.0,
+                "release_decision": "export_next_business_day_for_free_day",
+                "vendor_order_value_total": 45.0,
+                "vendor_threshold_shortfall": 55.0,
+                "vendor_threshold_progress_pct": 45.0,
+                "vendor_value_coverage": "partial",
+                "next_free_ship_date": "2026-03-13",
+                "planned_export_date": "2026-03-12",
+                "shipping_policy": "hybrid_free_day_threshold",
+            },
+            {
+                "vendor": "MOTION",
+                "final_qty": 1,
+                "estimated_order_value": 10.0,
+                "release_decision": "hold_for_threshold",
+                "vendor_order_value_total": 45.0,
+                "vendor_threshold_shortfall": 55.0,
+                "vendor_threshold_progress_pct": 45.0,
+                "vendor_value_coverage": "partial",
+                "next_free_ship_date": "2026-03-13",
+                "planned_export_date": "2026-03-12",
+                "shipping_policy": "hybrid_free_day_threshold",
+            },
+        ])
+
+        self.assertEqual(len(rows), 1)
+        row = rows[0]
+        self.assertEqual(row["vendor"], "MOTION")
+        self.assertEqual(row["release_now_count"], 1)
+        self.assertEqual(row["planned_today_count"], 1)
+        self.assertEqual(row["held_count"], 1)
+        self.assertEqual(row["release_now_value"], 20.0)
+        self.assertEqual(row["planned_today_value"], 15.0)
+        self.assertEqual(row["held_value"], 10.0)
+        self.assertEqual(row["vendor_order_value_total"], 45.0)
+        self.assertEqual(row["vendor_threshold_shortfall"], 55.0)
+        self.assertEqual(row["next_free_ship_date"], "2026-03-13")
+
     def test_annotate_release_decisions_holds_for_free_day_when_not_today(self):
         session = AppSessionState(
             inventory_lookup={("AER-", "GH781-4"): {"repl_cost": 2.0}},

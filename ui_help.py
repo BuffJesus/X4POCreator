@@ -384,6 +384,57 @@ def build_help_tab(app):
         wraplength=900,
     ).pack(anchor="w", pady=(2, 10))
 
+    settings_frame = ttk.LabelFrame(frame, text="Workflow Defaults", padding=10)
+    settings_frame.pack(fill=tk.X, pady=(0, 10))
+    ttk.Label(
+        settings_frame,
+        text="Mixed immediate/planned export behavior:",
+        style="Info.TLabel",
+    ).pack(side=tk.LEFT, padx=(0, 8))
+    behavior_map = {
+        "all_exportable": "Export All Exportable",
+        "immediate_only": "Immediate Only",
+        "ask_when_mixed": "Ask When Mixed",
+    }
+    reverse_behavior_map = {label: key for key, label in behavior_map.items()}
+    var_mixed_export = tk.StringVar(value=behavior_map.get(app._get_mixed_export_behavior(), "Export All Exportable"))
+    combo_mixed_export = ttk.Combobox(
+        settings_frame,
+        textvariable=var_mixed_export,
+        state="readonly",
+        width=24,
+        values=list(behavior_map.values()),
+    )
+    combo_mixed_export.pack(side=tk.LEFT)
+    combo_mixed_export.bind(
+        "<<ComboboxSelected>>",
+        lambda _e: app._set_mixed_export_behavior(reverse_behavior_map.get(var_mixed_export.get(), "all_exportable")),
+    )
+
+    ttk.Label(
+        settings_frame,
+        text="Review & Export default focus:",
+        style="Info.TLabel",
+    ).pack(side=tk.LEFT, padx=(18, 8))
+    focus_map = {
+        "all_items": "All Items",
+        "exceptions_only": "Exceptions Only",
+    }
+    reverse_focus_map = {label: key for key, label in focus_map.items()}
+    var_review_focus = tk.StringVar(value=focus_map.get(app._get_review_export_focus(), "Exceptions Only"))
+    combo_review_focus = ttk.Combobox(
+        settings_frame,
+        textvariable=var_review_focus,
+        state="readonly",
+        width=18,
+        values=list(focus_map.values()),
+    )
+    combo_review_focus.pack(side=tk.LEFT)
+    combo_review_focus.bind(
+        "<<ComboboxSelected>>",
+        lambda _e: app._set_review_export_focus(reverse_focus_map.get(var_review_focus.get(), "exceptions_only")),
+    )
+
     help_notebook = ttk.Notebook(frame)
     help_notebook.pack(fill=tk.BOTH, expand=True)
 

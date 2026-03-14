@@ -2,6 +2,7 @@ import os
 import tkinter as tk
 from tkinter import ttk, messagebox
 
+import shipping_flow
 from ui_grid_edit import TreeGridEditor
 from ui_scroll import attach_vertical_mousewheel
 
@@ -13,12 +14,120 @@ def flush_pending_bulk_sheet_edit(app):
 
 
 def release_filter_bucket(item):
-    decision = str(item.get("release_decision", "") or "").strip()
-    if decision in ("hold_for_free_day", "hold_for_threshold"):
-        return "Held"
-    if decision == "export_next_business_day_for_free_day":
-        return "Planned Today"
-    return "Release Now"
+    return {
+        "held": "Held",
+        "planned_today": "Planned Today",
+        "release_now": "Release Now",
+    }.get(shipping_flow.release_bucket(item), "Release Now")
+
+
+def is_review_exception(item):
+    if release_filter_bucket(item) != "Release Now":
+        return True
+    if str(item.get("status", "") or "").strip().lower() in ("review", "warning"):
+        return True
+    if bool(item.get("review_required")):
+        return True
+    if str(item.get("recency_confidence", "") or "").strip().lower() == "low":
+        return True
+    if str(item.get("vendor_value_coverage", "") or "").strip().lower() in ("partial", "missing"):
+        return True
+    if str(item.get("reorder_attention_signal", "") or "").strip().lower() == "review_missed_reorder":
+        return True
+    return False
+
+
+def build_vendor_release_plan_rows(app):
+    return shipping_flow.build_vendor_release_plan(getattr(app, "assigned_items", []))
+
+
+def show_release_plan(app):
+    rows = build_vendor_release_plan_rows(app)
+    if not rows:
+        messagebox.showinfo("Release Plan", "No assigned vendor items are available for release planning.")
+        return
+
+    dlg = tk.Toplevel(app.root)
+    dlg.title("Vendor Release Plan")
+    dlg.configure(bg="#1e1e2e")
+    dlg.transient(app.root)
+    dlg.grab_set()
+
+    ttk.Label(dlg, text="Vendor Release Plan", style="Header.TLabel").pack(anchor="w", padx=16, pady=(16, 4))
+    ttk.Label(
+        dlg,
+        text="This view summarizes immediate, planned-today, and held items by vendor using the current shipping policy annotations.",
+        style="SubHeader.TLabel",
+        wraplength=980,
+    ).pack(anchor="w", padx=16, pady=(0, 10))
+
+    frame = ttk.Frame(dlg)
+    frame.pack(fill=tk.BOTH, expand=True, padx=16, pady=(0, 8))
+
+    columns = (
+        "vendor", "policy", "immediate", "planned", "held", "total_value",
+        "shortfall", "progress", "coverage", "next_free", "planned_export",
+    )
+    tree = ttk.Treeview(frame, columns=columns, show="headings", selectmode="browse")
+    headings = {
+        "vendor": "Vendor",
+        "policy": "Policy",
+        "immediate": "Immediate",
+        "planned": "Planned",
+        "held": "Held",
+        "total_value": "Vendor Value",
+        "shortfall": "Shortfall",
+        "progress": "Progress %",
+        "coverage": "Coverage",
+        "next_free": "Next Free-Ship",
+        "planned_export": "Planned Export",
+    }
+    widths = {
+        "vendor": 110,
+        "policy": 150,
+        "immediate": 70,
+        "planned": 70,
+        "held": 70,
+        "total_value": 90,
+        "shortfall": 90,
+        "progress": 80,
+        "coverage": 80,
+        "next_free": 100,
+        "planned_export": 100,
+    }
+    for col in columns:
+        tree.heading(col, text=headings[col])
+        tree.column(col, width=widths[col], anchor="center" if col not in ("vendor", "policy") else "w")
+
+    for idx, row in enumerate(rows):
+        tree.insert(
+            "",
+            "end",
+            iid=str(idx),
+            values=(
+                row["vendor"],
+                row.get("shipping_policy", "") or "-",
+                row["release_now_count"],
+                row["planned_today_count"],
+                row["held_count"],
+                f'{row["vendor_order_value_total"]:.2f}',
+                f'{row["vendor_threshold_shortfall"]:.2f}',
+                f'{row["vendor_threshold_progress_pct"]:.2f}',
+                row.get("vendor_value_coverage", "") or "-",
+                row.get("next_free_ship_date", "") or "-",
+                row.get("planned_export_date", "") or "-",
+            ),
+        )
+
+    vsb = ttk.Scrollbar(frame, orient="vertical", command=tree.yview)
+    tree.configure(yscrollcommand=vsb.set)
+    tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+    vsb.pack(side=tk.RIGHT, fill=tk.Y)
+    attach_vertical_mousewheel(tree)
+
+    ttk.Button(dlg, text="Close", command=dlg.destroy).pack(pady=12)
+    app._autosize_dialog(dlg, min_w=920, min_h=360, max_w_ratio=0.92, max_h_ratio=0.85)
+    dlg.wait_window()
 
 
 def build_review_tab(app):
@@ -85,6 +194,18 @@ def build_review_tab(app):
     app.combo_review_release.pack(side=tk.LEFT)
     app.combo_review_release.bind("<<ComboboxSelected>>", lambda e: app._apply_review_filter())
 
+    ttk.Label(filter_frame, text="Focus:").pack(side=tk.LEFT, padx=(12, 6))
+    app.var_review_focus_filter = tk.StringVar(value="Exceptions Only")
+    app.combo_review_focus = ttk.Combobox(
+        filter_frame,
+        textvariable=app.var_review_focus_filter,
+        state="readonly",
+        width=16,
+        values=["All Items", "Exceptions Only"],
+    )
+    app.combo_review_focus.pack(side=tk.LEFT)
+    app.combo_review_focus.bind("<<ComboboxSelected>>", lambda e: app._apply_review_filter())
+
     tree_frame = ttk.Frame(frame)
     tree_frame.pack(fill=tk.BOTH, expand=True, pady=4)
 
@@ -149,6 +270,7 @@ def build_review_tab(app):
     left_btn_row.pack(anchor="w", fill=tk.X)
     ttk.Button(left_btn_row, text="Delete Selected", command=app._delete_selected).pack(side=tk.LEFT, padx=4)
     ttk.Button(left_btn_row, text="Back to Assignment", command=app._back_to_assign).pack(side=tk.LEFT, padx=4)
+    ttk.Button(left_btn_row, text="Release Plan", command=lambda: show_release_plan(app)).pack(side=tk.LEFT, padx=4)
 
     right_btn_row = ttk.Frame(btn_frame)
     right_btn_row.pack(anchor="e", fill=tk.X, pady=(8, 0))
@@ -175,14 +297,18 @@ def populate_review_tab(app):
     flush_pending_bulk_sheet_edit(app)
     for item in app.tree.get_children():
         app.tree.delete(item)
-    for i, item in enumerate(app.assigned_items):
-        app.tree.insert("", "end", iid=str(i), values=review_row_values(item))
     vendors = sorted(set(item["vendor"] for item in app.assigned_items))
     app.combo_vendor_filter["values"] = ["ALL"] + vendors
     app.var_vendor_filter.set("ALL")
     app.var_review_performance_filter.set("ALL")
     app.var_review_attention_filter.set("ALL")
     app.var_review_release_filter.set("ALL")
+    focus = "Exceptions Only"
+    get_focus = getattr(app, "_get_review_export_focus", None)
+    if callable(get_focus):
+        focus = "Exceptions Only" if get_focus() == "exceptions_only" else "All Items"
+    app.var_review_focus_filter.set(focus)
+    apply_review_filter(app)
     update_review_summary(app)
 
 
@@ -191,8 +317,9 @@ def update_review_summary(app):
     held_count = sum(1 for item in app.assigned_items if release_filter_bucket(item) == "Held")
     planned_count = sum(1 for item in app.assigned_items if release_filter_bucket(item) == "Planned Today")
     immediate_count = sum(1 for item in app.assigned_items if release_filter_bucket(item) == "Release Now")
+    exception_count = sum(1 for item in app.assigned_items if is_review_exception(item))
     exportable_count = immediate_count + planned_count
-    hold_summary = f" | Exportable now: {exportable_count} | Immediate: {immediate_count}"
+    hold_summary = f" | Exportable now: {exportable_count} | Immediate: {immediate_count} | Exceptions: {exception_count}"
     if planned_count:
         hold_summary += f" | Planned today: {planned_count}"
     if held_count:
@@ -211,9 +338,12 @@ def apply_review_filter(app):
     performance_filter = app.var_review_performance_filter.get()
     attention_filter = app.var_review_attention_filter.get()
     release_filter = app.var_review_release_filter.get()
+    focus_filter = app.var_review_focus_filter.get()
     for item_id in app.tree.get_children():
         app.tree.delete(item_id)
     for i, item in enumerate(app.assigned_items):
+        if focus_filter == "Exceptions Only" and not is_review_exception(item):
+            continue
         if vendor_filter != "ALL" and item["vendor"] != vendor_filter:
             continue
         if performance_filter != "ALL":

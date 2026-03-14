@@ -133,6 +133,15 @@ def _format_date(value):
     return value.isoformat()
 
 
+def release_bucket(item):
+    decision = str(item.get("release_decision", "") or "").strip()
+    if decision in ("hold_for_free_day", "hold_for_threshold"):
+        return "held"
+    if decision == "export_next_business_day_for_free_day":
+        return "planned_today"
+    return "release_now"
+
+
 def build_vendor_order_totals(items, inventory_lookup):
     totals = {}
     for item in items or []:
@@ -144,6 +153,56 @@ def build_vendor_order_totals(items, inventory_lookup):
             continue
         totals[vendor] = totals.get(vendor, 0.0) + estimate_item_order_value(item, inventory_lookup)
     return totals
+
+
+def build_vendor_release_plan(items):
+    plan = {}
+    for item in items or []:
+        vendor = _normalize_vendor(item.get("vendor", ""))
+        if not vendor:
+            continue
+        qty = max(0, _safe_float(item.get("final_qty", item.get("order_qty", 0)), 0.0))
+        if qty <= 0:
+            continue
+        bucket = release_bucket(item)
+        row = plan.setdefault(
+            vendor,
+            {
+                "vendor": vendor,
+                "release_now_count": 0,
+                "planned_today_count": 0,
+                "held_count": 0,
+                "release_now_value": 0.0,
+                "planned_today_value": 0.0,
+                "held_value": 0.0,
+                "vendor_order_value_total": _safe_float(item.get("vendor_order_value_total"), 0.0),
+                "vendor_threshold_shortfall": _safe_float(item.get("vendor_threshold_shortfall"), 0.0),
+                "vendor_threshold_progress_pct": _safe_float(item.get("vendor_threshold_progress_pct"), 0.0),
+                "vendor_value_coverage": item.get("vendor_value_coverage") or "none",
+                "next_free_ship_date": item.get("next_free_ship_date") or "",
+                "planned_export_date": item.get("planned_export_date") or "",
+                "shipping_policy": item.get("shipping_policy") or "",
+            },
+        )
+        value = _safe_float(item.get("estimated_order_value"), 0.0)
+        row[f"{bucket}_count"] += 1
+        row[f"{bucket}_value"] += value
+        row["vendor_order_value_total"] = max(row["vendor_order_value_total"], _safe_float(item.get("vendor_order_value_total"), 0.0))
+        row["vendor_threshold_shortfall"] = max(row["vendor_threshold_shortfall"], _safe_float(item.get("vendor_threshold_shortfall"), 0.0))
+        row["vendor_threshold_progress_pct"] = max(row["vendor_threshold_progress_pct"], _safe_float(item.get("vendor_threshold_progress_pct"), 0.0))
+        if row["vendor_value_coverage"] in ("none", "") and item.get("vendor_value_coverage"):
+            row["vendor_value_coverage"] = item.get("vendor_value_coverage")
+        elif row["vendor_value_coverage"] != item.get("vendor_value_coverage") and item.get("vendor_value_coverage"):
+            coverage_priority = {"missing": 3, "partial": 2, "complete": 1, "none": 0}
+            if coverage_priority.get(item.get("vendor_value_coverage"), 0) > coverage_priority.get(row["vendor_value_coverage"], 0):
+                row["vendor_value_coverage"] = item.get("vendor_value_coverage")
+        if not row["next_free_ship_date"] and item.get("next_free_ship_date"):
+            row["next_free_ship_date"] = item.get("next_free_ship_date")
+        if not row["planned_export_date"] and item.get("planned_export_date"):
+            row["planned_export_date"] = item.get("planned_export_date")
+        if not row["shipping_policy"] and item.get("shipping_policy"):
+            row["shipping_policy"] = item.get("shipping_policy")
+    return [plan[vendor] for vendor in sorted(plan)]
 
 
 def _choose_release_decision(item, policy, vendor_total, now):

@@ -36,6 +36,12 @@ The goal is to keep one phased checklist that reflects what is actually done in 
 - A large amount of bulk editor safety work is complete.
 - The remaining work is the final rapid-edit race elimination and further large-session performance separation.
 
+### Workflow simplicity
+
+- The app is becoming more powerful, but some newer shipping/release choices risk adding operator friction.
+- The product direction should stay biased toward "good automatic default, explicit exception handling" rather than asking the user to make repeated policy or export-scope decisions.
+- The remaining UX work is to collapse routine decisions into defaults, surface only the exceptions that need attention, and make advanced controls available without being mandatory.
+
 ## Phase 1. Foundation, Shared Data, and Release Discipline
 
 - [x] Keep local/shared data switching explicit and visible in the UI.
@@ -231,10 +237,54 @@ This is the next high-value shipping slice. The current model already uses `repl
 - [ ] Tighten undo/history boundaries so they always match the user's perceived edit unit.
 - [ ] Separate full-session, active-filtered, and visible-row performance paths more aggressively for very large sessions.
 
+## Phase 9. Workflow Simplification and Default-First UX
+
+This phase is about reducing required operator input. Humans will consistently choose the path of least resistance, so the app should make the safest routine path the easiest one.
+
+- [ ] Treat the common path as:
+  - load reports
+  - review exceptions
+  - export the default recommended batch
+  rather than requiring users to decide policy details every run
+- [ ] Establish a single default export behavior that works without prompts in the common case.
+- [ ] Reserve extra prompts for meaningful branch points only, such as:
+  - all items are held
+  - only planned-release items are exportable
+  - mixed immediate vs planned export where timing genuinely matters
+- [ ] Add a user preference for export behavior defaults, for example:
+  - export immediate only
+  - export all exportable
+  - ask when mixed
+- [ ] Reduce repeated vendor-policy setup by preferring inherited or inferred defaults where safe.
+- [ ] Add policy templates / presets for common vendor behaviors so shipping rules can be configured with one click instead of field-by-field entry.
+- [ ] Make missing policy data fail soft with safe defaults instead of forcing immediate user intervention.
+- [ ] Prefer auto-filled values from current reports and saved history before asking for manual entry.
+- [ ] Collapse low-value fields behind an "Advanced" affordance in dialogs where the common workflow only needs one or two inputs.
+- [ ] Shift review emphasis from "touch every item" to "touch only exceptions":
+  - held vendors with meaningful shortfall
+  - urgent overrides
+  - low-confidence recommendations
+  - policy/data conflicts
+- [ ] Add a compact review mode centered on:
+  - vendors ready to export
+  - vendors planned today
+  - vendors blocked and why
+- [ ] Add a single "Recommended Action" concept at both item and vendor level, so the operator can mostly follow one instruction instead of interpreting several fields.
+- [ ] Prefer persistent user choices over repeated prompts when the same decision recurs often.
+- [ ] Audit current prompts and dialogs for removal, consolidation, or safe defaulting.
+- [ ] Document a UX rule for future features:
+  - no new required field unless the app cannot infer or default it safely
+  - no new prompt unless different user choices create materially different outcomes
+  - advanced controls should not slow down the routine path
+
 ## High-Value Remaining Checklist
 
 These are the best next steps after reconciliation.
 
+- [ ] Define the default export behavior for mixed immediate/planned batches so routine users do not need to choose every time.
+- [ ] Add saved user preferences for export-scope prompting vs auto-selection.
+- [ ] Add vendor-policy presets and safer defaulting to reduce setup friction.
+- [ ] Add a compact exception-first review workflow that highlights only the items/vendors needing human judgment.
 - [ ] Add cost-confidence and threshold-progress signals to vendor shipping decisions.
 - [ ] Add planned release dates and "export the day before free-freight day" workflow for vendor policies.
 - [ ] Add stronger vendor-group release consolidation and explicit urgent paid-freight override workflow.

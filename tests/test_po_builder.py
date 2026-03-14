@@ -77,6 +77,49 @@ class POBuilderTests(unittest.TestCase):
         self.assertFalse(fake_app.app_settings["check_for_updates_on_startup"])
         self.assertTrue(saved["called"])
 
+    def test_get_mixed_export_behavior_defaults_and_normalizes(self):
+        fake_app = SimpleNamespace(app_settings={})
+
+        self.assertEqual(
+            po_builder.POBuilderApp._get_mixed_export_behavior(fake_app),
+            po_builder.DEFAULT_MIXED_EXPORT_BEHAVIOR,
+        )
+
+        fake_app.app_settings["mixed_export_behavior"] = "invalid"
+        self.assertEqual(
+            po_builder.POBuilderApp._get_mixed_export_behavior(fake_app),
+            po_builder.DEFAULT_MIXED_EXPORT_BEHAVIOR,
+        )
+
+    def test_set_mixed_export_behavior_persists_setting(self):
+        saved = {}
+        fake_app = SimpleNamespace(
+            app_settings={},
+            _save_app_settings=lambda: saved.update({"called": True}),
+        )
+
+        po_builder.POBuilderApp._set_mixed_export_behavior(fake_app, "immediate_only")
+
+        self.assertEqual(fake_app.app_settings["mixed_export_behavior"], "immediate_only")
+        self.assertTrue(saved["called"])
+
+    def test_get_and_set_review_export_focus_use_valid_defaults(self):
+        saved = {}
+        fake_app = SimpleNamespace(
+            app_settings={},
+            _save_app_settings=lambda: saved.update({"called": True}),
+        )
+
+        self.assertEqual(
+            po_builder.POBuilderApp._get_review_export_focus(fake_app),
+            po_builder.DEFAULT_REVIEW_EXPORT_FOCUS,
+        )
+
+        po_builder.POBuilderApp._set_review_export_focus(fake_app, "all_items")
+
+        self.assertEqual(fake_app.app_settings["review_export_focus"], "all_items")
+        self.assertTrue(saved["called"])
+
     def test_start_update_check_skips_non_release_versions(self):
         fake_app = SimpleNamespace(update_check_enabled=True)
         fake_app._check_for_updates_worker = lambda: self.fail("worker should not run")

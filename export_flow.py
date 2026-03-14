@@ -6,6 +6,7 @@ import os
 import re
 from tkinter import filedialog, messagebox
 
+import shipping_flow
 import storage
 from models import SessionSnapshot
 
@@ -18,12 +19,7 @@ def group_assigned_items(assigned_items):
 
 
 def export_bucket(item):
-    decision = str(item.get("release_decision", "") or "").strip()
-    if decision in ("hold_for_free_day", "hold_for_threshold"):
-        return "held"
-    if decision == "export_next_business_day_for_free_day":
-        return "planned_today"
-    return "release_now"
+    return shipping_flow.release_bucket(item)
 
 
 def partition_export_items(assigned_items):
@@ -40,6 +36,13 @@ def partition_export_items(assigned_items):
 def choose_export_items(app, exportable_items):
     immediate_items = [item for item in exportable_items if export_bucket(item) == "release_now"]
     planned_items = [item for item in exportable_items if export_bucket(item) == "planned_today"]
+    mixed_behavior = "ask_when_mixed"
+    get_behavior = getattr(app, "_get_mixed_export_behavior", None)
+    if callable(get_behavior):
+        mixed_behavior = get_behavior()
+    else:
+        settings = getattr(app, "app_settings", {}) or {}
+        mixed_behavior = str(settings.get("mixed_export_behavior", "all_exportable") or "").strip() or "all_exportable"
 
     if not planned_items:
         return exportable_items
@@ -53,6 +56,11 @@ def choose_export_items(app, exportable_items):
             ),
         )
         return planned_items if proceed else []
+
+    if mixed_behavior == "all_exportable":
+        return exportable_items
+    if mixed_behavior == "immediate_only":
+        return immediate_items
 
     choice = messagebox.askyesnocancel(
         "Export Scope",
