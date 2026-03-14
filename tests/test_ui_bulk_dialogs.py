@@ -276,6 +276,7 @@ class BulkDialogTests(unittest.TestCase):
             "data_flags": [],
             "reorder_trigger_qty": 60,
             "reorder_trigger_pct": 20.0,
+            "minimum_packs_on_hand": 2,
             "acceptable_overstock_qty": 12,
             "acceptable_overstock_pct": 10.0,
         }
@@ -286,6 +287,7 @@ class BulkDialogTests(unittest.TestCase):
 
         self.assertEqual(row_lookup["Trigger Qty"], "60")
         self.assertEqual(row_lookup["Trigger %"], "20.00")
+        self.assertEqual(row_lookup["Min Packs"], "2")
         self.assertEqual(row_lookup["Overstock Qty"], "12")
         self.assertEqual(row_lookup["Overstock %"], "10.00")
 

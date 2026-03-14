@@ -48,6 +48,8 @@ What is missing is an explicit concept of:
 - replenishment unit
 - acceptable intentional overstock
 - low-stock reserve threshold
+- order-cycle cover
+- minimum practical packs on hand
 - vendor shipping policy
 - shipment release timing
 - free-freight threshold consolidation
@@ -203,6 +205,9 @@ For `v0.2.5`, the ordering model should separate these ideas:
 5. review gate
 - whether the app should auto-order, suggest, or require review
 
+6. order-cycle cover
+- whether the item will survive until the next normal vendor order window once routine demand continues
+
 ## Execution phases
 
 The remaining road to `v0.2.5` should be executed in phases, not as one flat checklist.
@@ -253,6 +258,9 @@ Initial fields:
 - `reorder_trigger_pct`
 - `acceptable_overstock_qty`
 - `acceptable_overstock_pct`
+- `minimum_packs_on_hand`
+- `minimum_cover_days`
+- `minimum_cover_cycles`
 
 ### Phase 3. Pack-trigger behavior
 
@@ -367,6 +375,9 @@ The buy-rule model should eventually support fields such as:
 - `reorder_trigger_pct`
 - `acceptable_overstock_qty`
 - `acceptable_overstock_pct`
+- `minimum_packs_on_hand`
+- `minimum_cover_days`
+- `minimum_cover_cycles`
 - `lead_time_days`
 - `safety_stock_qty`
 - `manual_review_reason`
@@ -446,6 +457,8 @@ Requirements:
 - do not over-review common bag-pack hardware unnecessarily
 - allow simple full-bag replenishment when stock falls below practical thresholds
 - distinguish “buy full pack because that is the selling unit” from “this is suspicious over-ordering”
+- account for routine order cadence when one pack may not last until the next normal weekly order
+- avoid recommending a single-pack steady state when fastener demand can exhaust that pack before the next planned vendor order
 
 ### Low-movement but mandatory-stock items
 
@@ -454,6 +467,21 @@ Requirements:
 - do not suppress all reorder suggestions just because recent demand is sparse
 - respect minimum service-level floors and current min values
 - allow trigger-based replenishment for critical spares
+
+### High-velocity small-pack items with weekly ordering cadence
+
+Examples:
+
+- common bolt sizes
+- popular shop consumables
+- fast-moving clamps, fittings, and hardware sold from bag stock
+
+Requirements:
+
+- detect when one replenishment unit is not enough cover until the next routine order cycle
+- allow a rule to require more than one pack on hand even if operational max is near one pack
+- distinguish “low max because of display/working target” from “safe weekly stock level”
+- explain when the app recommends carrying two or more packs because of order cadence, not just immediate shortage
 
 ### Expensive / obsolete / risky overstock items
 
@@ -520,6 +548,10 @@ Checklist:
 - [ ] add `pack_trigger` policy or equivalent
 - [ ] add rule fields for `reorder_trigger_qty` and/or `reorder_trigger_pct`
 - [ ] add rule fields for `acceptable_overstock_qty` and/or `acceptable_overstock_pct`
+- [ ] add rule fields for cadence-aware coverage such as:
+  - `minimum_packs_on_hand`
+  - `minimum_cover_days`
+  - `minimum_cover_cycles`
 - [ ] allow full-pack replenishment without treating the post-receipt overstock as suspicious by default
 - [ ] add explainable `why` text for trigger-driven reorders
 - [ ] add vendor-level shipping rules for:
@@ -540,11 +572,13 @@ Checklist:
   - or a more general replenishment-unit policy model
 - [ ] improve detection for real reel items vs ordinary packaged parts
 - [ ] add bag/box hardware heuristics so hardware packs do not fall into the wrong review path
+- [ ] add cadence-aware heuristics for high-velocity small-pack items so one-pack stock levels are not treated as sufficient by default
 - [ ] add regression tests for:
   - 300 ft hose / 93 ft max / early reorder trigger
   - bag of 100 / 20 max
   - stale reel item that should still be review-only
   - active large-pack item that should auto-trigger safely
+  - weekly-order bolt item where one bag is not enough cover until the next normal order
 - [ ] introduce shipping-aware consolidation logic:
   - hold non-urgent items for free-shipping weekdays
   - hold non-urgent items for freight thresholds
@@ -563,6 +597,7 @@ Checklist:
 
 - [ ] integrate pack-aware trigger logic into the main reorder algorithm
 - [ ] support acceptable intentional overstock explicitly
+- [ ] let cadence-aware coverage rules increase the effective reorder floor when one pack is not enough to survive until the next routine order
 - [ ] ensure “not needed” review respects trigger-based replenishment logic
 - [ ] surface trigger reason, replenishment unit, and confidence in item details / review
 - [ ] verify that edge-case rules remain explainable to the user
@@ -632,6 +667,23 @@ Cons:
 
 - only as good as the demand estimate
 
+### Trigger by next-order-cycle survival
+
+Example:
+
+- if a bag of 100 bolts is selling fast enough that one bag on hand will not survive until next week's routine order, reorder before stock drops to a single bag
+
+Pros:
+
+- matches how consolidated weekly ordering actually works
+- prevents “technically in stock” parts from running out before the next vendor cycle
+- helps with bolts, clamps, fittings, and other small-pack fast movers
+
+Cons:
+
+- requires a trustworthy order-cycle assumption
+- can overstock if cadence or demand assumptions are too aggressive
+
 ### Trigger by max of several thresholds
 
 Recommended candidate model:
@@ -684,6 +736,8 @@ Cons:
 - [ ] 300 ft hose reel with max 93, trigger 60, reorder at 58
 - [ ] 300 ft hose reel with max 93, stock 95, no reorder
 - [ ] bag of 100 bolts with max 20, trigger 20, reorder at 18
+- [ ] bag of 100 bolts on a weekly order cycle: one bag on hand but weekly demand implies stockout before next order, so reorder early
+- [ ] bag of 100 bolts with two-bag minimum practical cover: reorder when projected cover falls below two bags even if current max is lower
 - [ ] bag of 100 bolts with stale demand and high stock, no reorder
 - [ ] reel item with dormant sales and no recency signal, review instead of auto-order
 - [ ] manual override item preserves user quantity
@@ -705,6 +759,8 @@ By `v0.2.5`, PO Builder should be able to explain edge cases like these in plain
 
 - “This hose is ordered by the reel, so the app triggered replenishment early at the configured low-stock threshold.”
 - “This hardware item is bought by the bag, so the app recommends one bag even though operational max is lower.”
+- “This bolt item is bought weekly, and one bag would not last until the next normal order cycle, so the app recommended ordering early.”
+- “This item’s working max is low, but the app kept more than one pack because routine order cadence would otherwise create a stockout.”
 - “This item used to sell well, but recency is weak, so it was flagged for review instead of automatic reorder.”
 - “This item was held for the vendor's Friday free-shipping order because stock is routine, not urgent.”
 - “This item was released immediately even though the vendor has a free-shipping stock order because the shortage was urgent.”

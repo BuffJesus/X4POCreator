@@ -371,7 +371,7 @@ def open_buy_rule_editor(app, idx, order_rules_file):
     var_policy = tk.StringVar(value=initial_policy)
     combo_policy = ttk.Combobox(
         form, textvariable=var_policy, state="readonly", width=16,
-        values=["standard", "pack_trigger", "soft_pack", "exact_qty", "reel_review", "manual_only"]
+        values=["standard", "pack_trigger", "soft_pack", "exact_qty", "reel_review", "large_pack_review", "manual_only"]
     )
     combo_policy.grid(row=0, column=1, sticky="w", padx=8, pady=4)
 
@@ -396,17 +396,21 @@ def open_buy_rule_editor(app, idx, order_rules_file):
     var_trigger_pct = tk.StringVar(value=str(get_rule_float(rule, "reorder_trigger_pct") or ""))
     ttk.Entry(form, textvariable=var_trigger_pct, width=10).grid(row=5, column=1, sticky="w", padx=8, pady=4)
 
-    ttk.Label(form, text="Overstock Qty:").grid(row=6, column=0, sticky="w", pady=4)
+    ttk.Label(form, text="Min Packs:").grid(row=6, column=0, sticky="w", pady=4)
+    var_min_packs = tk.StringVar(value=str(get_rule_int(rule, "minimum_packs_on_hand") or ""))
+    ttk.Entry(form, textvariable=var_min_packs, width=10).grid(row=6, column=1, sticky="w", padx=8, pady=4)
+
+    ttk.Label(form, text="Overstock Qty:").grid(row=7, column=0, sticky="w", pady=4)
     var_overstock_qty = tk.StringVar(value=str(get_rule_int(rule, "acceptable_overstock_qty") or ""))
-    ttk.Entry(form, textvariable=var_overstock_qty, width=10).grid(row=6, column=1, sticky="w", padx=8, pady=4)
+    ttk.Entry(form, textvariable=var_overstock_qty, width=10).grid(row=7, column=1, sticky="w", padx=8, pady=4)
 
-    ttk.Label(form, text="Overstock %:").grid(row=7, column=0, sticky="w", pady=4)
+    ttk.Label(form, text="Overstock %:").grid(row=8, column=0, sticky="w", pady=4)
     var_overstock_pct = tk.StringVar(value=str(get_rule_float(rule, "acceptable_overstock_pct") or ""))
-    ttk.Entry(form, textvariable=var_overstock_pct, width=10).grid(row=7, column=1, sticky="w", padx=8, pady=4)
+    ttk.Entry(form, textvariable=var_overstock_pct, width=10).grid(row=8, column=1, sticky="w", padx=8, pady=4)
 
-    ttk.Label(form, text="Notes:").grid(row=8, column=0, sticky="nw", pady=4)
+    ttk.Label(form, text="Notes:").grid(row=9, column=0, sticky="nw", pady=4)
     notes_entry = ttk.Entry(form, width=30)
-    notes_entry.grid(row=8, column=1, sticky="w", padx=8, pady=4)
+    notes_entry.grid(row=9, column=1, sticky="w", padx=8, pady=4)
     notes_entry.insert(0, rule.get("notes", ""))
 
     info = ttk.LabelFrame(dlg, text="Current Data", padding=8)
@@ -437,6 +441,7 @@ def open_buy_rule_editor(app, idx, order_rules_file):
             pack_qty=var_pack.get().strip(),
             reorder_trigger_qty=var_trigger_qty.get().strip(),
             reorder_trigger_pct=var_trigger_pct.get().strip(),
+            minimum_packs_on_hand=var_min_packs.get().strip(),
             acceptable_overstock_qty=var_overstock_qty.get().strip(),
             acceptable_overstock_pct=var_overstock_pct.get().strip(),
             initial_policy=initial_policy,
@@ -470,6 +475,13 @@ def open_buy_rule_editor(app, idx, order_rules_file):
         if trigger_pct_val:
             try:
                 new_rule["reorder_trigger_pct"] = float(trigger_pct_val)
+            except ValueError:
+                pass
+
+        min_packs_val = var_min_packs.get().strip()
+        if min_packs_val:
+            try:
+                new_rule["minimum_packs_on_hand"] = int(float(min_packs_val))
             except ValueError:
                 pass
 
@@ -623,6 +635,7 @@ def item_details_rows(app, item, inv, key):
         ("Order Policy", item.get("order_policy", "-")),
         ("Trigger Qty", str(item.get("reorder_trigger_qty", "-") if item.get("reorder_trigger_qty") is not None else "-")),
         ("Trigger %", _format_metric(item.get("reorder_trigger_pct")) if item.get("reorder_trigger_pct") is not None else "-"),
+        ("Min Packs", str(item.get("minimum_packs_on_hand", "-") if item.get("minimum_packs_on_hand") is not None else "-")),
         ("Overstock Qty", str(item.get("acceptable_overstock_qty", "-") if item.get("acceptable_overstock_qty") is not None else "-")),
         ("Overstock %", _format_metric(item.get("acceptable_overstock_pct")) if item.get("acceptable_overstock_pct") is not None else "-"),
         ("Status", item.get("status", "-")),

@@ -961,7 +961,7 @@ class POBuilderTests(unittest.TestCase):
                 text = kwargs.get("text", "")
                 created_buttons[text] = self
 
-        FakeStringVar.queue = ["standard", "2", "12", "60", "20", "12", "10"]
+        FakeStringVar.queue = ["standard", "2", "12", "60", "20", "2", "12", "10"]
         FakeBooleanVar.queue = [False]
         FakeEntry.values = [""]
 
@@ -982,9 +982,11 @@ class POBuilderTests(unittest.TestCase):
         saved_rule = fake_app.order_rules["AER-:GH781-4"]
         self.assertEqual(saved_rule["reorder_trigger_qty"], 60)
         self.assertEqual(saved_rule["reorder_trigger_pct"], 20.0)
+        self.assertEqual(saved_rule["minimum_packs_on_hand"], 2)
         self.assertEqual(saved_rule["acceptable_overstock_qty"], 12)
         self.assertEqual(saved_rule["acceptable_overstock_pct"], 10.0)
         self.assertEqual(fake_app.filtered_items[0]["reorder_trigger_qty"], 60)
+        self.assertEqual(fake_app.filtered_items[0]["minimum_packs_on_hand"], 2)
         self.assertEqual(fake_app.filtered_items[0]["acceptable_overstock_qty"], 12)
 
     def test_buy_rule_save_explicit_pack_trigger_policy_is_persisted_and_applied(self):

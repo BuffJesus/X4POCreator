@@ -1,6 +1,7 @@
 import math
 
 REEL_REVIEW_MIN_PACK_QTY = 250
+LARGE_PACK_REVIEW_MIN_PACK_QTY = 25
 REEL_BLOCKLIST = (
     "BELT",
     "BOLT",
@@ -80,6 +81,31 @@ def looks_like_reel_item(item, inv):
     return False
 
 
+def should_large_pack_review(item, inv, pack_qty):
+    """Return True when a non-reel item's pack looks risky enough for manual review."""
+    mx = inv.get("max") if inv else None
+    if not (mx and mx > 0 and pack_qty and pack_qty > 0):
+        return False
+    if pack_qty < LARGE_PACK_REVIEW_MIN_PACK_QTY:
+        return False
+    if pack_qty <= mx * 3:
+        return False
+    if looks_like_reel_item(item, inv or {}):
+        return False
+
+    sales_health = item.get("sales_health_signal", "")
+    performance = item.get("performance_profile", "")
+    days_since_last_sale = item.get("days_since_last_sale")
+
+    if sales_health in ("dormant", "declining"):
+        return True
+    if performance in ("legacy", "dormant"):
+        return True
+    if isinstance(days_since_last_sale, (int, float)) and days_since_last_sale >= 365:
+        return True
+    return False
+
+
 def get_rule_pack_size(rule):
     """Return a persisted pack-size override from a saved rule, if present."""
     if not rule:
@@ -123,8 +149,21 @@ def apply_rule_fields(item, rule):
     """Copy persisted rule fields onto the working item for visibility and later logic."""
     item["reorder_trigger_qty"] = get_rule_int(rule, "reorder_trigger_qty")
     item["reorder_trigger_pct"] = get_rule_float(rule, "reorder_trigger_pct")
+    item["minimum_packs_on_hand"] = get_rule_int(rule, "minimum_packs_on_hand")
     item["acceptable_overstock_qty"] = get_rule_int(rule, "acceptable_overstock_qty")
     item["acceptable_overstock_pct"] = get_rule_float(rule, "acceptable_overstock_pct")
+
+
+def has_pack_trigger_fields(rule):
+    """Return True when a saved rule defines trigger-style replenishment fields."""
+    return any(
+        value is not None and value > 0
+        for value in (
+            get_rule_int(rule, "reorder_trigger_qty"),
+            get_rule_float(rule, "reorder_trigger_pct"),
+            get_rule_int(rule, "minimum_packs_on_hand"),
+        )
+    )
 
 
 def determine_reorder_trigger_threshold(item):
@@ -134,11 +173,14 @@ def determine_reorder_trigger_threshold(item):
     pack_size = item.get("pack_size")
     trigger_qty = item.get("reorder_trigger_qty")
     trigger_pct = item.get("reorder_trigger_pct")
+    minimum_packs_on_hand = item.get("minimum_packs_on_hand")
 
     has_explicit_trigger = (
         isinstance(trigger_qty, (int, float)) and trigger_qty > 0
     ) or (
         isinstance(trigger_pct, (int, float)) and trigger_pct > 0
+    ) or (
+        isinstance(minimum_packs_on_hand, (int, float)) and minimum_packs_on_hand > 0
     )
     if not has_explicit_trigger:
         item["reorder_trigger_threshold"] = None
@@ -153,6 +195,13 @@ def determine_reorder_trigger_threshold(item):
         and trigger_pct > 0
     ):
         candidates.append(pack_size * (trigger_pct / 100.0))
+    if (
+        isinstance(pack_size, (int, float))
+        and pack_size > 0
+        and isinstance(minimum_packs_on_hand, (int, float))
+        and minimum_packs_on_hand > 0
+    ):
+        candidates.append(pack_size * minimum_packs_on_hand)
 
     if not candidates:
         item["reorder_trigger_threshold"] = None
@@ -162,6 +211,14 @@ def determine_reorder_trigger_threshold(item):
     threshold = max(candidates)
     if isinstance(trigger_qty, (int, float)) and threshold == trigger_qty:
         basis = "trigger_qty"
+    elif (
+        isinstance(pack_size, (int, float))
+        and pack_size > 0
+        and isinstance(minimum_packs_on_hand, (int, float))
+        and minimum_packs_on_hand > 0
+        and math.isclose(threshold, pack_size * minimum_packs_on_hand)
+    ):
+        basis = "minimum_packs_on_hand"
     elif (
         isinstance(pack_size, (int, float))
         and pack_size > 0
@@ -262,15 +319,21 @@ def calculate_raw_need(item):
     inventory_position = calculate_inventory_position(item)
     determine_target_stock(item)
     if not evaluate_reorder_trigger(item):
+        item["effective_target_stock"] = item.get("target_stock", 0)
         return 0
     target_stock = item.get("target_stock", 0)
-    return max(0, int(math.ceil(target_stock - inventory_position)))
+    trigger_threshold = item.get("reorder_trigger_threshold")
+    effective_target_stock = target_stock
+    if isinstance(trigger_threshold, (int, float)) and trigger_threshold > effective_target_stock:
+        effective_target_stock = trigger_threshold
+    item["effective_target_stock"] = effective_target_stock
+    return max(0, int(math.ceil(effective_target_stock - inventory_position)))
 
 
 def determine_order_policy(item, inv, pack_qty, rule):
     """
     Determine the ordering policy for an item.
-    Returns: 'standard', 'pack_trigger', 'soft_pack', 'exact_qty', 'reel_review', or 'manual_only'
+    Returns: 'standard', 'pack_trigger', 'soft_pack', 'exact_qty', 'reel_review', 'large_pack_review', or 'manual_only'
     """
     if rule and rule.get("order_policy"):
         return rule["order_policy"]
@@ -288,6 +351,12 @@ def determine_order_policy(item, inv, pack_qty, rule):
         and looks_like_reel_item(item, inv or {})
     ):
         return "reel_review"
+
+    if should_large_pack_review(item, inv or {}, pack_qty):
+        return "large_pack_review"
+
+    if has_pack_trigger_fields(rule):
+        return "pack_trigger"
 
     if rule and rule.get("allow_below_pack"):
         return "soft_pack"
@@ -314,6 +383,12 @@ def calculate_suggested_qty(raw_need, pack_qty, policy, rule, inv):
         if mx and raw_need <= mx:
             return raw_need, f"Reel review: pack={pack_qty}, suggesting raw need (max={mx})"
         return raw_need, f"Reel review: pack={pack_qty}, needs manual decision"
+
+    if policy == "large_pack_review":
+        mx = inv.get("max") if inv else None
+        if mx and raw_need <= mx:
+            return raw_need, f"Large-pack review: pack={pack_qty}, suggesting raw need (max={mx})"
+        return raw_need, f"Large-pack review: pack={pack_qty}, needs manual decision"
 
     if policy == "soft_pack":
         min_qty = 1
@@ -350,6 +425,10 @@ def evaluate_item_status(item):
 
     if item.get("order_policy") == "reel_review":
         flags.append("reel_review")
+        status = "review"
+
+    if item.get("order_policy") == "large_pack_review":
+        flags.append("large_pack_review")
         status = "review"
 
     if item.get("order_policy") == "manual_only":
@@ -392,6 +471,7 @@ def enrich_item(item, inv, pack_qty, rule):
     reason_codes = []
     inventory_position = item.get("inventory_position", 0)
     target_stock = item.get("target_stock", 0)
+    effective_target_stock = item.get("effective_target_stock", target_stock)
     if raw_need <= 0:
         reason_codes.append("inventory_covers_target")
     else:
@@ -415,10 +495,14 @@ def enrich_item(item, inv, pack_qty, rule):
         reason_codes.append("pack_trigger")
     if policy == "reel_review":
         reason_codes.append("reel_review")
+    if policy == "large_pack_review":
+        reason_codes.append("large_pack_review")
     if policy == "manual_only":
         reason_codes.append("manual_only")
 
     detail_parts = [f"Stock after open POs: {inventory_position:g}", f"Target stock: {target_stock:g}"]
+    if effective_target_stock != target_stock:
+        detail_parts.append(f"Effective reorder floor: {effective_target_stock:g}")
     if target_basis:
         basis_labels = {
             "current_max": "Based on current max",
@@ -445,7 +529,7 @@ def enrich_item(item, inv, pack_qty, rule):
     if "final_qty" not in item:
         item["final_qty"] = suggested
 
-    item["review_required"] = policy in ("reel_review", "manual_only")
+    item["review_required"] = policy in ("reel_review", "large_pack_review", "manual_only")
     if "review_resolved" not in item:
         item["review_resolved"] = False
     if "manual_override" not in item:
@@ -483,6 +567,8 @@ def get_buy_rule_summary(item, rule):
         parts.append("Exact")
     elif policy == "reel_review":
         parts.append(f"Reel:{pack}")
+    elif policy == "large_pack_review":
+        parts.append(f"LgPk:{pack}" if pack else "LgPk")
     elif policy == "manual_only":
         parts.append("Manual")
     else:
@@ -499,5 +585,9 @@ def get_buy_rule_summary(item, rule):
     trigger_pct = get_rule_float(rule, "reorder_trigger_pct")
     if trigger_pct is not None:
         parts.append(f"Trg:{trigger_pct:g}%")
+
+    minimum_packs = get_rule_int(rule, "minimum_packs_on_hand")
+    if minimum_packs is not None:
+        parts.append(f"MinPk:{minimum_packs:g}")
 
     return " ".join(parts) if parts else "—"

@@ -21,7 +21,9 @@ from rules import (
     get_rule_float,
     get_rule_int,
     get_rule_pack_size,
+    has_pack_trigger_fields,
     looks_like_reel_item,
+    should_large_pack_review,
 )
 
 
@@ -51,14 +53,23 @@ class RulesTests(unittest.TestCase):
             {
                 "reorder_trigger_qty": "60",
                 "reorder_trigger_pct": "20",
+                "minimum_packs_on_hand": "2",
                 "acceptable_overstock_qty": "12",
                 "acceptable_overstock_pct": "10",
             },
         )
         self.assertEqual(item["reorder_trigger_qty"], 60)
         self.assertEqual(item["reorder_trigger_pct"], 20.0)
+        self.assertEqual(item["minimum_packs_on_hand"], 2)
         self.assertEqual(item["acceptable_overstock_qty"], 12)
         self.assertEqual(item["acceptable_overstock_pct"], 10.0)
+
+    def test_has_pack_trigger_fields_detects_any_trigger_style_rule(self):
+        self.assertTrue(has_pack_trigger_fields({"reorder_trigger_qty": 60}))
+        self.assertTrue(has_pack_trigger_fields({"reorder_trigger_pct": 20}))
+        self.assertTrue(has_pack_trigger_fields({"minimum_packs_on_hand": 2}))
+        self.assertFalse(has_pack_trigger_fields({"acceptable_overstock_qty": 12}))
+        self.assertFalse(has_pack_trigger_fields({}))
 
     def test_determine_reorder_trigger_threshold_uses_max_of_trigger_fields(self):
         item = {
@@ -70,6 +81,15 @@ class RulesTests(unittest.TestCase):
         self.assertEqual(determine_reorder_trigger_threshold(item), 60)
         self.assertEqual(item["reorder_trigger_basis"], "trigger_qty")
 
+    def test_determine_reorder_trigger_threshold_uses_minimum_packs_on_hand(self):
+        item = {
+            "inventory": {"min": 10},
+            "pack_size": 100,
+            "minimum_packs_on_hand": 2,
+        }
+        self.assertEqual(determine_reorder_trigger_threshold(item), 200)
+        self.assertEqual(item["reorder_trigger_basis"], "minimum_packs_on_hand")
+
     def test_reel_review_when_pack_far_exceeds_max(self):
         policy = determine_order_policy({"description": '1/4" 2WIRE 6500PSI HOSE'}, {"max": 100}, 500, None)
         self.assertEqual(policy, "reel_review")
@@ -77,6 +97,47 @@ class RulesTests(unittest.TestCase):
     def test_boxed_hardware_pack_is_not_auto_marked_reel_review(self):
         policy = determine_order_policy({"description": "1/4 X 1 ELEVATOR BOLT"}, {"max": 20}, 100, None)
         self.assertEqual(policy, "standard")
+
+    def test_dormant_non_reel_large_pack_item_is_marked_large_pack_review(self):
+        item = {
+            "description": "FILTER KIT",
+            "sales_health_signal": "dormant",
+            "performance_profile": "legacy",
+            "days_since_last_sale": 500,
+        }
+        policy = determine_order_policy(item, {"max": 20}, 100, None)
+        self.assertEqual(policy, "large_pack_review")
+
+    def test_trigger_fields_infer_pack_trigger_when_no_review_policy_applies(self):
+        item = {
+            "description": "1/4 X 1 ELEVATOR BOLT",
+            "sales_health_signal": "active",
+            "performance_profile": "steady",
+            "days_since_last_sale": 14,
+        }
+        rule = {"minimum_packs_on_hand": 2}
+        policy = determine_order_policy(item, {"max": 20}, 100, rule)
+        self.assertEqual(policy, "pack_trigger")
+
+    def test_large_pack_review_still_beats_trigger_field_inference(self):
+        item = {
+            "description": "FILTER KIT",
+            "sales_health_signal": "dormant",
+            "performance_profile": "legacy",
+            "days_since_last_sale": 500,
+        }
+        rule = {"minimum_packs_on_hand": 2}
+        policy = determine_order_policy(item, {"max": 20}, 100, rule)
+        self.assertEqual(policy, "large_pack_review")
+
+    def test_should_large_pack_review_stays_false_for_active_boxed_hardware(self):
+        item = {
+            "description": "1/4 X 1 ELEVATOR BOLT",
+            "sales_health_signal": "active",
+            "performance_profile": "steady",
+            "days_since_last_sale": 14,
+        }
+        self.assertFalse(should_large_pack_review(item, {"max": 20}, 100))
 
     def test_belts_do_not_look_like_reel_items(self):
         self.assertFalse(looks_like_reel_item({"description": "GATES BELT"}, {}))
@@ -315,11 +376,12 @@ class RulesTests(unittest.TestCase):
     def test_buy_rule_summary_includes_trigger_fields(self):
         summary = get_buy_rule_summary(
             {"order_policy": "standard", "pack_size": 300},
-            {"reorder_trigger_qty": 60, "reorder_trigger_pct": 20},
+            {"reorder_trigger_qty": 60, "reorder_trigger_pct": 20, "minimum_packs_on_hand": 2},
         )
         self.assertIn("Pk:300", summary)
         self.assertIn("Trg:60", summary)
         self.assertIn("Trg:20%", summary)
+        self.assertIn("MinPk:2", summary)
 
     def test_buy_rule_summary_labels_pack_trigger_policy(self):
         summary = get_buy_rule_summary(
@@ -328,6 +390,13 @@ class RulesTests(unittest.TestCase):
         )
         self.assertIn("TrigPk:300", summary)
         self.assertIn("Trg:60", summary)
+
+    def test_buy_rule_summary_labels_large_pack_review_policy(self):
+        summary = get_buy_rule_summary(
+            {"order_policy": "large_pack_review", "pack_size": 100},
+            {},
+        )
+        self.assertIn("LgPk:100", summary)
 
 
     def test_enrich_item_adds_inventory_and_suspense_reason_codes(self):
@@ -376,12 +445,14 @@ class RulesTests(unittest.TestCase):
         rule = {
             "reorder_trigger_qty": 60,
             "reorder_trigger_pct": 20,
+            "minimum_packs_on_hand": 2,
             "acceptable_overstock_qty": 12,
             "acceptable_overstock_pct": 10,
         }
         enrich_item(item, {"qoh": 1, "min": 2, "max": None}, 6, rule)
         self.assertEqual(item["reorder_trigger_qty"], 60)
         self.assertEqual(item["reorder_trigger_pct"], 20.0)
+        self.assertEqual(item["minimum_packs_on_hand"], 2)
         self.assertEqual(item["acceptable_overstock_qty"], 12)
         self.assertEqual(item["acceptable_overstock_pct"], 10.0)
 
@@ -424,6 +495,69 @@ class RulesTests(unittest.TestCase):
         self.assertEqual(item["suggested_qty"], 300)
         self.assertEqual(item["final_qty"], 300)
         self.assertIn("pack_trigger", item["reason_codes"])
+
+    def test_hose_reorders_at_configured_trigger_below_target(self):
+        item = {
+            "description": "HYD HOSE",
+            "qty_sold": 12,
+            "qty_suspended": 0,
+            "qty_on_po": 0,
+            "pack_size": 300,
+            "suggested_max": 93,
+            "demand_signal": 12,
+        }
+        rule = {"order_policy": "pack_trigger", "reorder_trigger_qty": 60}
+
+        enrich_item(item, {"qoh": 95, "max": 93, "min": 10}, 300, rule)
+        self.assertFalse(item["reorder_needed"])
+        self.assertEqual(item["raw_need"], 0)
+
+        enrich_item(item, {"qoh": 58, "max": 93, "min": 10}, 300, rule)
+        self.assertTrue(item["reorder_needed"])
+        self.assertEqual(item["raw_need"], 35)
+        self.assertEqual(item["suggested_qty"], 300)
+
+    def test_bag_item_can_require_two_packs_of_cover_even_when_max_is_lower(self):
+        item = {
+            "description": "1/4 X 1 ELEVATOR BOLT",
+            "qty_sold": 30,
+            "qty_suspended": 0,
+            "qty_on_po": 0,
+            "pack_size": 100,
+            "suggested_max": 20,
+            "demand_signal": 30,
+        }
+        rule = {"order_policy": "pack_trigger", "minimum_packs_on_hand": 2}
+
+        enrich_item(item, {"qoh": 150, "max": 20, "min": 5}, 100, rule)
+        self.assertTrue(item["reorder_needed"])
+        self.assertEqual(item["reorder_trigger_threshold"], 200)
+        self.assertEqual(item["reorder_trigger_basis"], "minimum_packs_on_hand")
+        self.assertEqual(item["effective_target_stock"], 200)
+        self.assertEqual(item["raw_need"], 50)
+        self.assertEqual(item["suggested_qty"], 100)
+        self.assertIn("trigger_minimum_packs_on_hand", item["reason_codes"])
+
+    def test_enrich_item_marks_large_pack_review_as_review_only(self):
+        item = {
+            "description": "FILTER KIT",
+            "qty_sold": 4,
+            "qty_suspended": 0,
+            "qty_on_po": 0,
+            "pack_size": 100,
+            "suggested_max": 20,
+            "demand_signal": 4,
+            "sales_health_signal": "dormant",
+            "performance_profile": "legacy",
+            "days_since_last_sale": 500,
+        }
+
+        enrich_item(item, {"qoh": 0, "max": 20, "min": 2}, 100, None)
+        self.assertEqual(item["order_policy"], "large_pack_review")
+        self.assertTrue(item["review_required"])
+        self.assertEqual(item["status"], "review")
+        self.assertIn("large_pack_review", item["reason_codes"])
+        self.assertIn("large_pack_review", item["data_flags"])
 
 
 if __name__ == "__main__":
