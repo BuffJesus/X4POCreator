@@ -2,6 +2,7 @@ import sys
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -262,6 +263,53 @@ class UIReviewTests(unittest.TestCase):
         self.assertEqual(rows[0]["vendor"], "MOTION")
         self.assertEqual(rows[0]["release_now_count"], 1)
         self.assertEqual(rows[0]["planned_today_count"], 1)
+
+    def test_apply_release_plan_view_sets_review_filters_and_selects_review_tab(self):
+        events = []
+
+        class Var:
+            def __init__(self):
+                self.value = None
+            def set(self, value):
+                self.value = value
+                events.append(("set", value))
+
+        fake_app = SimpleNamespace(
+            var_vendor_filter=Var(),
+            var_review_performance_filter=Var(),
+            var_review_attention_filter=Var(),
+            var_review_release_filter=Var(),
+            var_review_focus_filter=Var(),
+            _apply_review_filter=lambda: events.append(("apply", None)),
+            notebook=SimpleNamespace(select=lambda idx: events.append(("select", idx))),
+        )
+
+        ui_review.apply_release_plan_view(fake_app, "MOTION", focus="Exceptions Only", release="Held")
+
+        self.assertEqual(fake_app.var_vendor_filter.value, "MOTION")
+        self.assertEqual(fake_app.var_review_release_filter.value, "Held")
+        self.assertEqual(fake_app.var_review_focus_filter.value, "Exceptions Only")
+        self.assertIn(("apply", None), events)
+        self.assertIn(("select", 5), events)
+
+    def test_export_release_plan_scope_exports_only_selected_vendor_bucket(self):
+        captured = {}
+        fake_app = SimpleNamespace(
+            assigned_items=[
+                {"vendor": "MOTION", "item_code": "A", "release_decision": "release_now"},
+                {"vendor": "MOTION", "item_code": "B", "release_decision": "export_next_business_day_for_free_day"},
+                {"vendor": "SOURCE", "item_code": "C", "release_decision": "release_now"},
+            ],
+            _export_vendor_po=object(),
+            _data_path=lambda key: f"/tmp/{key}",
+        )
+
+        with patch("ui_review.export_flow.do_export", side_effect=lambda *args, **kwargs: captured.update({"args": args, "kwargs": kwargs})):
+            ui_review.export_release_plan_scope(fake_app, "MOTION", release="Release Now")
+
+        scoped_items = captured["kwargs"]["assigned_items"]
+        self.assertEqual([item["item_code"] for item in scoped_items], ["A"])
+        self.assertEqual(captured["kwargs"]["export_scope_label"], "MOTION release now items")
 
     def test_sort_tree_flushes_pending_bulk_sheet_edit(self):
         events = []

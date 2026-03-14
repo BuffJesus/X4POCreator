@@ -120,6 +120,20 @@ class POBuilderTests(unittest.TestCase):
         self.assertEqual(fake_app.app_settings["review_export_focus"], "all_items")
         self.assertTrue(saved["called"])
 
+    def test_get_and_set_last_export_dir_round_trip(self):
+        saved = {}
+        fake_app = SimpleNamespace(
+            app_settings={},
+            _save_app_settings=lambda: saved.update({"called": True}),
+        )
+
+        self.assertEqual(po_builder.POBuilderApp._get_last_export_dir(fake_app), "")
+
+        po_builder.POBuilderApp._set_last_export_dir(fake_app, "C:\\Exports")
+
+        self.assertEqual(po_builder.POBuilderApp._get_last_export_dir(fake_app), "C:\\Exports")
+        self.assertTrue(saved["called"])
+
     def test_start_update_check_skips_non_release_versions(self):
         fake_app = SimpleNamespace(update_check_enabled=True)
         fake_app._check_for_updates_worker = lambda: self.fail("worker should not run")
@@ -679,7 +693,13 @@ class POBuilderTests(unittest.TestCase):
     def test_bulk_cur_max_edit_recalculates_raw_need(self):
         fake_app = self._make_calc_app()
         key = ("AER-", "GH781-4")
-        fake_app.inventory_lookup[key] = {"qoh": 2, "min": 1, "max": 6}
+        fake_app.inventory_lookup[key] = {
+            "qoh": 2,
+            "min": 1,
+            "max": 6,
+            "last_sale": "05-Mar-2026",
+            "last_receipt": "01-Mar-2026",
+        }
         fake_app.filtered_items = [{
             "line_code": key[0],
             "item_code": key[1],

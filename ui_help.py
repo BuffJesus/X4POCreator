@@ -94,6 +94,18 @@ Pack handling
 - Soft-pack rules can allow smaller increments when configured.
 - Exact-qty items use the exact result.
 - Reel-review and manual-only items stay flagged for human review.
+- Trigger-style rules can hold a reorder floor above the ordinary max when coverage or pack logic requires it.
+- Acceptable overstock rules can allow intentional post-receipt overstock without treating it as an error automatically.
+
+Coverage-aware rules
+- Saved item rules can define trigger qty, trigger %, minimum packs, cover days, and cover cycles.
+- These rules can make an item reorder earlier than its normal operational max would suggest.
+- Hardware-style large-pack items may also infer conservative pack-trigger behavior when the data strongly suggests it.
+
+Confidence and caution
+- Missing sale/receipt recency can reduce recommendation confidence.
+- Low-confidence items may route to review/manual handling instead of auto-order.
+- Why text and item details now surface confidence, completeness, and trigger/tolerance signals directly.
 
 Why text
 - Stock after open POs: inventory position used for the calculation.
@@ -229,6 +241,9 @@ Review table
 - Double-click Vendor, Final Qty, or Pack to edit.
 - Final Qty is what will export.
 - Why This Qty explains the recommendation in plain language.
+- Review & Export can default to Exceptions Only so routine items do not crowd the screen.
+- The Focus filter switches between All Items and Exceptions Only.
+- The Release filter separates Release Now, Planned Today, and Held items.
 - If multiple rows are selected, editing one editable cell in that column applies that value across the selected rows.
 - Enter or F2 starts editing the active editable column.
 - Left and Right change the active editable column.
@@ -236,16 +251,76 @@ Review table
 - Delete removes selected rows from the review list.
 - Pack edits from Review can persist into saved order rules.
 
+Release planning
+- Vendor shipping policies can mark items as Release Now, Planned Today, or Held.
+- Planned Today usually means the PO should be exported now so it is ready for an upcoming free-freight day.
+- Held means the vendor policy wants more time, a threshold, or a specific future day before release.
+- Use Release Plan to see the vendor-level picture instead of reading item rows one by one.
+
+Release Plan dialog
+- Summarizes each vendor's immediate, planned, and held items.
+- Shows vendor value, threshold shortfall/progress, coverage confidence, next free-ship day, and planned export date.
+- You can jump directly into Review for one vendor from this dialog.
+- You can also export a selected vendor's immediate batch or planned batch directly from the dialog.
+
 Export
 - Export writes one PO file per vendor.
 - The export step also saves a session snapshot for traceability.
 - Maintenance output reflects X4 source values, target values, and suggested values where appropriate.
+- Mixed immediate/planned export behavior can be saved as a workflow default.
+- The default can be Export All Exportable, Immediate Only, or Ask When Mixed.
+- Scoped exports from Release Plan still use the normal export pipeline, history, and session snapshot behavior.
 
 Before exporting
-- Check vendor assignments.
-- Review warnings and review-required items.
+- Check the exception list first rather than rereading every routine item.
+- Review held vendors, planned-today vendors, low-confidence items, and warnings.
 - Confirm pack sizes and manual quantity overrides on unusual items.
 - Remove anything that was only included temporarily for review.
+""",
+    ),
+    (
+        "Shipping And Release",
+        "How vendor shipping policy affects timing, visibility, and export decisions.",
+        """Core idea
+- Shipping policy is vendor-level release planning layered on top of item-level reorder logic.
+- The app can recommend ordering an item while still holding or scheduling the vendor PO release.
+
+Current policy model
+- release_immediately
+- hold_for_free_day
+- hold_for_threshold
+- hybrid_free_day_threshold
+
+Inputs used today
+- preferred free-shipping weekdays
+- freight-free threshold
+- urgent release floor
+- inventory replacement cost from the loaded inventory data
+- current day/date
+
+What the planner computes
+- estimated item order value
+- vendor order value total
+- value coverage confidence
+- threshold shortfall and progress
+- next preferred free-ship date
+- planned export date for free-day ordering
+
+Release states
+- Release Now: export now with the routine batch.
+- Planned Today: export now so the PO is ready for the upcoming free-freight day.
+- Held: keep visible for review, but do not export yet.
+
+Important behavior
+- Urgent floor can override hold logic.
+- Planned Today is exportable.
+- Held items stay visible in Review & Export and are excluded from export.
+- Vendor value coverage can be partial or missing when cost data is incomplete, so threshold math should be read accordingly.
+
+How to work with it
+- Use Review & Export in Exceptions Only mode for the fastest path.
+- Use Release Plan when you want to think by vendor instead of by item.
+- If a vendor is Planned Today, export its planned batch directly from Release Plan or include planned items in the normal export batch depending on your saved default.
 """,
     ),
     (
@@ -434,6 +509,17 @@ def build_help_tab(app):
         "<<ComboboxSelected>>",
         lambda _e: app._set_review_export_focus(reverse_focus_map.get(var_review_focus.get(), "exceptions_only")),
     )
+
+    ttk.Label(
+        frame,
+        text=(
+            "Recommended routine path: keep Review & Export on Exceptions Only, use Release Plan for vendor timing decisions, "
+            "and save export defaults so the common path stays one-click."
+        ),
+        style="Info.TLabel",
+        wraplength=920,
+        justify="left",
+    ).pack(anchor="w", pady=(0, 10))
 
     help_notebook = ttk.Notebook(frame)
     help_notebook.pack(fill=tk.BOTH, expand=True)

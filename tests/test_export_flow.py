@@ -105,6 +105,34 @@ class ExportFlowTests(unittest.TestCase):
 
         self.assertEqual([item["item_code"] for item in selected], ["E"])
 
+    def test_choose_output_dir_uses_saved_last_export_dir_when_it_exists(self):
+        app = SimpleNamespace(
+            app_settings={"last_export_dir": "C:\\Exports"},
+            _get_last_export_dir=lambda: "C:\\Exports",
+            _set_last_export_dir=lambda path: None,
+        )
+
+        with patch("export_flow.os.path.isdir", return_value=True), \
+             patch("export_flow.filedialog.askdirectory", return_value="C:\\Exports\\Next") as mocked_dir:
+            output_dir = export_flow.choose_output_dir(app)
+
+        self.assertEqual(output_dir, "C:\\Exports\\Next")
+        self.assertEqual(mocked_dir.call_args.kwargs["initialdir"], "C:\\Exports")
+
+    def test_choose_output_dir_persists_selected_folder(self):
+        saved = {}
+        app = SimpleNamespace(
+            app_settings={},
+            _get_last_export_dir=lambda: "",
+            _set_last_export_dir=lambda path: saved.update({"path": path}),
+        )
+
+        with patch("export_flow.filedialog.askdirectory", return_value="C:\\Exports\\Next"):
+            output_dir = export_flow.choose_output_dir(app)
+
+        self.assertEqual(output_dir, "C:\\Exports\\Next")
+        self.assertEqual(saved["path"], "C:\\Exports\\Next")
+
     def test_build_session_snapshot_captures_expected_fields(self):
         app = SimpleNamespace(
             var_sales_path=SimpleNamespace(get=lambda: "C:\\Reports\\sales.csv"),
@@ -410,6 +438,52 @@ class ExportFlowTests(unittest.TestCase):
         mocked_dir.assert_not_called()
         mocked_info.assert_called_once()
         self.assertIn("currently held by vendor shipping policy", mocked_info.call_args.args[1])
+
+    def test_do_export_can_export_scoped_vendor_items_only(self):
+        session = AppSessionState(
+            assigned_items=[
+                {"vendor": "MOTION", "line_code": "AER-", "item_code": "GH781-4", "order_qty": 2, "release_decision": "release_now"},
+                {"vendor": "SOURCE", "line_code": "AER-", "item_code": "GH781-5", "order_qty": 3, "release_decision": "release_now"},
+            ],
+            startup_warning_rows=[],
+            qoh_adjustments={},
+            order_rules={},
+        )
+        app = SimpleNamespace(
+            session=session,
+            app_settings={"mixed_export_behavior": "all_exportable"},
+            root=SimpleNamespace(update=lambda: None),
+            _show_loading=lambda message: None,
+            _hide_loading=lambda: None,
+            _persist_suspense_carry=lambda: {"conflict": False},
+            _build_maintenance_report=lambda: [],
+            _show_maintenance_report=lambda output_dir, issues: None,
+            var_sales_path=SimpleNamespace(get=lambda: ""),
+            var_po_path=SimpleNamespace(get=lambda: ""),
+            var_susp_path=SimpleNamespace(get=lambda: ""),
+            var_onhand_path=SimpleNamespace(get=lambda: ""),
+            var_minmax_path=SimpleNamespace(get=lambda: ""),
+            var_packsize_path=SimpleNamespace(get=lambda: ""),
+        )
+
+        scoped_items = [session.assigned_items[0]]
+        with tempfile.TemporaryDirectory() as tmp, \
+             patch("export_flow.filedialog.askdirectory", return_value=tmp), \
+             patch("export_flow.storage.append_order_history") as mocked_history, \
+             patch("export_flow.storage.save_session_snapshot"), \
+             patch("export_flow.messagebox.showinfo"):
+            export_flow.do_export(
+                app,
+                lambda vendor, items, output_dir: str(Path(output_dir) / f"{vendor}_{len(items)}.xlsx"),
+                str(Path(tmp) / "order_history.json"),
+                str(Path(tmp) / "sessions"),
+                assigned_items=scoped_items,
+                export_scope_label="MOTION release now items",
+            )
+
+        mocked_history.assert_called_once()
+        exported_items = mocked_history.call_args.args[1]
+        self.assertEqual([item["item_code"] for item in exported_items], ["GH781-4"])
 
 
 if __name__ == "__main__":

@@ -284,6 +284,33 @@ class UIBulkTests(unittest.TestCase):
         self.assertEqual(events[0], "flush")
         self.assertEqual([item["item_code"] for item in fake_app.filtered_items], ["A", "B"])
 
+    def test_bulk_row_values_use_zero_qty_for_missing_recency_manual_review_item(self):
+        fake_app = SimpleNamespace(
+            inventory_lookup={("AER-", "STALE"): {}},
+            order_rules={},
+            _suggest_min_max=lambda key: (None, None),
+        )
+        item = {
+            "line_code": "AER-",
+            "item_code": "STALE",
+            "description": "STALE ITEM",
+            "qty_sold": 0,
+            "qty_suspended": 0,
+            "status": "review",
+            "raw_need": 1,
+            "suggested_qty": 0,
+            "final_qty": 0,
+            "order_qty": 1,
+            "order_policy": "manual_only",
+            "why": "Manual review required before ordering (missing sale/receipt history)",
+        }
+
+        values = ui_bulk.bulk_row_values(fake_app, item)
+
+        self.assertEqual(values[6], 1)
+        self.assertEqual(values[7], 0)
+        self.assertEqual(values[8], 0)
+
 
 if __name__ == "__main__":
     unittest.main()

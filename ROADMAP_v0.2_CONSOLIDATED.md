@@ -23,7 +23,7 @@ The goal is to keep one phased checklist that reflects what is actually done in 
 
 - The reorder core refactor is materially in place.
 - Trigger-based ordering, effective reorder floors, pack-trigger behavior, hardware heuristics, recency-confidence gating, and acceptable-overstock handling are all implemented.
-- The biggest remaining reorder-core gaps are cadence-aware cover beyond `minimum_packs_on_hand`, deeper low-confidence classification, and additional reel/generalized replenishment policy cleanup.
+- The biggest remaining reorder-core gaps are deeper low-confidence classification, stricter separation between explicit-rule-protected and uncertain missing-recency items, and additional reel/generalized replenishment policy cleanup.
 
 ### Shipping-aware release logic
 
@@ -66,7 +66,7 @@ The goal is to keep one phased checklist that reflects what is actually done in 
 - [x] Support trigger-based reordering below or above the ordinary operational max as needed.
 - [x] Cover full-pack / small-operational-max edge cases with rule tests.
 - [x] Thread clearer `why` / reason-code explanations through the enriched item model.
-- [ ] Extend cadence-aware reorder logic beyond pack floors into explicit cover-days / cover-cycles rules.
+- [x] Extend cadence-aware reorder logic beyond pack floors into explicit cover-days / cover-cycles rules.
 
 ## Phase 3. Rule Model Expansion and Pack-Trigger Behavior
 
@@ -82,8 +82,8 @@ The goal is to keep one phased checklist that reflects what is actually done in 
 - [x] Use acceptable-overstock tolerances in downstream review/removal coherence.
 - [x] Use acceptable-overstock tolerances as an upstream auto-order guardrail.
 - [x] Explain trigger-driven and tolerance-driven behavior in `why` text.
-- [ ] Add persisted rule fields for `minimum_cover_days`.
-- [ ] Add persisted rule fields for `minimum_cover_cycles`.
+- [x] Add persisted rule fields for `minimum_cover_days`.
+- [x] Add persisted rule fields for `minimum_cover_cycles`.
 - [ ] Decide whether inferred two-pack hardware floors should persist into saved rules after explicit confirmation.
 
 ## Phase 4. Review Coherence, Large-Pack Handling, and Confidence Gating
@@ -99,6 +99,8 @@ The goal is to keep one phased checklist that reflects what is actually done in 
 - [x] Require stronger evidence before auto-ordering when both `last_sale` and `last_receipt` are missing.
 - [x] Allow explicit stocking-rule exceptions for missing-recency items.
 - [x] Route suspense/open-PO protected missing-recency items to review instead of blind skip or blind auto-order.
+- [x] Ensure missing-recency review items do not surface a non-zero default export qty unless explicitly protected by a stronger rule.
+- [x] Treat plain X4 min/default stock as insufficient protection when both `last_sale` and `last_receipt` are missing.
 - [x] Ensure "Remove Not Needed" respects trigger-based replenishment logic.
 - [x] Ensure "Remove Not Needed" respects acceptable intentional overstock.
 - [x] Surface minimum-pack source, confidence, completeness, and shipping/release annotations in item details.
@@ -290,6 +292,7 @@ These are the best next steps after reconciliation.
 - [ ] Add stronger vendor-group release consolidation and explicit urgent paid-freight override workflow.
 - [ ] Deepen shipping review/export options so users can export immediate, planned-tomorrow, or all-due batches intentionally.
 - [ ] Deepen recency-confidence classification for new-item / stale-item / critical-item distinctions.
+- [x] Keep missing-recency activity-protected items visible with zero default qty instead of letting them ride through as implicitly orderable rows.
 - [ ] Add remaining edge-case tests called out in the original `0.2.5` roadmap, especially:
   - weekly-order hardware cadence cases
   - missing-recency + recent local PO history

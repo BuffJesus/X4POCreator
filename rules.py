@@ -233,7 +233,7 @@ def classify_recency_confidence(item, inv, rule):
     has_protective_rule = bool(
         has_pack_trigger_fields(rule)
         or (rule and rule.get("order_policy"))
-        or isinstance((inv or {}).get("min"), (int, float)) and (inv or {}).get("min") > 0
+        or get_rule_int(rule, "min_order_qty")
     )
 
     if has_last_sale and has_last_receipt:
@@ -262,20 +262,26 @@ def should_force_recency_review(item, inv, rule):
 
     data_completeness = item.get("data_completeness", "")
     raw_need = item.get("raw_need", 0)
-    demand_signal = item.get("demand_signal", 0)
-    pack_size = item.get("pack_size", 0)
 
     if raw_need <= 0:
         return False
     if data_completeness == "missing_recency_rule_protected":
         return False
-    if data_completeness == "missing_recency_activity_protected":
-        return True
-    if demand_signal > 0:
-        return True
-    if isinstance(pack_size, (int, float)) and pack_size > 1:
+    if data_completeness in ("missing_recency_activity_protected", "missing_recency"):
         return True
     return False
+
+
+def should_suppress_manual_only_qty(item):
+    """Return True when a manual-review item should not carry a default order quantity."""
+    if item.get("order_policy") != "manual_only":
+        return False
+    if (item.get("recency_confidence") or "") != "low":
+        return False
+    return (item.get("data_completeness") or "") in (
+        "missing_recency",
+        "missing_recency_activity_protected",
+    )
 
 
 def determine_reorder_trigger_threshold(item):
@@ -705,6 +711,14 @@ def enrich_item(item, inv, pack_qty, rule):
         suggested, why = calculate_suggested_qty(raw_need, pack_qty, policy, rule, inv)
         projected_overstock, overstock_within_tolerance = assess_post_receipt_overstock(item, suggested)
     item["order_policy"] = policy
+    if should_suppress_manual_only_qty(item):
+        suggested = 0
+        completeness = item.get("data_completeness", "")
+        why = {
+            "missing_recency": "Manual review required before ordering (missing sale/receipt history)",
+            "missing_recency_activity_protected": "Manual review required before ordering (missing sale/receipt history; protected by other evidence)",
+        }.get(completeness, "Manual review required before ordering")
+        projected_overstock, overstock_within_tolerance = assess_post_receipt_overstock(item, suggested)
     reason_codes = []
     inventory_position = item.get("inventory_position", 0)
     target_stock = item.get("target_stock", 0)

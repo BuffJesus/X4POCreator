@@ -2,6 +2,7 @@ import os
 import tkinter as tk
 from tkinter import ttk, messagebox
 
+import export_flow
 import shipping_flow
 from ui_grid_edit import TreeGridEditor
 from ui_scroll import attach_vertical_mousewheel
@@ -39,6 +40,52 @@ def is_review_exception(item):
 
 def build_vendor_release_plan_rows(app):
     return shipping_flow.build_vendor_release_plan(getattr(app, "assigned_items", []))
+
+
+def apply_release_plan_view(app, vendor, *, focus="Exceptions Only", release="ALL"):
+    if hasattr(app, "var_vendor_filter"):
+        app.var_vendor_filter.set(vendor or "ALL")
+    if hasattr(app, "var_review_performance_filter"):
+        app.var_review_performance_filter.set("ALL")
+    if hasattr(app, "var_review_attention_filter"):
+        app.var_review_attention_filter.set("ALL")
+    if hasattr(app, "var_review_release_filter"):
+        app.var_review_release_filter.set(release)
+    if hasattr(app, "var_review_focus_filter"):
+        app.var_review_focus_filter.set(focus)
+    if hasattr(app, "_apply_review_filter"):
+        app._apply_review_filter()
+    notebook = getattr(app, "notebook", None)
+    if notebook and hasattr(notebook, "select"):
+        try:
+            notebook.select(5)
+        except Exception:
+            pass
+
+
+def export_release_plan_scope(app, vendor, *, release):
+    bucket_map = {
+        "Release Now": "release_now",
+        "Planned Today": "planned_today",
+        "Held": "held",
+    }
+    target_bucket = bucket_map.get(release, "")
+    scoped_items = [
+        item for item in getattr(app, "assigned_items", [])
+        if str(item.get("vendor", "") or "").strip().upper() == str(vendor or "").strip().upper()
+        and shipping_flow.release_bucket(item) == target_bucket
+    ]
+    if not scoped_items:
+        messagebox.showinfo("Release Plan", f"No {release.lower()} items are available for vendor {vendor}.")
+        return
+    export_flow.do_export(
+        app,
+        app._export_vendor_po,
+        app._data_path("order_history"),
+        app._data_path("sessions"),
+        assigned_items=scoped_items,
+        export_scope_label=f"{vendor} {release.lower()} items",
+    )
 
 
 def show_release_plan(app):
@@ -125,7 +172,38 @@ def show_release_plan(app):
     vsb.pack(side=tk.RIGHT, fill=tk.Y)
     attach_vertical_mousewheel(tree)
 
-    ttk.Button(dlg, text="Close", command=dlg.destroy).pack(pady=12)
+    action_row = ttk.Frame(dlg)
+    action_row.pack(fill=tk.X, padx=16, pady=(4, 12))
+
+    def _selected_vendor():
+        selection = tree.selection()
+        if not selection:
+            return ""
+        values = tree.item(selection[0], "values")
+        return values[0] if values else ""
+
+    def _open_review(focus, release):
+        vendor = _selected_vendor()
+        if not vendor:
+            messagebox.showinfo("Release Plan", "Select a vendor first.")
+            return
+        apply_release_plan_view(app, vendor, focus=focus, release=release)
+        dlg.destroy()
+
+    def _export_scope(release):
+        vendor = _selected_vendor()
+        if not vendor:
+            messagebox.showinfo("Release Plan", "Select a vendor first.")
+            return
+        export_release_plan_scope(app, vendor, release=release)
+
+    ttk.Button(action_row, text="View Vendor Exceptions", command=lambda: _open_review("Exceptions Only", "ALL")).pack(side=tk.LEFT, padx=4)
+    ttk.Button(action_row, text="View Planned Today", command=lambda: _open_review("All Items", "Planned Today")).pack(side=tk.LEFT, padx=4)
+    ttk.Button(action_row, text="View All Vendor Items", command=lambda: _open_review("All Items", "ALL")).pack(side=tk.LEFT, padx=4)
+    ttk.Button(action_row, text="Export Immediate", command=lambda: _export_scope("Release Now")).pack(side=tk.LEFT, padx=14)
+    ttk.Button(action_row, text="Export Planned", command=lambda: _export_scope("Planned Today")).pack(side=tk.LEFT, padx=4)
+    ttk.Button(action_row, text="Close", command=dlg.destroy).pack(side=tk.RIGHT, padx=4)
+
     app._autosize_dialog(dlg, min_w=920, min_h=360, max_w_ratio=0.92, max_h_ratio=0.85)
     dlg.wait_window()
 

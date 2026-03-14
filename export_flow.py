@@ -89,13 +89,34 @@ def loaded_report_paths_from_app(app):
     }
 
 
-def do_export(app, export_vendor_po, order_history_file, sessions_dir):
+def choose_output_dir(app):
+    initialdir = ""
+    get_last_export_dir = getattr(app, "_get_last_export_dir", None)
+    if callable(get_last_export_dir):
+        initialdir = get_last_export_dir()
+    elif getattr(app, "app_settings", None):
+        initialdir = str(app.app_settings.get("last_export_dir", "") or "").strip()
+    dialog_kwargs = {"title": "Select Output Folder for PO Files"}
+    if initialdir and os.path.isdir(initialdir):
+        dialog_kwargs["initialdir"] = initialdir
+    output_dir = filedialog.askdirectory(**dialog_kwargs)
+    if output_dir:
+        set_last_export_dir = getattr(app, "_set_last_export_dir", None)
+        if callable(set_last_export_dir):
+            set_last_export_dir(output_dir)
+        elif getattr(app, "app_settings", None) is not None:
+            app.app_settings["last_export_dir"] = output_dir
+    return output_dir
+
+
+def do_export(app, export_vendor_po, order_history_file, sessions_dir, *, assigned_items=None, export_scope_label="selected items"):
     session = getattr(app, "session", app)
-    if not session.assigned_items:
+    source_items = list(assigned_items if assigned_items is not None else session.assigned_items)
+    if not source_items:
         messagebox.showwarning("No Items", "No items to export.")
         return
 
-    exportable_items, held_items = partition_export_items(session.assigned_items)
+    exportable_items, held_items = partition_export_items(source_items)
     if not exportable_items:
         if held_items:
             held_lines = "\n".join(
@@ -106,7 +127,7 @@ def do_export(app, export_vendor_po, order_history_file, sessions_dir):
             messagebox.showinfo(
                 "No Exportable Items",
                 (
-                    "All assigned items are currently held by vendor shipping policy, so no PO files were exported.\n\n"
+                    f"All {export_scope_label} are currently held by vendor shipping policy, so no PO files were exported.\n\n"
                     f"{held_lines}{suffix}\n\n"
                     "These items remain visible in Review & Export until their release decision changes."
                 ),
@@ -122,7 +143,7 @@ def do_export(app, export_vendor_po, order_history_file, sessions_dir):
     planned_items = [item for item in selected_export_items if export_bucket(item) == "planned_today"]
     immediate_items = [item for item in selected_export_items if export_bucket(item) == "release_now"]
 
-    output_dir = filedialog.askdirectory(title="Select Output Folder for PO Files")
+    output_dir = choose_output_dir(app)
     if not output_dir:
         return
 

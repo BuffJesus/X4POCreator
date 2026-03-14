@@ -495,6 +495,15 @@ class POBuilderApp:
         self.app_settings["review_export_focus"] = normalized
         self._save_app_settings()
 
+    def _get_last_export_dir(self):
+        value = str(self.app_settings.get("last_export_dir", "") or "").strip()
+        return value
+
+    def _set_last_export_dir(self, path):
+        normalized = str(path or "").strip()
+        self.app_settings["last_export_dir"] = normalized
+        self._save_app_settings()
+
     def _start_update_check(self):
         app_runtime_flow.start_update_check(self, APP_VERSION, is_release_version, threading.Thread)
 
@@ -1513,6 +1522,9 @@ class POBuilderApp:
         if issues is None:
             issues = self._build_maintenance_report()
         ui_review.show_maintenance_report(self, output_dir, issues)
+
+    def _export_vendor_po(self, vendor, items, output_dir):
+        return export_vendor_po(vendor, items, output_dir)
 
 
 # ─── Entry Point ─────────────────────────────────────────────────────────────

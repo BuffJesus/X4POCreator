@@ -807,7 +807,49 @@ class RulesTests(unittest.TestCase):
         self.assertEqual(item["order_policy"], "manual_only")
         self.assertTrue(item["review_required"])
         self.assertEqual(item["status"], "review")
+        self.assertEqual(item["suggested_qty"], 0)
+        self.assertEqual(item["final_qty"], 0)
         self.assertIn("No sale or receipt history available", item["why"])
+        self.assertIn("zero_final", item["data_flags"])
+
+    def test_missing_recency_below_min_without_explicit_rule_routes_to_zero_qty_review(self):
+        item = {
+            "description": "NO HISTORY FILTER",
+            "qty_sold": 0,
+            "qty_suspended": 0,
+            "qty_on_po": 0,
+            "pack_size": 1,
+            "demand_signal": 0,
+        }
+
+        enrich_item(item, {"qoh": 0, "min": 1, "max": 0}, 1, None)
+        self.assertEqual(item["recency_confidence"], "low")
+        self.assertEqual(item["data_completeness"], "missing_recency")
+        self.assertEqual(item["raw_need"], 1)
+        self.assertEqual(item["order_policy"], "manual_only")
+        self.assertEqual(item["suggested_qty"], 0)
+        self.assertEqual(item["final_qty"], 0)
+        self.assertTrue(item["review_required"])
+        self.assertEqual(item["status"], "review")
+        self.assertIn("missing sale/receipt history", item["why"])
+
+    def test_missing_recency_with_explicit_trigger_rule_remains_orderable(self):
+        item = {
+            "description": "CRITICAL STOCK",
+            "qty_sold": 2,
+            "qty_suspended": 0,
+            "qty_on_po": 0,
+            "pack_size": 1,
+            "demand_signal": 2,
+        }
+
+        enrich_item(item, {"qoh": 0, "min": 1, "max": 0}, 1, {"reorder_trigger_qty": 2})
+        self.assertEqual(item["recency_confidence"], "low")
+        self.assertEqual(item["data_completeness"], "missing_recency_rule_protected")
+        self.assertNotEqual(item["order_policy"], "manual_only")
+        self.assertGreater(item["suggested_qty"], 0)
+        self.assertGreater(item["final_qty"], 0)
+        self.assertFalse(item["review_required"])
 
     def test_missing_recency_with_suspense_demand_routes_to_review_not_skip(self):
         item = {
@@ -825,6 +867,8 @@ class RulesTests(unittest.TestCase):
         self.assertEqual(item["recency_confidence"], "low")
         self.assertEqual(item["data_completeness"], "missing_recency_activity_protected")
         self.assertEqual(item["order_policy"], "manual_only")
+        self.assertEqual(item["suggested_qty"], 0)
+        self.assertEqual(item["final_qty"], 0)
         self.assertTrue(item["review_required"])
         self.assertNotEqual(item["status"], "skip")
         self.assertIn("protected by other evidence", item["why"])
