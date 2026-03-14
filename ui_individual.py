@@ -2,6 +2,66 @@ import tkinter as tk
 from tkinter import ttk
 
 
+def vendor_history_suggestions(app, key):
+    recent_list = list((getattr(app, "recent_orders", {}) or {}).get(key, []) or [])
+    ranked = {}
+    for row in recent_list:
+        vendor = str(row.get("vendor", "") or "").strip().upper()
+        if not vendor:
+            continue
+        entry = ranked.setdefault(vendor, {"qty": 0.0, "date": ""})
+        try:
+            entry["qty"] += float(row.get("qty", 0) or 0)
+        except (TypeError, ValueError):
+            pass
+        date_text = str(row.get("date", "") or "").strip()
+        if date_text > entry["date"]:
+            entry["date"] = date_text
+    ordered = sorted(
+        ranked.items(),
+        key=lambda item: (-item[1]["qty"], item[1]["date"], item[0]),
+    )
+    return [vendor for vendor, _meta in ordered]
+
+
+def suggested_vendor_for_item(app, item, inventory):
+    current_vendor = str(item.get("vendor", "") or "").strip().upper()
+    if current_vendor:
+        return current_vendor, "current assignment"
+    supplier = str(inventory.get("supplier", "") or "").strip().upper()
+    if supplier:
+        return supplier, "report supplier"
+    key = (item.get("line_code", ""), item.get("item_code", ""))
+    history_vendors = vendor_history_suggestions(app, key)
+    if len(history_vendors) == 1:
+        return history_vendors[0], "recent local order history"
+    return "", ""
+
+
+def prioritized_vendor_choices(app, item, inventory):
+    ordered = []
+
+    def _add(vendor):
+        normalized = str(vendor or "").strip().upper()
+        if normalized and normalized not in ordered:
+            ordered.append(normalized)
+
+    suggested_vendor, _source = suggested_vendor_for_item(app, item, inventory)
+    _add(suggested_vendor)
+
+    supplier = str(inventory.get("supplier", "") or "").strip().upper()
+    _add(supplier)
+
+    key = (item.get("line_code", ""), item.get("item_code", ""))
+    for vendor in vendor_history_suggestions(app, key):
+        _add(vendor)
+
+    for vendor in getattr(app, "vendor_codes_used", []) or []:
+        _add(vendor)
+
+    return ordered
+
+
 def build_individual_tab(app):
     app.individual_items = []
     frame = ttk.Frame(app.notebook, padding=16)
@@ -103,6 +163,8 @@ def build_individual_tab(app):
     app.combo_vendor.pack(anchor="w", pady=4)
     app.combo_vendor.bind("<Return>", lambda e: app._assign_current())
     app.combo_vendor.bind("<KeyRelease>", app._vendor_autocomplete)
+    app.lbl_vendor_suggestion = ttk.Label(vendor_frame, text="", style="Info.TLabel", wraplength=700)
+    app.lbl_vendor_suggestion.pack(anchor="w", pady=(0, 4))
     vendor_button_row = ttk.Frame(vendor_frame)
     vendor_button_row.pack(anchor="w", pady=(2, 0))
     ttk.Button(vendor_button_row, text="Manage Vendors...", command=app._open_vendor_manager).pack(side=tk.LEFT)
@@ -236,6 +298,17 @@ def populate_assign_item(app):
     else:
         app.lbl_recent_warning.config(text="")
 
-    app.combo_vendor["values"] = app.vendor_codes_used
-    app.var_vendor_input.set("")
+    vendor_choices = prioritized_vendor_choices(app, item, inventory)
+    app.combo_vendor["values"] = vendor_choices
+    suggested_vendor, suggestion_source = suggested_vendor_for_item(app, item, inventory)
+    if suggested_vendor:
+        app.var_vendor_input.set(suggested_vendor)
+        app.lbl_vendor_suggestion.config(text=f"Auto-filled vendor from {suggestion_source}: {suggested_vendor}")
+    else:
+        history_vendors = vendor_history_suggestions(app, key)
+        if history_vendors:
+            app.lbl_vendor_suggestion.config(text=f"Recent vendor history: {', '.join(history_vendors[:3])}")
+        else:
+            app.lbl_vendor_suggestion.config(text="")
+        app.var_vendor_input.set("")
     app.combo_vendor.focus_set()

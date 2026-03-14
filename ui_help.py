@@ -232,11 +232,12 @@ If something feels off
     (
         "Review And Export",
         "What to do after bulk assignment and how export works.",
-        """Individual Assign
+"""Individual Assign
 - Use this when bulk assignment is not enough.
 - Assign & Next saves the vendor and advances.
 - Skip Item leaves the item unassigned and moves on.
 - Back returns to the previous item.
+- Vendor entry now auto-fills when the app has strong evidence from the current report supplier or a single-vendor recent local order history.
 
 Review table
 - Double-click Vendor, Final Qty, or Pack to edit.

@@ -262,7 +262,7 @@ This phase is about reducing required operator input. Humans will consistently c
 - [x] Reduce repeated vendor-policy setup by preferring inherited or inferred defaults where safe.
 - [x] Add policy templates / presets for common vendor behaviors so shipping rules can be configured with one click instead of field-by-field entry.
 - [x] Make missing policy data fail soft with safe defaults instead of forcing immediate user intervention.
-- [ ] Prefer auto-filled values from current reports and saved history before asking for manual entry.
+- [x] Prefer auto-filled values from current reports and saved history before asking for manual entry.
 - [x] Collapse low-value fields behind an "Advanced" affordance in dialogs where the common workflow only needs one or two inputs.
 - [ ] Shift review emphasis from "touch every item" to "touch only exceptions":
   - held vendors with meaningful shortfall
