@@ -108,6 +108,8 @@ BULK_EDITABLE_COLS = ("vendor", "final_qty", "qoh", "cur_min", "cur_max", "pack_
 REVIEW_EDITABLE_COLS = ("vendor", "order_qty", "pack_size")
 DEFAULT_MIXED_EXPORT_BEHAVIOR = "all_exportable"
 MIXED_EXPORT_BEHAVIOR_OPTIONS = ("all_exportable", "immediate_only", "ask_when_mixed")
+DEFAULT_PLANNED_ONLY_EXPORT_BEHAVIOR = "export_automatically"
+PLANNED_ONLY_EXPORT_BEHAVIOR_OPTIONS = ("export_automatically", "ask_before_export")
 DEFAULT_REVIEW_EXPORT_FOCUS = "exceptions_only"
 REVIEW_EXPORT_FOCUS_OPTIONS = ("all_items", "exceptions_only")
 DEFAULT_VENDOR_POLICY_PRESET = ""
@@ -494,6 +496,19 @@ class POBuilderApp:
         if normalized not in REVIEW_EXPORT_FOCUS_OPTIONS:
             normalized = DEFAULT_REVIEW_EXPORT_FOCUS
         self.app_settings["review_export_focus"] = normalized
+        self._save_app_settings()
+
+    def _get_planned_only_export_behavior(self):
+        behavior = str(self.app_settings.get("planned_only_export_behavior", DEFAULT_PLANNED_ONLY_EXPORT_BEHAVIOR) or "").strip()
+        if behavior not in PLANNED_ONLY_EXPORT_BEHAVIOR_OPTIONS:
+            behavior = DEFAULT_PLANNED_ONLY_EXPORT_BEHAVIOR
+        return behavior
+
+    def _set_planned_only_export_behavior(self, behavior):
+        normalized = str(behavior or "").strip()
+        if normalized not in PLANNED_ONLY_EXPORT_BEHAVIOR_OPTIONS:
+            normalized = DEFAULT_PLANNED_ONLY_EXPORT_BEHAVIOR
+        self.app_settings["planned_only_export_behavior"] = normalized
         self._save_app_settings()
 
     def _get_last_export_dir(self):

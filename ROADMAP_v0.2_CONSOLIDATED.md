@@ -250,12 +250,12 @@ This phase is about reducing required operator input. Humans will consistently c
   - review exceptions
   - export the default recommended batch
   rather than requiring users to decide policy details every run
-- [ ] Establish a single default export behavior that works without prompts in the common case.
+- [x] Establish a single default export behavior that works without prompts in the common case.
 - [ ] Reserve extra prompts for meaningful branch points only, such as:
   - all items are held
   - only planned-release items are exportable
   - mixed immediate vs planned export where timing genuinely matters
-- [ ] Add a user preference for export behavior defaults, for example:
+- [x] Add a user preference for export behavior defaults, for example:
   - export immediate only
   - export all exportable
   - ask when mixed
@@ -274,7 +274,7 @@ This phase is about reducing required operator input. Humans will consistently c
   - vendors planned today
   - vendors blocked and why
 - [x] Add a single "Recommended Action" concept at both item and vendor level, so the operator can mostly follow one instruction instead of interpreting several fields.
-- [ ] Prefer persistent user choices over repeated prompts when the same decision recurs often.
+- [x] Prefer persistent user choices over repeated prompts when the same decision recurs often.
 - [ ] Audit current prompts and dialogs for removal, consolidation, or safe defaulting.
 - [ ] Document a UX rule for future features:
   - no new required field unless the app cannot infer or default it safely
@@ -285,8 +285,8 @@ This phase is about reducing required operator input. Humans will consistently c
 
 These are the best next steps after reconciliation.
 
-- [ ] Define the default export behavior for mixed immediate/planned batches so routine users do not need to choose every time.
-- [ ] Add saved user preferences for export-scope prompting vs auto-selection.
+- [x] Define the default export behavior for mixed immediate/planned batches so routine users do not need to choose every time.
+- [x] Add saved user preferences for export-scope prompting vs auto-selection.
 - [x] Add broader vendor-policy defaulting beyond explicit presets to reduce setup friction without guessing unsafe values.
 - [x] Add a compact exception-first review workflow that highlights only the items/vendors needing human judgment.
 - [ ] Add cost-confidence and threshold-progress signals to vendor shipping decisions.

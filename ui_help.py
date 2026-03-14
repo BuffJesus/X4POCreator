@@ -489,6 +489,34 @@ def build_help_tab(app):
 
     ttk.Label(
         settings_frame,
+        text="Planned-only export behavior:",
+        style="Info.TLabel",
+    ).pack(side=tk.LEFT, padx=(18, 8))
+    planned_only_map = {
+        "export_automatically": "Export Automatically",
+        "ask_before_export": "Ask Before Export",
+    }
+    reverse_planned_only_map = {label: key for key, label in planned_only_map.items()}
+    var_planned_only = tk.StringVar(
+        value=planned_only_map.get(app._get_planned_only_export_behavior(), "Export Automatically")
+    )
+    combo_planned_only = ttk.Combobox(
+        settings_frame,
+        textvariable=var_planned_only,
+        state="readonly",
+        width=22,
+        values=list(planned_only_map.values()),
+    )
+    combo_planned_only.pack(side=tk.LEFT)
+    combo_planned_only.bind(
+        "<<ComboboxSelected>>",
+        lambda _e: app._set_planned_only_export_behavior(
+            reverse_planned_only_map.get(var_planned_only.get(), "export_automatically")
+        ),
+    )
+
+    ttk.Label(
+        settings_frame,
         text="Review & Export default focus:",
         style="Info.TLabel",
     ).pack(side=tk.LEFT, padx=(18, 8))

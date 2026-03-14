@@ -72,6 +72,19 @@ def choose_export_items(app, exportable_items):
         return exportable_items
 
     if not immediate_items:
+        planned_only_behavior = "export_automatically"
+        get_planned_only_behavior = getattr(app, "_get_planned_only_export_behavior", None)
+        if callable(get_planned_only_behavior):
+            planned_only_behavior = get_planned_only_behavior()
+        else:
+            settings = getattr(app, "app_settings", {}) or {}
+            planned_only_behavior = str(
+                settings.get("planned_only_export_behavior", "export_automatically") or ""
+            ).strip() or "export_automatically"
+
+        if planned_only_behavior == "export_automatically":
+            return planned_items
+
         proceed = messagebox.askyesno(
             "Export Planned POs?",
             (

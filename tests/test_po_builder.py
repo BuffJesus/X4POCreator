@@ -154,6 +154,23 @@ class POBuilderTests(unittest.TestCase):
         self.assertEqual(fake_session.default_vendor_policy_preset, "hybrid_friday_2000")
         self.assertTrue(saved["called"])
 
+    def test_get_and_set_planned_only_export_behavior_round_trip(self):
+        saved = {}
+        fake_app = SimpleNamespace(
+            app_settings={},
+            _save_app_settings=lambda: saved.update({"called": True}),
+        )
+
+        self.assertEqual(
+            po_builder.POBuilderApp._get_planned_only_export_behavior(fake_app),
+            po_builder.DEFAULT_PLANNED_ONLY_EXPORT_BEHAVIOR,
+        )
+
+        po_builder.POBuilderApp._set_planned_only_export_behavior(fake_app, "ask_before_export")
+
+        self.assertEqual(fake_app.app_settings["planned_only_export_behavior"], "ask_before_export")
+        self.assertTrue(saved["called"])
+
     def test_start_update_check_skips_non_release_versions(self):
         fake_app = SimpleNamespace(update_check_enabled=True)
         fake_app._check_for_updates_worker = lambda: self.fail("worker should not run")

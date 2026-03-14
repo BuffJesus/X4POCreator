@@ -120,8 +120,23 @@ class ExportFlowTests(unittest.TestCase):
             {"item_code": "E", "release_decision": "export_next_business_day_for_free_day"},
         ]
 
+        selected = export_flow.choose_export_items(
+            SimpleNamespace(app_settings={"planned_only_export_behavior": "export_automatically"}),
+            items,
+        )
+
+        self.assertEqual([item["item_code"] for item in selected], ["E"])
+
+    def test_choose_export_items_can_prompt_when_only_planned_items_exist_if_configured(self):
+        items = [
+            {"item_code": "E", "release_decision": "export_next_business_day_for_free_day"},
+        ]
+
         with patch("export_flow.messagebox.askyesno", return_value=True):
-            selected = export_flow.choose_export_items(SimpleNamespace(), items)
+            selected = export_flow.choose_export_items(
+                SimpleNamespace(app_settings={"planned_only_export_behavior": "ask_before_export"}),
+                items,
+            )
 
         self.assertEqual([item["item_code"] for item in selected], ["E"])
 
