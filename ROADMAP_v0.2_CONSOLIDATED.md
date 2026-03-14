@@ -29,7 +29,7 @@ The goal is to keep one phased checklist that reflects what is actually done in 
 
 - A first vendor shipping policy model now exists.
 - Vendor policies persist on disk, load with session state, and annotate items with release decisions and reasons.
-- The remaining shipping work is operationalization: editing/configuration UI, export/review workflow behavior, and stronger vendor-level consolidation logic.
+- Export now respects held-vs-release-ready items, but the remaining shipping work is deeper operational planning: vendor-level consolidation, threshold forecasting, and date-aware release workflow.
 
 ### Bulk editor hardening
 
@@ -124,9 +124,15 @@ The goal is to keep one phased checklist that reflects what is actually done in 
   - release reason
   - vendor order value total
 - [x] Append release reasoning to the item `why` text.
-- [ ] Add a real editing/configuration surface for vendor policies.
-- [ ] Decide where vendor policy should live operationally in the UI: settings, vendor manager, dedicated dialog, or data file only.
+- [x] Add a real editing/configuration surface for vendor policies.
+- [x] Decide where vendor policy should live operationally in the UI: settings, vendor manager, dedicated dialog, or data file only.
 - [ ] Add broader validation and normalization for user-entered vendor policy values.
+- [ ] Add explicit vendor-policy fields for release lead time / order-ahead behavior.
+- [ ] Decide whether release timing should be modeled as:
+  - same-day release only
+  - release on target ship day
+  - release one business day before target ship day
+  - vendor-specific lead days
 
 ## Phase 6. Shipping-Aware Release Logic
 
@@ -135,11 +141,70 @@ The goal is to keep one phased checklist that reflects what is actually done in 
 - [x] Hold for freight threshold when configured and not urgent.
 - [x] Release once threshold is reached.
 - [x] Surface release reasoning in item details and `why` text.
-- [ ] Make review/export workflows act on release decisions, not just display them.
-- [ ] Support "held but still visible for review" as an explicit operational workflow, not only as explanatory text.
+- [x] Make review/export workflows act on release decisions, not just display them.
+- [x] Support "held but still visible for review" as an explicit operational workflow, not only as explanatory text.
 - [ ] Add stronger vendor-group consolidation behavior across multiple candidate items and mixed urgency.
 - [ ] Treat "paid urgent truck" or equivalent override as an explicit release path in the model and UI.
 - [ ] Prevent hold logic from hiding critical shortages operationally during export/review, not only in reasoning text.
+- [ ] Add vendor-level release planning that distinguishes:
+  - release now
+  - hold and keep accumulating toward threshold
+  - release on next preferred free-freight day
+  - release one business day before the preferred free-freight day so the PO lands on time
+- [ ] Add explicit "target release date" / "target order date" annotations to held items, not only abstract hold reasons.
+- [ ] Add export support for planned-release batches so users can intentionally export tomorrow's free-freight POs one day early when policy requires it.
+
+## Phase 6A. Cost- and Date-Aware Shipping Planning
+
+This is the next high-value shipping slice. The current model already uses `repl_cost` from inventory data and the current weekday to decide `release_decision`, but it does not yet reason about expected future threshold reach or order-ahead timing.
+
+- [ ] Confirm and document the cost source used for shipping decisions:
+  - inventory `repl_cost`
+  - report-provided extended/value fields if available
+  - fallback behavior when cost is missing or zero
+- [ ] Add data-quality handling for shipping-value calculations:
+  - missing cost
+  - zero cost
+  - obviously stale or malformed cost
+  - vendor totals with mixed known/unknown value coverage
+- [ ] Add vendor-level threshold progress signals:
+  - current estimated vendor total
+  - amount short of threshold
+  - percentage of threshold reached
+  - value coverage confidence
+- [ ] Add shipping-planning dates:
+  - next preferred free-freight weekday
+  - recommended order/export date
+  - business-day-aware "release one day early" date when appropriate
+- [ ] Decide and encode the operational rule for "day before" export:
+  - calendar day
+  - business day
+  - vendor-configurable lead days
+- [ ] Add a release decision family for planned future release, for example:
+  - `hold_for_threshold`
+  - `hold_until_free_day`
+  - `export_next_business_day_for_free_day`
+  - `release_now_threshold_reached`
+- [ ] Show planning outputs in Review & Export:
+  - threshold shortfall
+  - next free-freight day
+  - planned export date
+  - why this date was chosen
+- [ ] Add an export mode that can include:
+  - release-ready POs only
+  - release-ready plus due-soon planned POs
+  - a filtered "planned for tomorrow" batch
+- [ ] Keep order history and session snapshots clear about whether a PO was:
+  - exported now for immediate ordering
+  - exported early for a scheduled free-freight release
+  - still held and not exported
+- [ ] Add tests for:
+  - threshold shortfall math from report cost
+  - mixed known/unknown cost coverage
+  - next-free-day calculation
+  - Friday/Monday business-day edge cases
+  - export-on-previous-business-day behavior
+  - urgent override beating planned free-day logic
 
 ## Phase 7. Packaged-App Self-Update Flow
 
@@ -170,15 +235,16 @@ The goal is to keep one phased checklist that reflects what is actually done in 
 
 These are the best next steps after reconciliation.
 
-- [ ] Add vendor-policy editing UI and persistence workflow.
-- [ ] Make export/review behavior honor `release_decision` instead of using it only as annotation.
-- [ ] Add `minimum_cover_days` / `minimum_cover_cycles` to the rule model and recommendation flow.
+- [ ] Add cost-confidence and threshold-progress signals to vendor shipping decisions.
+- [ ] Add planned release dates and "export the day before free-freight day" workflow for vendor policies.
+- [ ] Add stronger vendor-group release consolidation and explicit urgent paid-freight override workflow.
+- [ ] Deepen shipping review/export options so users can export immediate, planned-tomorrow, or all-due batches intentionally.
 - [ ] Deepen recency-confidence classification for new-item / stale-item / critical-item distinctions.
 - [ ] Add remaining edge-case tests called out in the original `0.2.5` roadmap, especially:
   - weekly-order hardware cadence cases
   - missing-recency + recent local PO history
   - missing-recency + explicit critical min rule
-  - held-for-shipping behavior inside the actual review/export flow
+  - held-for-shipping behavior inside the planned-release/export-date flow
 - [ ] Complete packaged-app self-update replacement flow.
 - [ ] Finish bulk edit-target integrity hardening under rapid interactions.
 

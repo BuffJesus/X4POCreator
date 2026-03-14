@@ -177,6 +177,10 @@ def apply_rule_fields(item, rule):
     item["reorder_trigger_pct"] = get_rule_float(rule, "reorder_trigger_pct")
     item["minimum_packs_on_hand"] = get_rule_int(rule, "minimum_packs_on_hand")
     item["minimum_packs_on_hand_source"] = "rule" if item["minimum_packs_on_hand"] is not None else None
+    item["minimum_cover_days"] = get_rule_float(rule, "minimum_cover_days")
+    item["minimum_cover_days_source"] = "rule" if item["minimum_cover_days"] is not None else None
+    item["minimum_cover_cycles"] = get_rule_float(rule, "minimum_cover_cycles")
+    item["minimum_cover_cycles_source"] = "rule" if item["minimum_cover_cycles"] is not None else None
     item["acceptable_overstock_qty"] = get_rule_int(rule, "acceptable_overstock_qty")
     item["acceptable_overstock_pct"] = get_rule_float(rule, "acceptable_overstock_pct")
 
@@ -189,6 +193,8 @@ def has_pack_trigger_fields(rule):
             get_rule_int(rule, "reorder_trigger_qty"),
             get_rule_float(rule, "reorder_trigger_pct"),
             get_rule_int(rule, "minimum_packs_on_hand"),
+            get_rule_float(rule, "minimum_cover_days"),
+            get_rule_float(rule, "minimum_cover_cycles"),
         )
     )
 
@@ -280,6 +286,11 @@ def determine_reorder_trigger_threshold(item):
     trigger_qty = item.get("reorder_trigger_qty")
     trigger_pct = item.get("reorder_trigger_pct")
     minimum_packs_on_hand = item.get("minimum_packs_on_hand")
+    minimum_cover_days = item.get("minimum_cover_days")
+    minimum_cover_cycles = item.get("minimum_cover_cycles")
+    demand_signal = item.get("demand_signal")
+    reorder_cycle_weeks = item.get("reorder_cycle_weeks")
+    avg_weekly_sales = item.get("avg_weekly_sales_loaded")
 
     has_explicit_trigger = (
         isinstance(trigger_qty, (int, float)) and trigger_qty > 0
@@ -287,6 +298,10 @@ def determine_reorder_trigger_threshold(item):
         isinstance(trigger_pct, (int, float)) and trigger_pct > 0
     ) or (
         isinstance(minimum_packs_on_hand, (int, float)) and minimum_packs_on_hand > 0
+    ) or (
+        isinstance(minimum_cover_days, (int, float)) and minimum_cover_days > 0
+    ) or (
+        isinstance(minimum_cover_cycles, (int, float)) and minimum_cover_cycles > 0
     )
     if not has_explicit_trigger:
         item["reorder_trigger_threshold"] = None
@@ -308,6 +323,30 @@ def determine_reorder_trigger_threshold(item):
         and minimum_packs_on_hand > 0
     ):
         candidates.append(pack_size * minimum_packs_on_hand)
+    if (
+        isinstance(demand_signal, (int, float))
+        and demand_signal > 0
+        and isinstance(minimum_cover_cycles, (int, float))
+        and minimum_cover_cycles > 0
+    ):
+        candidates.append(demand_signal * minimum_cover_cycles)
+    daily_demand = None
+    if isinstance(avg_weekly_sales, (int, float)) and avg_weekly_sales > 0:
+        daily_demand = avg_weekly_sales / 7.0
+    elif (
+        isinstance(demand_signal, (int, float))
+        and demand_signal > 0
+        and isinstance(reorder_cycle_weeks, (int, float))
+        and reorder_cycle_weeks > 0
+    ):
+        daily_demand = demand_signal / (reorder_cycle_weeks * 7.0)
+    if (
+        isinstance(daily_demand, (int, float))
+        and daily_demand > 0
+        and isinstance(minimum_cover_days, (int, float))
+        and minimum_cover_days > 0
+    ):
+        candidates.append(daily_demand * minimum_cover_days)
 
     if not candidates:
         item["reorder_trigger_threshold"] = None
@@ -325,6 +364,22 @@ def determine_reorder_trigger_threshold(item):
         and math.isclose(threshold, pack_size * minimum_packs_on_hand)
     ):
         basis = "minimum_packs_on_hand"
+    elif (
+        isinstance(demand_signal, (int, float))
+        and demand_signal > 0
+        and isinstance(minimum_cover_cycles, (int, float))
+        and minimum_cover_cycles > 0
+        and math.isclose(threshold, demand_signal * minimum_cover_cycles)
+    ):
+        basis = "minimum_cover_cycles"
+    elif (
+        isinstance(daily_demand, (int, float))
+        and daily_demand > 0
+        and isinstance(minimum_cover_days, (int, float))
+        and minimum_cover_days > 0
+        and math.isclose(threshold, daily_demand * minimum_cover_days)
+    ):
+        basis = "minimum_cover_days"
     elif (
         isinstance(pack_size, (int, float))
         and pack_size > 0
@@ -747,6 +802,12 @@ def enrich_item(item, inv, pack_qty, rule):
             "rule": "saved rule",
         }.get(minimum_packs_source, "configured")
         detail_parts.append(f"Minimum packs on hand: {minimum_packs:g} ({source_label})")
+    minimum_cover_cycles = item.get("minimum_cover_cycles")
+    if isinstance(minimum_cover_cycles, (int, float)) and minimum_cover_cycles > 0:
+        detail_parts.append(f"Minimum cover cycles: {minimum_cover_cycles:g}")
+    minimum_cover_days = item.get("minimum_cover_days")
+    if isinstance(minimum_cover_days, (int, float)) and minimum_cover_days > 0:
+        detail_parts.append(f"Minimum cover days: {minimum_cover_days:g}")
     detail_parts.append(why)
     item["suggested_qty"] = suggested
     item["core_why"] = " | ".join(detail_parts)
@@ -800,12 +861,11 @@ def get_buy_rule_summary(item, rule):
         parts.append(f"LgPk:{pack}" if pack else "LgPk")
     elif policy == "manual_only":
         parts.append("Manual")
-    else:
-        if pack:
-            parts.append(f"Pk:{pack}")
+    elif pack:
+        parts.append(f"Pk:{pack}")
 
     if rule and rule.get("allow_below_pack"):
-        parts.append("↓OK")
+        parts.append("vOK")
 
     trigger_qty = get_rule_int(rule, "reorder_trigger_qty")
     if trigger_qty is not None:
@@ -819,4 +879,12 @@ def get_buy_rule_summary(item, rule):
     if minimum_packs is not None:
         parts.append(f"MinPk:{minimum_packs:g}")
 
-    return " ".join(parts) if parts else "—"
+    minimum_cover_days = get_rule_float(rule, "minimum_cover_days")
+    if minimum_cover_days is not None:
+        parts.append(f"CvrD:{minimum_cover_days:g}")
+
+    minimum_cover_cycles = get_rule_float(rule, "minimum_cover_cycles")
+    if minimum_cover_cycles is not None:
+        parts.append(f"CvrC:{minimum_cover_cycles:g}")
+
+    return " ".join(parts) if parts else "-"

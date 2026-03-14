@@ -901,6 +901,7 @@ class POBuilderApp:
                 default_vendor_for_key=self._default_vendor_for_key,
                 resolve_pack_size=self._resolve_pack_size,
                 suggest_min_max=self._suggest_min_max,
+                get_cycle_weeks=self._get_cycle_weeks,
                 get_rule_key=get_rule_key,
             )
         except Exception as exc:
@@ -1037,6 +1038,7 @@ class POBuilderApp:
 
     def _recalculate_item(self, item, annotate_release=True):
         session = getattr(self, "session", self)
+        item["reorder_cycle_weeks"] = self._get_cycle_weeks()
         item_workflow.recalculate_item_from_session(item, session, self._suggest_min_max, get_rule_key)
         if annotate_release:
             shipping_flow.annotate_release_decisions(session)

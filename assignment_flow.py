@@ -21,6 +21,7 @@ def prepare_assignment_session(
     default_vendor_for_key,
     resolve_pack_size,
     suggest_min_max,
+    get_cycle_weeks,
     get_rule_key,
 ):
     """Apply filters, merge source data, and prepare the session for assignment."""
@@ -84,6 +85,7 @@ def prepare_assignment_session(
             "order_qty": 0,
             "vendor": default_vendor_for_key(key),
             "pack_size": resolve_pack_size(key),
+            "reorder_cycle_weeks": get_cycle_weeks(),
         })
         seen_keys.add(key)
 
@@ -117,6 +119,7 @@ def prepare_assignment_session(
             "order_qty": 0,
             "vendor": default_vendor_for_key(key),
             "pack_size": resolve_pack_size(key),
+            "reorder_cycle_weeks": get_cycle_weeks(),
         })
 
     if not session.filtered_items:

@@ -45,6 +45,7 @@ class AssignmentFlowTests(unittest.TestCase):
                 default_vendor_for_key=lambda key: "MOTION",
                 resolve_pack_size=lambda key: 6,
                 suggest_min_max=lambda key: (None, None),
+                get_cycle_weeks=lambda: 2,
                 get_rule_key=lambda lc, ic: f"{lc}:{ic}",
             )
 
@@ -52,6 +53,7 @@ class AssignmentFlowTests(unittest.TestCase):
         self.assertEqual(len(session.filtered_items), 1)
         self.assertEqual(session.filtered_items[0]["vendor"], "MOTION")
         self.assertEqual(session.filtered_items[0]["qty_on_po"], 2)
+        self.assertEqual(session.filtered_items[0]["reorder_cycle_weeks"], 2)
         self.assertEqual(session.filtered_items[0]["performance_profile"], "legacy")
         self.assertEqual(session.filtered_items[0]["sales_health_signal"], "unknown")
         self.assertIn("GH781-4", session.duplicate_ic_lookup)
@@ -86,6 +88,7 @@ class AssignmentFlowTests(unittest.TestCase):
                 default_vendor_for_key=lambda key: "",
                 resolve_pack_size=lambda key: None,
                 suggest_min_max=lambda key: (None, None),
+                get_cycle_weeks=lambda: 2,
                 get_rule_key=lambda lc, ic: f"{lc}:{ic}",
             )
 
@@ -123,6 +126,7 @@ class AssignmentFlowTests(unittest.TestCase):
                 default_vendor_for_key=lambda key: "",
                 resolve_pack_size=lambda key: None,
                 suggest_min_max=lambda key: (None, None),
+                get_cycle_weeks=lambda: 2,
                 get_rule_key=lambda lc, ic: f"{lc}:{ic}",
             )
 

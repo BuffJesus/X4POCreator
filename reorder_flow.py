@@ -11,7 +11,8 @@ def _recalculate_item(app, item, *, annotate_release):
 
 
 def get_cycle_weeks(app):
-    cycle = app.var_reorder_cycle.get()
+    cycle_var = getattr(app, "var_reorder_cycle", None)
+    cycle = cycle_var.get() if cycle_var and hasattr(cycle_var, "get") else "Biweekly"
     return {"Weekly": 1, "Biweekly": 2, "Monthly": 4}.get(cycle, 2)
 
 
@@ -70,6 +71,7 @@ def refresh_suggestions(app):
             sug_min, sug_max = suggest(key)
             item["suggested_min"] = sug_min
             item["suggested_max"] = sug_max
+        item["reorder_cycle_weeks"] = cycle_weeks
         raw_eff_sales = item.get("effective_qty_sold", item.get("qty_sold", 0))
         raw_eff_susp = item.get("effective_qty_suspended", item.get("qty_suspended", 0))
         raw_demand = raw_eff_sales + raw_eff_susp
@@ -104,6 +106,7 @@ def normalize_items_to_cycle(app):
     cycle_weeks = app._get_cycle_weeks()
 
     for item in app.filtered_items:
+        item["reorder_cycle_weeks"] = cycle_weeks
         raw_eff_sales = item.get("effective_qty_sold", item.get("qty_sold", 0))
         raw_eff_susp = item.get("effective_qty_suspended", item.get("qty_suspended", 0))
         raw_demand = raw_eff_sales + raw_eff_susp

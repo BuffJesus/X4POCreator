@@ -58,6 +58,8 @@ class RulesTests(unittest.TestCase):
                 "reorder_trigger_qty": "60",
                 "reorder_trigger_pct": "20",
                 "minimum_packs_on_hand": "2",
+                "minimum_cover_days": "14",
+                "minimum_cover_cycles": "2",
                 "acceptable_overstock_qty": "12",
                 "acceptable_overstock_pct": "10",
             },
@@ -65,6 +67,8 @@ class RulesTests(unittest.TestCase):
         self.assertEqual(item["reorder_trigger_qty"], 60)
         self.assertEqual(item["reorder_trigger_pct"], 20.0)
         self.assertEqual(item["minimum_packs_on_hand"], 2)
+        self.assertEqual(item["minimum_cover_days"], 14.0)
+        self.assertEqual(item["minimum_cover_cycles"], 2.0)
         self.assertEqual(item["acceptable_overstock_qty"], 12)
         self.assertEqual(item["acceptable_overstock_pct"], 10.0)
 
@@ -72,6 +76,8 @@ class RulesTests(unittest.TestCase):
         self.assertTrue(has_pack_trigger_fields({"reorder_trigger_qty": 60}))
         self.assertTrue(has_pack_trigger_fields({"reorder_trigger_pct": 20}))
         self.assertTrue(has_pack_trigger_fields({"minimum_packs_on_hand": 2}))
+        self.assertTrue(has_pack_trigger_fields({"minimum_cover_days": 14}))
+        self.assertTrue(has_pack_trigger_fields({"minimum_cover_cycles": 2}))
         self.assertFalse(has_pack_trigger_fields({"acceptable_overstock_qty": 12}))
         self.assertFalse(has_pack_trigger_fields({}))
 
@@ -93,6 +99,27 @@ class RulesTests(unittest.TestCase):
         }
         self.assertEqual(determine_reorder_trigger_threshold(item), 200)
         self.assertEqual(item["reorder_trigger_basis"], "minimum_packs_on_hand")
+
+    def test_determine_reorder_trigger_threshold_uses_minimum_cover_cycles(self):
+        item = {
+            "inventory": {"min": 10},
+            "pack_size": 100,
+            "demand_signal": 30,
+            "minimum_cover_cycles": 2,
+        }
+        self.assertEqual(determine_reorder_trigger_threshold(item), 60)
+        self.assertEqual(item["reorder_trigger_basis"], "minimum_cover_cycles")
+
+    def test_determine_reorder_trigger_threshold_uses_minimum_cover_days(self):
+        item = {
+            "inventory": {"min": 10},
+            "pack_size": 100,
+            "demand_signal": 30,
+            "reorder_cycle_weeks": 2,
+            "minimum_cover_days": 21,
+        }
+        self.assertEqual(determine_reorder_trigger_threshold(item), 45)
+        self.assertEqual(item["reorder_trigger_basis"], "minimum_cover_days")
 
     def test_determine_acceptable_overstock_qty_uses_max_of_qty_and_pct(self):
         item = {
@@ -439,17 +466,19 @@ class RulesTests(unittest.TestCase):
             {"min_order_qty": 250, "allow_below_pack": True},
         )
         self.assertIn("Soft:250", summary)
-        self.assertIn("↓OK", summary)
+        self.assertIn("vOK", summary)
 
     def test_buy_rule_summary_includes_trigger_fields(self):
         summary = get_buy_rule_summary(
             {"order_policy": "standard", "pack_size": 300},
-            {"reorder_trigger_qty": 60, "reorder_trigger_pct": 20, "minimum_packs_on_hand": 2},
+            {"reorder_trigger_qty": 60, "reorder_trigger_pct": 20, "minimum_packs_on_hand": 2, "minimum_cover_days": 14, "minimum_cover_cycles": 2},
         )
         self.assertIn("Pk:300", summary)
         self.assertIn("Trg:60", summary)
         self.assertIn("Trg:20%", summary)
         self.assertIn("MinPk:2", summary)
+        self.assertIn("CvrD:14", summary)
+        self.assertIn("CvrC:2", summary)
 
     def test_buy_rule_summary_labels_pack_trigger_policy(self):
         summary = get_buy_rule_summary(
@@ -514,6 +543,8 @@ class RulesTests(unittest.TestCase):
             "reorder_trigger_qty": 60,
             "reorder_trigger_pct": 20,
             "minimum_packs_on_hand": 2,
+            "minimum_cover_days": 14,
+            "minimum_cover_cycles": 2,
             "acceptable_overstock_qty": 12,
             "acceptable_overstock_pct": 10,
         }
@@ -521,9 +552,61 @@ class RulesTests(unittest.TestCase):
         self.assertEqual(item["reorder_trigger_qty"], 60)
         self.assertEqual(item["reorder_trigger_pct"], 20.0)
         self.assertEqual(item["minimum_packs_on_hand"], 2)
+        self.assertEqual(item["minimum_cover_days"], 14.0)
+        self.assertEqual(item["minimum_cover_cycles"], 2.0)
         self.assertEqual(item["acceptable_overstock_qty"], 12)
         self.assertEqual(item["acceptable_overstock_pct"], 10.0)
         self.assertEqual(item["acceptable_overstock_qty_effective"], 12)
+
+
+    def test_enrich_item_with_minimum_cover_cycles_raises_effective_reorder_floor(self):
+        item = {
+            "description": "FILTER KIT",
+            "qty_sold": 30,
+            "qty_suspended": 0,
+            "qty_on_po": 0,
+            "pack_size": 100,
+            "suggested_max": 20,
+            "demand_signal": 30,
+        }
+        rule = {"order_policy": "pack_trigger", "minimum_cover_cycles": 2}
+
+        enrich_item(
+            item,
+            {"qoh": 50, "max": 20, "min": 5, "last_sale": "05-Mar-2026", "last_receipt": "01-Mar-2026"},
+            100,
+            rule,
+        )
+        self.assertTrue(item["reorder_needed"])
+        self.assertEqual(item["reorder_trigger_threshold"], 60)
+        self.assertEqual(item["reorder_trigger_basis"], "minimum_cover_cycles")
+        self.assertEqual(item["effective_target_stock"], 60)
+        self.assertIn("Minimum cover cycles: 2", item["why"])
+
+    def test_enrich_item_with_minimum_cover_days_raises_effective_reorder_floor(self):
+        item = {
+            "description": "FILTER KIT",
+            "qty_sold": 30,
+            "qty_suspended": 0,
+            "qty_on_po": 0,
+            "pack_size": 100,
+            "suggested_max": 20,
+            "demand_signal": 30,
+            "reorder_cycle_weeks": 2,
+        }
+        rule = {"order_policy": "pack_trigger", "minimum_cover_days": 21}
+
+        enrich_item(
+            item,
+            {"qoh": 40, "max": 20, "min": 5, "last_sale": "05-Mar-2026", "last_receipt": "01-Mar-2026"},
+            100,
+            rule,
+        )
+        self.assertTrue(item["reorder_needed"])
+        self.assertEqual(item["reorder_trigger_threshold"], 45)
+        self.assertEqual(item["reorder_trigger_basis"], "minimum_cover_days")
+        self.assertEqual(item["effective_target_stock"], 45)
+        self.assertIn("Minimum cover days: 21", item["why"])
 
     def test_enrich_item_uses_configured_trigger_gate_and_reason_text(self):
         item = {

@@ -447,17 +447,25 @@ def open_buy_rule_editor(app, idx, order_rules_file):
     var_min_packs = tk.StringVar(value=str(get_rule_int(rule, "minimum_packs_on_hand") or ""))
     ttk.Entry(form, textvariable=var_min_packs, width=10).grid(row=6, column=1, sticky="w", padx=8, pady=4)
 
-    ttk.Label(form, text="Overstock Qty:").grid(row=7, column=0, sticky="w", pady=4)
+    ttk.Label(form, text="Cover Days:").grid(row=7, column=0, sticky="w", pady=4)
+    var_cover_days = tk.StringVar(value=str(get_rule_float(rule, "minimum_cover_days") or ""))
+    ttk.Entry(form, textvariable=var_cover_days, width=10).grid(row=7, column=1, sticky="w", padx=8, pady=4)
+
+    ttk.Label(form, text="Cover Cycles:").grid(row=8, column=0, sticky="w", pady=4)
+    var_cover_cycles = tk.StringVar(value=str(get_rule_float(rule, "minimum_cover_cycles") or ""))
+    ttk.Entry(form, textvariable=var_cover_cycles, width=10).grid(row=8, column=1, sticky="w", padx=8, pady=4)
+
+    ttk.Label(form, text="Overstock Qty:").grid(row=9, column=0, sticky="w", pady=4)
     var_overstock_qty = tk.StringVar(value=str(get_rule_int(rule, "acceptable_overstock_qty") or ""))
-    ttk.Entry(form, textvariable=var_overstock_qty, width=10).grid(row=7, column=1, sticky="w", padx=8, pady=4)
+    ttk.Entry(form, textvariable=var_overstock_qty, width=10).grid(row=9, column=1, sticky="w", padx=8, pady=4)
 
-    ttk.Label(form, text="Overstock %:").grid(row=8, column=0, sticky="w", pady=4)
+    ttk.Label(form, text="Overstock %:").grid(row=10, column=0, sticky="w", pady=4)
     var_overstock_pct = tk.StringVar(value=str(get_rule_float(rule, "acceptable_overstock_pct") or ""))
-    ttk.Entry(form, textvariable=var_overstock_pct, width=10).grid(row=8, column=1, sticky="w", padx=8, pady=4)
+    ttk.Entry(form, textvariable=var_overstock_pct, width=10).grid(row=10, column=1, sticky="w", padx=8, pady=4)
 
-    ttk.Label(form, text="Notes:").grid(row=9, column=0, sticky="nw", pady=4)
+    ttk.Label(form, text="Notes:").grid(row=11, column=0, sticky="nw", pady=4)
     notes_entry = ttk.Entry(form, width=30)
-    notes_entry.grid(row=9, column=1, sticky="w", padx=8, pady=4)
+    notes_entry.grid(row=11, column=1, sticky="w", padx=8, pady=4)
     notes_entry.insert(0, rule.get("notes", ""))
 
     info = ttk.LabelFrame(dlg, text="Current Data", padding=8)
@@ -489,6 +497,8 @@ def open_buy_rule_editor(app, idx, order_rules_file):
             reorder_trigger_qty=var_trigger_qty.get().strip(),
             reorder_trigger_pct=var_trigger_pct.get().strip(),
             minimum_packs_on_hand=var_min_packs.get().strip(),
+            minimum_cover_days=var_cover_days.get().strip(),
+            minimum_cover_cycles=var_cover_cycles.get().strip(),
             acceptable_overstock_qty=var_overstock_qty.get().strip(),
             acceptable_overstock_pct=var_overstock_pct.get().strip(),
             initial_policy=initial_policy,
@@ -529,6 +539,20 @@ def open_buy_rule_editor(app, idx, order_rules_file):
         if min_packs_val:
             try:
                 new_rule["minimum_packs_on_hand"] = int(float(min_packs_val))
+            except ValueError:
+                pass
+
+        cover_days_val = var_cover_days.get().strip()
+        if cover_days_val:
+            try:
+                new_rule["minimum_cover_days"] = float(cover_days_val)
+            except ValueError:
+                pass
+
+        cover_cycles_val = var_cover_cycles.get().strip()
+        if cover_cycles_val:
+            try:
+                new_rule["minimum_cover_cycles"] = float(cover_cycles_val)
             except ValueError:
                 pass
 
@@ -696,6 +720,8 @@ def item_details_rows(app, item, inv, key):
         ("Trigger Qty", str(item.get("reorder_trigger_qty", "-") if item.get("reorder_trigger_qty") is not None else "-")),
         ("Trigger %", _format_metric(item.get("reorder_trigger_pct")) if item.get("reorder_trigger_pct") is not None else "-"),
         ("Min Packs", minimum_packs_display),
+        ("Cover Days", _format_metric(item.get("minimum_cover_days")) if item.get("minimum_cover_days") is not None else "-"),
+        ("Cover Cycles", _format_metric(item.get("minimum_cover_cycles")) if item.get("minimum_cover_cycles") is not None else "-"),
         ("Overstock Qty", str(item.get("acceptable_overstock_qty", "-") if item.get("acceptable_overstock_qty") is not None else "-")),
         ("Overstock %", _format_metric(item.get("acceptable_overstock_pct")) if item.get("acceptable_overstock_pct") is not None else "-"),
         ("Allowed Overstock", str(item.get("acceptable_overstock_qty_effective", "-") if item.get("acceptable_overstock_qty_effective") is not None else "-")),

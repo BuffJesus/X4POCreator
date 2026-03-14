@@ -341,6 +341,8 @@ class BulkDialogTests(unittest.TestCase):
             "reorder_trigger_pct": 20.0,
             "minimum_packs_on_hand": 2,
             "minimum_packs_on_hand_source": "rule",
+            "minimum_cover_days": 14.0,
+            "minimum_cover_cycles": 2.0,
             "recency_confidence": "medium",
             "data_completeness": "partial_recency",
             "acceptable_overstock_qty": 12,
@@ -360,6 +362,8 @@ class BulkDialogTests(unittest.TestCase):
         self.assertEqual(row_lookup["Trigger Qty"], "60")
         self.assertEqual(row_lookup["Trigger %"], "20.00")
         self.assertEqual(row_lookup["Min Packs"], "2 (Saved Rule)")
+        self.assertEqual(row_lookup["Cover Days"], "14.00")
+        self.assertEqual(row_lookup["Cover Cycles"], "2.00")
         self.assertEqual(row_lookup["Recency Confidence"], "medium")
         self.assertEqual(row_lookup["Data Completeness"], "partial_recency")
         self.assertEqual(row_lookup["Overstock Qty"], "12")
