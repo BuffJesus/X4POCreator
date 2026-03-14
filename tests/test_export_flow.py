@@ -190,8 +190,10 @@ class ExportFlowTests(unittest.TestCase):
         snapshot = export_flow.build_session_snapshot(app, "C:\\Exports", ("C:\\Exports\\PO_A.xlsx",), issues)
 
         self.assertEqual(snapshot.output_dir, "C:\\Exports")
+        self.assertEqual(snapshot.export_scope_label, "selected items")
         self.assertEqual(snapshot.loaded_report_paths["sales"], "C:\\Reports\\sales.csv")
         self.assertEqual(snapshot.po_files, ("C:\\Exports\\PO_A.xlsx",))
+        self.assertEqual(snapshot.exported_items, ())
         self.assertEqual(snapshot.qoh_adjustments[0]["new"], 5)
         self.assertEqual(snapshot.order_rules["AER-:GH781-4"]["pack_size"], 500)
 
@@ -229,11 +231,26 @@ class ExportFlowTests(unittest.TestCase):
             "C:\\Exports",
             ("C:\\Exports\\PO_A.xlsx",),
             issues,
+            exported_items=({"line_code": "AER-", "item_code": "GH781-4", "order_qty": 250, "export_batch_type": "planned_release"},),
+            export_scope_label="planned today items",
         )
 
         self.assertEqual(snapshot.loaded_report_paths["sales"], "C:\\Reports\\sales.csv")
+        self.assertEqual(snapshot.export_scope_label, "planned today items")
+        self.assertEqual(snapshot.exported_items[0]["export_batch_type"], "planned_release")
         self.assertEqual(snapshot.qoh_adjustments[0]["new"], 5)
         self.assertEqual(snapshot.order_rules["AER-:GH781-4"]["pack_size"], 500)
+
+    def test_build_export_audit_items_tags_immediate_and_planned_exports(self):
+        audited = export_flow.build_export_audit_items([
+            {"item_code": "A", "release_decision": "release_now", "target_order_date": "2026-03-10", "target_release_date": "2026-03-10"},
+            {"item_code": "B", "release_decision": "export_next_business_day_for_free_day", "target_order_date": "2026-03-10", "target_release_date": "2026-03-11"},
+        ], "selected items")
+
+        self.assertEqual(audited[0]["export_batch_type"], "immediate")
+        self.assertEqual(audited[1]["export_batch_type"], "planned_release")
+        self.assertEqual(audited[1]["export_scope_label"], "selected items")
+        self.assertEqual(audited[1]["exported_for_release_date"], "2026-03-11")
 
     def test_export_maintenance_csv_writes_ascii_safe_rows(self):
         issues = [

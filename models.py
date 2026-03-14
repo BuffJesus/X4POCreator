@@ -69,7 +69,9 @@ class SessionSnapshot:
     created_at: str
     output_dir: str
     po_files: Tuple[str, ...]
+    export_scope_label: str
     loaded_report_paths: Dict[str, str]
+    exported_items: Tuple[dict, ...]
     assigned_items: Tuple[dict, ...]
     maintenance_issues: Tuple[MaintenanceIssue, ...]
     startup_warning_rows: Tuple[dict, ...]

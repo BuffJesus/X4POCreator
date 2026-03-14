@@ -148,6 +148,19 @@ def choose_output_dir(app):
     return output_dir
 
 
+def build_export_audit_items(items, export_scope_label):
+    audited = []
+    for item in items or []:
+        entry = copy.deepcopy(item)
+        bucket = export_bucket(item)
+        entry["export_batch_type"] = "planned_release" if bucket == "planned_today" else "immediate"
+        entry["export_scope_label"] = export_scope_label
+        entry["exported_for_order_date"] = str(item.get("target_order_date", "") or "").strip()
+        entry["exported_for_release_date"] = str(item.get("target_release_date", "") or "").strip()
+        audited.append(entry)
+    return audited
+
+
 def do_export(app, export_vendor_po, order_history_file, sessions_dir, *, assigned_items=None, export_scope_label="selected items"):
     session = getattr(app, "session", app)
     source_items = list(assigned_items if assigned_items is not None else session.assigned_items)
@@ -185,6 +198,7 @@ def do_export(app, export_vendor_po, order_history_file, sessions_dir, *, assign
     selected_export_items = choose_export_items(app, exportable_items)
     if not selected_export_items:
         return
+    audited_export_items = build_export_audit_items(selected_export_items, export_scope_label)
 
     planned_items = [item for item in selected_export_items if export_bucket(item) == "planned_today"]
     immediate_items = [item for item in selected_export_items if export_bucket(item) == "release_now"]
@@ -208,7 +222,7 @@ def do_export(app, export_vendor_po, order_history_file, sessions_dir, *, assign
             messagebox.showerror("Export Error", f"Failed to export PO for {vendor}:\n{exc}")
             return
 
-    storage.append_order_history(order_history_file, selected_export_items)
+    storage.append_order_history(order_history_file, audited_export_items)
     suspense_carry_result = None
     if hasattr(app, "_persist_suspense_carry"):
         suspense_carry_result = app._persist_suspense_carry()
@@ -218,6 +232,8 @@ def do_export(app, export_vendor_po, order_history_file, sessions_dir, *, assign
         output_dir,
         created_files,
         maintenance_issues,
+        exported_items=audited_export_items,
+        export_scope_label=export_scope_label,
     )
     try:
         storage.save_session_snapshot(sessions_dir, session_snapshot)
@@ -267,7 +283,7 @@ def do_export(app, export_vendor_po, order_history_file, sessions_dir, *, assign
     app._show_maintenance_report(output_dir, maintenance_issues)
 
 
-def build_session_snapshot_from_state(session, loaded_report_paths, output_dir, created_files, maintenance_issues):
+def build_session_snapshot_from_state(session, loaded_report_paths, output_dir, created_files, maintenance_issues, *, exported_items=(), export_scope_label="selected items"):
     qoh_adjustments = [
         {
             "line_code": key[0],
@@ -281,7 +297,9 @@ def build_session_snapshot_from_state(session, loaded_report_paths, output_dir, 
         created_at=datetime.now().isoformat(),
         output_dir=output_dir,
         po_files=tuple(created_files),
+        export_scope_label=export_scope_label,
         loaded_report_paths=loaded_report_paths,
+        exported_items=tuple(copy.deepcopy(item) for item in exported_items),
         assigned_items=tuple(copy.deepcopy(item) for item in session.assigned_items),
         maintenance_issues=tuple(maintenance_issues),
         startup_warning_rows=tuple(copy.deepcopy(row) for row in session.startup_warning_rows),
@@ -290,7 +308,7 @@ def build_session_snapshot_from_state(session, loaded_report_paths, output_dir, 
     )
 
 
-def build_session_snapshot(app, output_dir, created_files, maintenance_issues):
+def build_session_snapshot(app, output_dir, created_files, maintenance_issues, *, exported_items=(), export_scope_label="selected items"):
     session = getattr(app, "session", app)
     return build_session_snapshot_from_state(
         session,
@@ -298,6 +316,8 @@ def build_session_snapshot(app, output_dir, created_files, maintenance_issues):
         output_dir,
         created_files,
         maintenance_issues,
+        exported_items=exported_items,
+        export_scope_label=export_scope_label,
     )
 
 

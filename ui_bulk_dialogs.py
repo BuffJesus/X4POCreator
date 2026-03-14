@@ -483,6 +483,64 @@ def open_buy_rule_editor(app, idx, order_rules_file):
         style="Info.TLabel",
     ).pack(anchor="w")
 
+    inferred_frame = None
+    inferred_actions = []
+    if (
+        item.get("minimum_packs_on_hand_source") == "heuristic"
+        and get_rule_int(rule, "minimum_packs_on_hand") is None
+        and item.get("minimum_packs_on_hand") is not None
+    ) or (
+        item.get("minimum_cover_cycles_source") == "heuristic"
+        and get_rule_float(rule, "minimum_cover_cycles") is None
+        and item.get("minimum_cover_cycles") is not None
+    ):
+        inferred_frame = ttk.LabelFrame(dlg, text="Inferred Package Floors", padding=8)
+        inferred_frame.pack(fill=tk.X, padx=16, pady=(0, 8))
+        ttk.Label(
+            inferred_frame,
+            text=(
+                "This item currently uses inferred hardware/package floors. "
+                "Use the buttons below to explicitly adopt them into the saved buy rule."
+            ),
+            style="Info.TLabel",
+            wraplength=760,
+            justify="left",
+        ).pack(anchor="w")
+
+        action_row = ttk.Frame(inferred_frame)
+        action_row.pack(fill=tk.X, pady=(8, 0))
+
+        if (
+            item.get("minimum_packs_on_hand_source") == "heuristic"
+            and get_rule_int(rule, "minimum_packs_on_hand") is None
+            and item.get("minimum_packs_on_hand") is not None
+        ):
+            inferred_min_packs = int(float(item.get("minimum_packs_on_hand") or 0))
+
+            def _use_inferred_min_packs():
+                var_min_packs.set(str(inferred_min_packs))
+
+            inferred_actions.append(
+                ttk.Button(action_row, text="Use Inferred Min Packs", command=_use_inferred_min_packs)
+            )
+
+        if (
+            item.get("minimum_cover_cycles_source") == "heuristic"
+            and get_rule_float(rule, "minimum_cover_cycles") is None
+            and item.get("minimum_cover_cycles") is not None
+        ):
+            inferred_cover_cycles = float(item.get("minimum_cover_cycles") or 0)
+
+            def _use_inferred_cover_cycles():
+                var_cover_cycles.set(str(int(inferred_cover_cycles)) if inferred_cover_cycles.is_integer() else str(inferred_cover_cycles))
+
+            inferred_actions.append(
+                ttk.Button(action_row, text="Use Inferred Cover Cycles", command=_use_inferred_cover_cycles)
+            )
+
+        for btn in inferred_actions:
+            btn.pack(side=tk.LEFT, padx=4)
+
     def _save_rule():
         new_rule = {
             "allow_below_pack": var_allow.get(),

@@ -271,6 +271,13 @@ def append_order_history(path, assigned_items, now=None):
                 "item_code": item_code,
                 "qty": qty,
                 "vendor": vendor,
+                "export_batch_type": str(item.get("export_batch_type", "") or "").strip(),
+                "export_scope_label": str(item.get("export_scope_label", "") or "").strip(),
+                "release_decision": str(item.get("release_decision", "") or "").strip(),
+                "target_order_date": str(item.get("target_order_date", "") or "").strip(),
+                "target_release_date": str(item.get("target_release_date", "") or "").strip(),
+                "exported_for_order_date": str(item.get("exported_for_order_date", "") or "").strip(),
+                "exported_for_release_date": str(item.get("exported_for_release_date", "") or "").strip(),
             })
         if not exported_items:
             return {"payload": history, "meta": _get_meta(path), "conflict": False}

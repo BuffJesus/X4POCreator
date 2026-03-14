@@ -1059,6 +1059,126 @@ class POBuilderTests(unittest.TestCase):
         self.assertEqual(fake_app.filtered_items[0]["minimum_cover_cycles"], 2.0)
         self.assertEqual(fake_app.filtered_items[0]["acceptable_overstock_qty"], 12)
 
+    def test_buy_rule_editor_can_adopt_inferred_package_floors_into_saved_rule(self):
+        fake_app = self._make_calc_app()
+        fake_app.root = SimpleNamespace()
+        fake_app._autosize_dialog = lambda *args, **kwargs: None
+        fake_app._bulk_row_values = lambda item: ("",)
+        fake_app.bulk_sheet = SimpleNamespace(refresh_row=lambda row_id, values: None)
+        fake_app._apply_bulk_filter = lambda: None
+        fake_app._update_bulk_summary = lambda: None
+        key = ("AER-", "GH781-4")
+        fake_app.inventory_lookup[key] = {"qoh": 150, "min": 5, "max": 20, "last_sale": "05-Mar-2026", "last_receipt": "01-Mar-2026"}
+        fake_app.filtered_items = [{
+            "line_code": key[0],
+            "item_code": key[1],
+            "description": "5/16 HEX NUT",
+            "qty_sold": 30,
+            "qty_suspended": 0,
+            "qty_on_po": 0,
+            "demand_signal": 30,
+            "pack_size": 100,
+            "final_qty": 100,
+            "order_qty": 100,
+            "order_policy": "pack_trigger",
+            "suggested_qty": 100,
+            "raw_need": 50,
+            "minimum_packs_on_hand": 2,
+            "minimum_packs_on_hand_source": "heuristic",
+            "minimum_cover_cycles": 2,
+            "minimum_cover_cycles_source": "heuristic",
+        }]
+        fake_app.order_rules = {}
+
+        created_buttons = {}
+
+        class FakeWidget:
+            def __init__(self, *args, **kwargs):
+                pass
+            def pack(self, *args, **kwargs):
+                return self
+            def grid(self, *args, **kwargs):
+                return self
+            def configure(self, *args, **kwargs):
+                return self
+            config = configure
+            def bind(self, *args, **kwargs):
+                return self
+            def insert(self, *args, **kwargs):
+                return self
+            def destroy(self):
+                return None
+            def wait_window(self):
+                return None
+            def transient(self, *args, **kwargs):
+                return self
+            def grab_set(self, *args, **kwargs):
+                return self
+            def title(self, *args, **kwargs):
+                return self
+
+        class FakeTopLevel(FakeWidget):
+            def configure(self, *args, **kwargs):
+                return self
+
+        class FakeStringVar:
+            queue = []
+            def __init__(self, value=""):
+                self.value = FakeStringVar.queue.pop(0) if FakeStringVar.queue else value
+            def get(self):
+                return self.value
+            def set(self, value):
+                self.value = value
+
+        class FakeBooleanVar:
+            queue = []
+            def __init__(self, value=False):
+                self.value = FakeBooleanVar.queue.pop(0) if FakeBooleanVar.queue else value
+            def get(self):
+                return self.value
+            def set(self, value):
+                self.value = value
+
+        class FakeEntry(FakeWidget):
+            values = []
+            def __init__(self, *args, **kwargs):
+                self.value = FakeEntry.values.pop(0) if FakeEntry.values else ""
+            def insert(self, index, text):
+                if not self.value:
+                    self.value = text
+            def get(self):
+                return self.value
+
+        class FakeButton(FakeWidget):
+            def __init__(self, *args, **kwargs):
+                self.command = kwargs.get("command")
+                text = kwargs.get("text", "")
+                created_buttons[text] = self
+
+        FakeStringVar.queue = ["pack_trigger", "", "100", "", "", "", "", "", "", ""]
+        FakeBooleanVar.queue = [False]
+        FakeEntry.values = [""]
+
+        with patch("ui_bulk_dialogs.tk.Toplevel", FakeTopLevel), \
+             patch("ui_bulk_dialogs.ttk.Label", lambda *args, **kwargs: FakeWidget()), \
+             patch("ui_bulk_dialogs.ttk.LabelFrame", lambda *args, **kwargs: FakeWidget()), \
+             patch("ui_bulk_dialogs.ttk.Combobox", lambda *args, **kwargs: FakeWidget()), \
+             patch("ui_bulk_dialogs.ttk.Checkbutton", lambda *args, **kwargs: FakeWidget()), \
+             patch("ui_bulk_dialogs.ttk.Entry", FakeEntry), \
+             patch("ui_bulk_dialogs.ttk.Frame", lambda *args, **kwargs: FakeWidget()), \
+             patch("ui_bulk_dialogs.ttk.Button", FakeButton), \
+             patch("ui_bulk_dialogs.tk.StringVar", FakeStringVar), \
+             patch("ui_bulk_dialogs.tk.BooleanVar", FakeBooleanVar), \
+             patch("ui_bulk_dialogs.storage.save_order_rules", lambda *args, **kwargs: None):
+            ui_bulk_dialogs.open_buy_rule_editor(fake_app, 0, po_builder.ORDER_RULES_FILE)
+            created_buttons["Use Inferred Min Packs"].command()
+            created_buttons["Use Inferred Cover Cycles"].command()
+            created_buttons["Save Rule"].command()
+
+        saved_rule = fake_app.order_rules["AER-:GH781-4"]
+        self.assertEqual(saved_rule["minimum_packs_on_hand"], 2)
+        self.assertEqual(saved_rule["minimum_cover_cycles"], 2.0)
+
     def test_buy_rule_save_explicit_pack_trigger_policy_is_persisted_and_applied(self):
         fake_app = self._make_calc_app()
         fake_app.root = SimpleNamespace()

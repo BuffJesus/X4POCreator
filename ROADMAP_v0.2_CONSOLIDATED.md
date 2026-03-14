@@ -84,7 +84,7 @@ The goal is to keep one phased checklist that reflects what is actually done in 
 - [x] Explain trigger-driven and tolerance-driven behavior in `why` text.
 - [x] Add persisted rule fields for `minimum_cover_days`.
 - [x] Add persisted rule fields for `minimum_cover_cycles`.
-- [ ] Decide whether inferred two-pack hardware floors should persist into saved rules after explicit confirmation.
+- [x] Decide whether inferred two-pack hardware floors should persist into saved rules after explicit confirmation.
 
 ## Phase 4. Review Coherence, Large-Pack Handling, and Confidence Gating
 
@@ -204,7 +204,7 @@ This is the next high-value shipping slice. The current model already uses `repl
   - release-ready POs only
   - release-ready plus due-soon planned POs
   - a filtered "planned for tomorrow" batch
-- [ ] Keep order history and session snapshots clear about whether a PO was:
+- [x] Keep order history and session snapshots clear about whether a PO was:
   - exported now for immediate ordering
   - exported early for a scheduled free-freight release
   - still held and not exported

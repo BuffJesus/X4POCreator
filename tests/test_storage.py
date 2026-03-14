@@ -110,13 +110,26 @@ class StorageTests(unittest.TestCase):
     def test_append_and_get_recent_orders(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "order_history.json"
-            assigned = [{"line_code": "AER-", "item_code": "GH781-4", "order_qty": 250, "vendor": "GREGDIST"}]
+            assigned = [{
+                "line_code": "AER-",
+                "item_code": "GH781-4",
+                "order_qty": 250,
+                "vendor": "GREGDIST",
+                "export_batch_type": "planned_release",
+                "export_scope_label": "planned today items",
+                "release_decision": "export_next_business_day_for_free_day",
+                "target_order_date": "2026-03-10",
+                "target_release_date": "2026-03-11",
+            }]
             now = datetime(2026, 3, 10, 12, 0, 0)
             storage.append_order_history(str(path), assigned, now=now)
             recent = storage.get_recent_orders(str(path), lookback_days=14, now=now)
             self.assertIn(("AER-", "GH781-4"), recent)
             self.assertEqual(recent[("AER-", "GH781-4")][0]["qty"], 250)
             self.assertEqual(recent[("AER-", "GH781-4")][0]["vendor"], "GREGDIST")
+            raw_history = storage.load_order_history(str(path))
+            self.assertEqual(raw_history[0]["items"][0]["export_batch_type"], "planned_release")
+            self.assertEqual(raw_history[0]["items"][0]["release_decision"], "export_next_business_day_for_free_day")
 
     def test_append_order_history_skips_zero_qty_and_blank_keys(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -224,7 +237,9 @@ class StorageTests(unittest.TestCase):
                 created_at="2026-03-10T12:00:00",
                 output_dir="C:\\Exports",
                 po_files=("C:\\Exports\\PO_A.xlsx",),
+                export_scope_label="selected items",
                 loaded_report_paths={"sales": "C:\\Reports\\sales.csv"},
+                exported_items=({"line_code": "AER-", "item_code": "GH781-4", "order_qty": 250, "export_batch_type": "immediate"},),
                 assigned_items=({"line_code": "AER-", "item_code": "GH781-4", "order_qty": 250},),
                 maintenance_issues=(
                     MaintenanceIssue(
@@ -254,6 +269,8 @@ class StorageTests(unittest.TestCase):
             payload = json.loads(Path(path).read_text(encoding="utf-8"))
             self.assertEqual(payload["created_at"], "2026-03-10T12:00:00")
             self.assertEqual(payload["po_files"][0], "C:\\Exports\\PO_A.xlsx")
+            self.assertEqual(payload["export_scope_label"], "selected items")
+            self.assertEqual(payload["exported_items"][0]["export_batch_type"], "immediate")
             self.assertEqual(payload["maintenance_issues"][0]["pack_size"], "500")
             self.assertTrue(Path(path).name.startswith("Session_20260310_120000_"))
 
