@@ -28,6 +28,16 @@ def save_order_rules(app):
     app._loaded_order_rules = copy.deepcopy(app.order_rules)
 
 
+def save_vendor_policies(app):
+    result = storage.save_vendor_policies(
+        app._data_path("vendor_policies"),
+        app.vendor_policies,
+        base_policies=app._loaded_vendor_policies,
+    )
+    app.vendor_policies = dict(result["payload"])
+    app._loaded_vendor_policies = copy.deepcopy(app.vendor_policies)
+
+
 def save_duplicate_whitelist(app):
     result = storage.save_duplicate_whitelist(
         app._data_path("duplicate_whitelist"),
@@ -112,10 +122,17 @@ def rename_vendor_code(app, old_vendor, new_vendor):
             if app._normalize_vendor_code(item.get("vendor", "")) == old_normalized:
                 item["vendor"] = new_normalized
 
+    if old_normalized in getattr(app, "vendor_policies", {}):
+        policy = copy.deepcopy(app.vendor_policies.get(old_normalized, {}))
+        app.vendor_policies.pop(old_normalized, None)
+        app.vendor_policies[new_normalized] = policy
+
     app.vendor_codes_used = [code for code in app.vendor_codes_used if code != old_normalized]
     if new_normalized not in app.vendor_codes_used:
         app.vendor_codes_used.append(new_normalized)
     app.vendor_codes_used.sort()
     app._save_vendor_codes()
+    if hasattr(app, "_save_vendor_policies"):
+        app._save_vendor_policies()
     app._refresh_vendor_inputs()
     return new_normalized

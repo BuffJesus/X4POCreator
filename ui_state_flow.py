@@ -13,7 +13,11 @@ def remove_vendor_code(app, vendor):
     if not normalized:
         return
     app.vendor_codes_used = [code for code in app.vendor_codes_used if code != normalized]
+    if hasattr(app, "vendor_policies"):
+        app.vendor_policies.pop(normalized, None)
     app._save_vendor_codes()
+    if hasattr(app, "_save_vendor_policies"):
+        app._save_vendor_policies()
     app._refresh_vendor_inputs()
 
 

@@ -38,15 +38,18 @@ class UIStateFlowTests(unittest.TestCase):
         events = []
         fake_app = SimpleNamespace(
             vendor_codes_used=["GREGDIST", "MOTION"],
+            vendor_policies={"GREGDIST": {"shipping_policy": "hold_for_threshold"}},
             _normalize_vendor_code=lambda value: str(value or "").strip().upper(),
             _save_vendor_codes=lambda: events.append("save"),
+            _save_vendor_policies=lambda: events.append("save_policy"),
             _refresh_vendor_inputs=lambda: events.append("refresh"),
         )
 
         ui_state_flow.remove_vendor_code(fake_app, " gregdist ")
 
         self.assertEqual(fake_app.vendor_codes_used, ["MOTION"])
-        self.assertEqual(events, ["save", "refresh"])
+        self.assertNotIn("GREGDIST", fake_app.vendor_policies)
+        self.assertEqual(events, ["save", "save_policy", "refresh"])
 
 
 if __name__ == "__main__":

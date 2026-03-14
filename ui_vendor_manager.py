@@ -1,6 +1,122 @@
 import tkinter as tk
 from tkinter import ttk, messagebox, simpledialog
 
+import shipping_flow
+
+
+def apply_vendor_policy_changes(app, vendor, *, shipping_policy, weekdays, threshold, urgent_floor):
+    normalized_vendor = app._normalize_vendor_code(vendor)
+    if not normalized_vendor:
+        return False
+    normalized_policy = shipping_flow.normalize_vendor_policy({
+        "shipping_policy": shipping_policy,
+        "preferred_free_ship_weekdays": weekdays,
+        "free_freight_threshold": threshold,
+        "urgent_release_floor": urgent_floor,
+    })
+    has_meaningful_values = any((
+        normalized_policy.get("shipping_policy", "release_immediately") != "release_immediately",
+        normalized_policy.get("preferred_free_ship_weekdays"),
+        normalized_policy.get("free_freight_threshold", 0) > 0,
+        normalized_policy.get("urgent_release_floor", 0) > 0,
+    ))
+    if has_meaningful_values:
+        app.vendor_policies[normalized_vendor] = normalized_policy
+    else:
+        app.vendor_policies.pop(normalized_vendor, None)
+    app._save_vendor_policies()
+    if hasattr(app, "_annotate_release_decisions"):
+        app._annotate_release_decisions()
+    if hasattr(app, "_apply_bulk_filter"):
+        app._apply_bulk_filter()
+    if hasattr(app, "_update_bulk_summary"):
+        app._update_bulk_summary()
+    if hasattr(app, "_populate_review_tab") and hasattr(app, "tree"):
+        app._populate_review_tab()
+    return True
+
+
+def open_vendor_policy_editor(app, vendor, parent):
+    normalized_vendor = app._normalize_vendor_code(vendor)
+    if not normalized_vendor:
+        return
+    policy = shipping_flow.normalize_vendor_policy(app.vendor_policies.get(normalized_vendor, {}))
+
+    dlg = tk.Toplevel(parent)
+    dlg.title(f"Shipping Policy - {normalized_vendor}")
+    dlg.configure(bg="#1e1e2e")
+    dlg.transient(parent)
+    dlg.grab_set()
+
+    ttk.Label(dlg, text=f"Shipping Policy: {normalized_vendor}", style="Header.TLabel").pack(anchor="w", padx=16, pady=(16, 4))
+    ttk.Label(
+        dlg,
+        text="Configure release timing for this vendor. Leave everything blank/default to clear the saved policy.",
+        style="SubHeader.TLabel",
+        wraplength=620,
+    ).pack(anchor="w", padx=16, pady=(0, 10))
+
+    grid = ttk.Frame(dlg)
+    grid.pack(fill=tk.BOTH, expand=True, padx=16, pady=(0, 8))
+    grid.columnconfigure(1, weight=1)
+
+    var_policy = tk.StringVar(value=policy.get("shipping_policy", "release_immediately"))
+    var_weekdays = tk.StringVar(value=", ".join(policy.get("preferred_free_ship_weekdays", [])))
+    var_threshold = tk.StringVar(
+        value=str(int(policy["free_freight_threshold"])) if float(policy.get("free_freight_threshold", 0) or 0).is_integer() and policy.get("free_freight_threshold", 0) else (str(policy.get("free_freight_threshold", "")) if policy.get("free_freight_threshold", 0) else "")
+    )
+    var_urgent = tk.StringVar(
+        value=str(int(policy["urgent_release_floor"])) if float(policy.get("urgent_release_floor", 0) or 0).is_integer() and policy.get("urgent_release_floor", 0) else (str(policy.get("urgent_release_floor", "")) if policy.get("urgent_release_floor", 0) else "")
+    )
+
+    fields = [
+        ("Policy", ttk.Combobox(grid, textvariable=var_policy, state="readonly", values=[
+            "release_immediately",
+            "hold_for_free_day",
+            "hold_for_threshold",
+            "hybrid_free_day_threshold",
+        ], width=28)),
+        ("Free-Ship Days", ttk.Entry(grid, textvariable=var_weekdays, width=36)),
+        ("Freight Threshold", ttk.Entry(grid, textvariable=var_threshold, width=20)),
+        ("Urgent Floor", ttk.Entry(grid, textvariable=var_urgent, width=20)),
+    ]
+    for row_idx, (label, widget) in enumerate(fields):
+        ttk.Label(grid, text=label).grid(row=row_idx, column=0, sticky="w", padx=(0, 8), pady=4)
+        widget.grid(row=row_idx, column=1, sticky="ew", pady=4)
+
+    ttk.Label(
+        grid,
+        text="Examples: Friday or Mon,Fri. Threshold and urgent floor are numeric.",
+        style="SubHeader.TLabel",
+        wraplength=620,
+    ).grid(row=len(fields), column=0, columnspan=2, sticky="w", pady=(6, 0))
+
+    def _save():
+        apply_vendor_policy_changes(
+            app,
+            normalized_vendor,
+            shipping_policy=var_policy.get().strip(),
+            weekdays=var_weekdays.get().strip(),
+            threshold=var_threshold.get().strip(),
+            urgent_floor=var_urgent.get().strip(),
+        )
+        dlg.destroy()
+
+    def _clear():
+        var_policy.set("release_immediately")
+        var_weekdays.set("")
+        var_threshold.set("")
+        var_urgent.set("")
+
+    btn_frame = ttk.Frame(dlg)
+    btn_frame.pack(fill=tk.X, padx=16, pady=12)
+    ttk.Button(btn_frame, text="Clear Policy", command=_clear).pack(side=tk.LEFT, padx=4)
+    ttk.Button(btn_frame, text="Save Policy", command=_save).pack(side=tk.RIGHT, padx=4)
+    ttk.Button(btn_frame, text="Close", command=dlg.destroy).pack(side=tk.RIGHT, padx=4)
+
+    app._autosize_dialog(dlg, min_w=520, min_h=300, max_w_ratio=0.7, max_h_ratio=0.7)
+    dlg.wait_window()
+
 
 def open_vendor_manager(app):
     dlg = tk.Toplevel(app.root)
@@ -107,6 +223,14 @@ def open_vendor_manager(app):
         app._remove_vendor_code(current)
         _refresh()
 
+    def _edit_policy():
+        current = _selected_vendor()
+        if not current:
+            messagebox.showinfo("Select Vendor", "Select a vendor to edit shipping policy first.", parent=dlg)
+            return
+        open_vendor_policy_editor(app, current, dlg)
+        _refresh(current)
+
     btn_frame = ttk.Frame(dlg)
     btn_frame.pack(fill=tk.X, padx=16, pady=12)
     action_row = ttk.Frame(btn_frame)
@@ -114,6 +238,7 @@ def open_vendor_manager(app):
     ttk.Button(action_row, text="Add", command=_add).pack(side=tk.LEFT, padx=4)
     ttk.Button(action_row, text="Rename", command=_edit).pack(side=tk.LEFT, padx=4)
     ttk.Button(action_row, text="Remove", command=_remove).pack(side=tk.LEFT, padx=4)
+    ttk.Button(action_row, text="Shipping Policy...", command=_edit_policy).pack(side=tk.LEFT, padx=4)
 
     close_row = ttk.Frame(btn_frame)
     close_row.pack(anchor="e", fill=tk.X, pady=(8, 0))

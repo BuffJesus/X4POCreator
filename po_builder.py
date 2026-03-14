@@ -993,6 +993,9 @@ class POBuilderApp:
     def _save_order_rules(self):
         persistent_state_flow.save_order_rules(self)
 
+    def _save_vendor_policies(self):
+        persistent_state_flow.save_vendor_policies(self)
+
     def _save_duplicate_whitelist(self):
         persistent_state_flow.save_duplicate_whitelist(self)
 

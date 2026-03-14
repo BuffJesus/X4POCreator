@@ -20,11 +20,13 @@ class POBuilderTests(unittest.TestCase):
         fake_app = SimpleNamespace(
             inventory_lookup={},
             order_rules={},
+            vendor_policies={},
             filtered_items=[],
             qoh_adjustments={},
             vendor_codes_used=[],
             _loaded_order_rules={},
             _loaded_vendor_codes=[],
+            _loaded_vendor_policies={},
             _suggest_min_max=lambda key: (None, None),
         )
         fake_app._find_filtered_item = lambda key: po_builder.POBuilderApp._find_filtered_item(fake_app, key)
@@ -51,6 +53,7 @@ class POBuilderTests(unittest.TestCase):
         fake_app._update_bulk_summary = lambda: None
         fake_app._refresh_vendor_inputs = lambda: None
         fake_app._save_vendor_codes = lambda: None
+        fake_app._save_vendor_policies = lambda: None
         fake_app._data_path = lambda key: str(ROOT / f"test_{key}")
         fake_app._save_order_rules = lambda: None
         return fake_app

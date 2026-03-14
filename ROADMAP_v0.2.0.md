@@ -1,5 +1,11 @@
 # PO Builder v0.2.0 Roadmap
 
+Note:
+
+- This file is now historical planning context.
+- For the current reconciled status and the single phased checklist, use:
+  [`ROADMAP_v0.2_CONSOLIDATED.md`](C:\Users\Cornelio\Desktop\POCreator\ROADMAP_v0.2_CONSOLIDATED.md)
+
 Status: proposed
 
 Current version: `0.1.7`
