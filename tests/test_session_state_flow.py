@@ -78,8 +78,8 @@ class SessionStateFlowTests(unittest.TestCase):
             qoh_adjustments={},
             order_rules={},
             vendor_codes_used=[],
-            _loaded_order_rules={},
-            _loaded_vendor_codes=[],
+            _loaded_order_rules={"KEEP": {"pack_size": 4}},
+            _loaded_vendor_codes=["KEEPVENDOR"],
             last_removed_bulk_items=[],
             bulk_sheet=BulkSheet(),
             _refresh_vendor_inputs=lambda: events.append("vendors"),
@@ -96,8 +96,6 @@ class SessionStateFlowTests(unittest.TestCase):
                 "qoh_adjustments": {("AER-", "ABC123"): {"new": 4}},
                 "order_rules": {"AER-:ABC123": {"pack_size": 6}},
                 "vendor_codes_used": ["MOTION"],
-                "_loaded_order_rules": {"AER-:ABC123": {"pack_size": 6}},
-                "_loaded_vendor_codes": ["MOTION"],
                 "last_removed_bulk_items": [{"item_code": "OLD"}],
             },
         )
@@ -105,6 +103,8 @@ class SessionStateFlowTests(unittest.TestCase):
         self.assertEqual(fake_app.filtered_items, [{"item_code": "ABC123"}])
         self.assertEqual(fake_app.vendor_codes_used, ["MOTION"])
         self.assertEqual(fake_app.last_removed_bulk_items, [{"item_code": "OLD"}])
+        self.assertEqual(fake_app._loaded_order_rules, {"KEEP": {"pack_size": 4}})
+        self.assertEqual(fake_app._loaded_vendor_codes, ["KEEPVENDOR"])
         self.assertEqual(events, ["vendors", "clear", "bulk", "summary", "status"])
 
     def test_capture_bulk_history_state_does_not_deepcopy_last_removed_bulk_items(self):
@@ -128,6 +128,8 @@ class SessionStateFlowTests(unittest.TestCase):
 
         self.assertEqual(state["last_removed_bulk_items"], [(3, removed_item)])
         self.assertIsNot(state["last_removed_bulk_items"], fake_app.last_removed_bulk_items)
+        self.assertNotIn("_loaded_order_rules", state)
+        self.assertNotIn("_loaded_vendor_codes", state)
 
     def test_capture_bulk_history_state_strips_runtime_bulk_item_cache_fields(self):
         filtered_item = {
