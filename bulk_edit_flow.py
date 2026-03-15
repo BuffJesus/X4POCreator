@@ -21,7 +21,7 @@ def apply_editor_value(app, row_id, col_name, raw, editable_cols, get_rule_key, 
     if col_name not in editable_cols:
         write_debug("bulk_apply_editor_value.skip", row_id=row_id, col_name=col_name, reason="not_editable")
         return
-    before_summary_item = {"vendor": item.get("vendor", ""), "status": item.get("status", "")}
+    before_summary_item = ui_bulk.bulk_filter_bucket_snapshot(item)
     key = (item["line_code"], item["item_code"])
     inv = app.inventory_lookup.get(key, {})
     if col_name == "vendor":
@@ -121,6 +121,6 @@ def apply_editor_value(app, row_id, col_name, raw, editable_cols, get_rule_key, 
     ui_bulk.adjust_bulk_summary_for_item_change(
         app,
         before_summary_item,
-        {"vendor": item.get("vendor", ""), "status": item.get("status", "")},
+        ui_bulk.bulk_filter_bucket_snapshot(item),
         item=item,
     )

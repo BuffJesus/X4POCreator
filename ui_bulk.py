@@ -624,6 +624,46 @@ def bulk_item_status(item):
     }.get(status)
 
 
+def bulk_filter_bucket_snapshot(item):
+    return {
+        "vendor": item.get("vendor", ""),
+        "status": item.get("status", ""),
+        "data_flags": tuple(item.get("data_flags", ()) or ()),
+        "performance_profile": item.get("performance_profile", ""),
+        "sales_health_signal": item.get("sales_health_signal", ""),
+        "reorder_attention_signal": item.get("reorder_attention_signal", ""),
+    }
+
+
+def bulk_performance_bucket(item):
+    profile = (item.get("performance_profile", "") or "").lower()
+    return {
+        "top_performer": "Top",
+        "steady": "Steady",
+        "intermittent": "Intermittent",
+        "legacy": "Legacy",
+    }.get(profile)
+
+
+def bulk_sales_health_bucket(item):
+    signal = (item.get("sales_health_signal", "") or "").lower()
+    return {
+        "active": "Active",
+        "cooling": "Cooling",
+        "dormant": "Dormant",
+        "stale": "Stale",
+        "unknown": "Unknown",
+    }.get(signal)
+
+
+def bulk_attention_bucket(item):
+    signal = (item.get("reorder_attention_signal", "") or "").lower()
+    return {
+        "normal": "Normal",
+        "review_missed_reorder": "Missed Reorder",
+    }.get(signal)
+
+
 def _append_bucket_item(buckets, key, item):
     if key is None:
         return
@@ -637,6 +677,9 @@ def build_bulk_session_metadata(items):
     items_by_line_code_source = {}
     items_by_assignment_status = {}
     items_by_item_status = {}
+    items_by_performance = {}
+    items_by_sales_health = {}
+    items_by_attention = {}
     for item in normalized:
         line_code = item.get("line_code", "")
         source = item_source(item)
@@ -648,6 +691,9 @@ def build_bulk_session_metadata(items):
         items_by_line_code_source.setdefault((line_code, source), []).append(item)
         _append_bucket_item(items_by_assignment_status, bulk_assignment_status(item), item)
         _append_bucket_item(items_by_item_status, bulk_item_status(item), item)
+        _append_bucket_item(items_by_performance, bulk_performance_bucket(item), item)
+        _append_bucket_item(items_by_sales_health, bulk_sales_health_bucket(item), item)
+        _append_bucket_item(items_by_attention, bulk_attention_bucket(item), item)
     return {
         "counts": _recompute_summary_counts(normalized),
         "line_codes": tuple(sorted({item.get("line_code", "") for item in normalized if item.get("line_code", "")})),
@@ -656,6 +702,9 @@ def build_bulk_session_metadata(items):
         "items_by_line_code_source": {key: tuple(group) for key, group in items_by_line_code_source.items()},
         "items_by_assignment_status": {key: tuple(group) for key, group in items_by_assignment_status.items()},
         "items_by_item_status": {key: tuple(group) for key, group in items_by_item_status.items()},
+        "items_by_performance": {key: tuple(group) for key, group in items_by_performance.items()},
+        "items_by_sales_health": {key: tuple(group) for key, group in items_by_sales_health.items()},
+        "items_by_attention": {key: tuple(group) for key, group in items_by_attention.items()},
     }
 
 
@@ -669,6 +718,9 @@ def sync_bulk_session_metadata(app, items=None):
     app._bulk_items_by_line_code_source = dict(metadata["items_by_line_code_source"])
     app._bulk_items_by_assignment_status = dict(metadata["items_by_assignment_status"])
     app._bulk_items_by_item_status = dict(metadata["items_by_item_status"])
+    app._bulk_items_by_performance = dict(metadata["items_by_performance"])
+    app._bulk_items_by_sales_health = dict(metadata["items_by_sales_health"])
+    app._bulk_items_by_attention = dict(metadata["items_by_attention"])
     return metadata
 
 
@@ -680,10 +732,16 @@ def filtered_candidate_items(app, filter_state):
     source = filter_state.get("source", "ALL")
     assignment_status = filter_state.get("status", "ALL")
     item_status = filter_state.get("item_status", "ALL")
+    performance = filter_state.get("performance", "ALL")
+    sales_health = filter_state.get("sales_health", "ALL")
+    attention = filter_state.get("attention", "ALL")
     line_code_buckets = getattr(app, "_bulk_items_by_line_code", None)
     source_buckets = getattr(app, "_bulk_items_by_source", None)
     assignment_buckets = getattr(app, "_bulk_items_by_assignment_status", None)
     item_status_buckets = getattr(app, "_bulk_items_by_item_status", None)
+    performance_buckets = getattr(app, "_bulk_items_by_performance", None)
+    sales_health_buckets = getattr(app, "_bulk_items_by_sales_health", None)
+    attention_buckets = getattr(app, "_bulk_items_by_attention", None)
     if line_code != "ALL" and not isinstance(line_code_buckets, dict):
         return list(filtered_items)
     if source != "ALL" and not isinstance(source_buckets, dict):
@@ -692,10 +750,19 @@ def filtered_candidate_items(app, filter_state):
         return list(filtered_items)
     if item_status != "ALL" and not isinstance(item_status_buckets, dict):
         return list(filtered_items)
+    if performance != "ALL" and not isinstance(performance_buckets, dict):
+        return list(filtered_items)
+    if sales_health != "ALL" and not isinstance(sales_health_buckets, dict):
+        return list(filtered_items)
+    if attention != "ALL" and not isinstance(attention_buckets, dict):
+        return list(filtered_items)
     line_code_buckets = line_code_buckets or {}
     source_buckets = source_buckets or {}
     assignment_buckets = assignment_buckets or {}
     item_status_buckets = item_status_buckets or {}
+    performance_buckets = performance_buckets or {}
+    sales_health_buckets = sales_health_buckets or {}
+    attention_buckets = attention_buckets or {}
     candidate_groups = []
     if line_code != "ALL":
         candidate_groups.append(tuple(line_code_buckets.get(line_code, ())))
@@ -705,6 +772,12 @@ def filtered_candidate_items(app, filter_state):
         candidate_groups.append(tuple(assignment_buckets.get(assignment_status, ())))
     if item_status != "ALL":
         candidate_groups.append(tuple(item_status_buckets.get(item_status, ())))
+    if performance != "ALL":
+        candidate_groups.append(tuple(performance_buckets.get(performance, ())))
+    if sales_health != "ALL":
+        candidate_groups.append(tuple(sales_health_buckets.get(sales_health, ())))
+    if attention != "ALL":
+        candidate_groups.append(tuple(attention_buckets.get(attention, ())))
     if candidate_groups:
         if len(candidate_groups) == 1:
             return list(candidate_groups[0])
@@ -719,11 +792,7 @@ def filtered_candidate_items(app, filter_state):
 
 
 def uses_only_bucket_filters(filter_state):
-    return (
-        filter_state.get("performance", "ALL") == "ALL"
-        and filter_state.get("sales_health", "ALL") == "ALL"
-        and filter_state.get("attention", "ALL") == "ALL"
-    )
+    return True
 
 
 def can_fully_resolve_bucket_filters(app, filter_state):
@@ -732,6 +801,9 @@ def can_fully_resolve_bucket_filters(app, filter_state):
         ("source", "_bulk_items_by_source"),
         ("status", "_bulk_items_by_assignment_status"),
         ("item_status", "_bulk_items_by_item_status"),
+        ("performance", "_bulk_items_by_performance"),
+        ("sales_health", "_bulk_items_by_sales_health"),
+        ("attention", "_bulk_items_by_attention"),
     )
     for key, attr_name in bucket_requirements:
         if filter_state.get(key, "ALL") != "ALL" and not isinstance(getattr(app, attr_name, None), dict):
@@ -800,6 +872,30 @@ def adjust_bulk_filter_buckets_for_item_change(app, before_item, after_item, ite
             item_status_buckets,
             bulk_item_status(before_item),
             bulk_item_status(after_item),
+            item,
+        ) or changed
+    performance_buckets = getattr(app, "_bulk_items_by_performance", None)
+    if isinstance(performance_buckets, dict):
+        changed = _replace_bucket_membership(
+            performance_buckets,
+            bulk_performance_bucket(before_item),
+            bulk_performance_bucket(after_item),
+            item,
+        ) or changed
+    sales_health_buckets = getattr(app, "_bulk_items_by_sales_health", None)
+    if isinstance(sales_health_buckets, dict):
+        changed = _replace_bucket_membership(
+            sales_health_buckets,
+            bulk_sales_health_bucket(before_item),
+            bulk_sales_health_bucket(after_item),
+            item,
+        ) or changed
+    attention_buckets = getattr(app, "_bulk_items_by_attention", None)
+    if isinstance(attention_buckets, dict):
+        changed = _replace_bucket_membership(
+            attention_buckets,
+            bulk_attention_bucket(before_item),
+            bulk_attention_bucket(after_item),
             item,
         ) or changed
     return changed

@@ -70,15 +70,12 @@ def bulk_apply_selected(app):
             idx, item = ui_bulk.resolve_bulk_row_id(app, item_id)
         if idx is None or item is None:
             continue
-        before_summary_item = {
-            "vendor": item.get("vendor", ""),
-            "status": item.get("status", ""),
-        }
+        before_summary_item = ui_bulk.bulk_filter_bucket_snapshot(item)
         item["vendor"] = vendor
         ui_bulk.adjust_bulk_summary_for_item_change(
             app,
             before_summary_item,
-            {"vendor": item.get("vendor", ""), "status": item.get("status", "")},
+            ui_bulk.bulk_filter_bucket_snapshot(item),
             item=item,
         )
         if not getattr(app, "bulk_sheet", None):
@@ -117,15 +114,12 @@ def bulk_apply_visible(app):
             idx, item = ui_bulk.resolve_bulk_row_id(app, item_id)
         if idx is None or item is None:
             continue
-        before_summary_item = {
-            "vendor": item.get("vendor", ""),
-            "status": item.get("status", ""),
-        }
+        before_summary_item = ui_bulk.bulk_filter_bucket_snapshot(item)
         item["vendor"] = vendor
         ui_bulk.adjust_bulk_summary_for_item_change(
             app,
             before_summary_item,
-            {"vendor": item.get("vendor", ""), "status": item.get("status", "")},
+            ui_bulk.bulk_filter_bucket_snapshot(item),
             item=item,
         )
         if not getattr(app, "bulk_sheet", None):
