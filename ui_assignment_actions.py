@@ -17,6 +17,18 @@ def refresh_bulk_view_after_edit(app, row_ids, col_name):
         return app._refresh_bulk_view_after_edit(row_ids)
 
 
+def capture_bulk_history_state(app, *, capture_spec=None):
+    capture = getattr(app, "_capture_bulk_history_state", None)
+    if not callable(capture):
+        return None
+    if capture_spec is None:
+        return capture()
+    try:
+        return capture(capture_spec=capture_spec)
+    except TypeError:
+        return capture()
+
+
 def bulk_vendor_history_coalesce_key(kind, row_ids, vendor):
     return session_state_flow.bulk_history_coalesce_key(
         kind,
@@ -26,14 +38,21 @@ def bulk_vendor_history_coalesce_key(kind, row_ids, vendor):
     )
 
 
-def finalize_bulk_history_action(app, label, before_state, *, coalesce_key=None):
+def finalize_bulk_history_action(app, label, before_state, *, coalesce_key=None, capture_spec=None):
     finalize = getattr(app, "_finalize_bulk_history_action", None)
     if not callable(finalize):
         return None
     if coalesce_key is None:
-        return finalize(label, before_state)
+        if capture_spec is None:
+            return finalize(label, before_state)
+        try:
+            return finalize(label, before_state, capture_spec=capture_spec)
+        except TypeError:
+            return finalize(label, before_state)
     try:
-        return finalize(label, before_state, coalesce_key=coalesce_key)
+        if capture_spec is None:
+            return finalize(label, before_state, coalesce_key=coalesce_key)
+        return finalize(label, before_state, coalesce_key=coalesce_key, capture_spec=capture_spec)
     except TypeError:
         return finalize(label, before_state)
 
@@ -61,7 +80,8 @@ def bulk_apply_selected(app):
     if not selected:
         messagebox.showinfo("No Selection", "Select rows in the table first.")
         return
-    before_state = app._capture_bulk_history_state() if hasattr(app, "_capture_bulk_history_state") else None
+    capture_spec = session_state_flow.bulk_history_capture_spec_for_columns(("vendor",), include_vendor_codes=True)
+    before_state = capture_bulk_history_state(app, capture_spec=capture_spec)
     for item_id in selected:
         resolver = getattr(app, "_resolve_bulk_row_id", None)
         if callable(resolver):
@@ -92,6 +112,7 @@ def bulk_apply_selected(app):
         "vendor:selected",
         before_state,
         coalesce_key=bulk_vendor_history_coalesce_key("vendor_selected", selected, vendor),
+        capture_spec=capture_spec,
     )
 
 
@@ -105,7 +126,8 @@ def bulk_apply_visible(app):
     if not visible:
         messagebox.showinfo("No Items", "There are no visible rows to update.")
         return
-    before_state = app._capture_bulk_history_state() if hasattr(app, "_capture_bulk_history_state") else None
+    capture_spec = session_state_flow.bulk_history_capture_spec_for_columns(("vendor",), include_vendor_codes=True)
+    before_state = capture_bulk_history_state(app, capture_spec=capture_spec)
     for item_id in visible:
         resolver = getattr(app, "_resolve_bulk_row_id", None)
         if callable(resolver):
@@ -136,6 +158,7 @@ def bulk_apply_visible(app):
         "vendor:visible",
         before_state,
         coalesce_key=bulk_vendor_history_coalesce_key("vendor_visible", visible, vendor),
+        capture_spec=capture_spec,
     )
 
 

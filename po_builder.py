@@ -1229,16 +1229,17 @@ class POBuilderApp:
     def _bulk_select_current_column(self, event=None):
         return bulk_sheet_actions_flow.bulk_select_current_column(self)
 
-    def _capture_bulk_history_state(self):
-        return session_state_flow.capture_bulk_history_state(self)
+    def _capture_bulk_history_state(self, *, capture_spec=None):
+        return session_state_flow.capture_bulk_history_state(self, capture_spec=capture_spec)
 
-    def _finalize_bulk_history_action(self, label, before_state, *, coalesce_key=None):
+    def _finalize_bulk_history_action(self, label, before_state, *, coalesce_key=None, capture_spec=None):
         return session_state_flow.finalize_bulk_history_action(
             self,
             label,
             before_state,
             MAX_BULK_HISTORY,
             coalesce_key=coalesce_key,
+            capture_spec=capture_spec,
         )
 
     def _restore_bulk_history_state(self, state):
@@ -1248,13 +1249,15 @@ class POBuilderApp:
         if not self.bulk_undo_stack:
             return "break" if event is not None else None
         entry = self.bulk_undo_stack.pop()
-        current_state = self._capture_bulk_history_state()
+        capture_spec = copy.deepcopy(entry.get("_capture_spec"))
+        current_state = self._capture_bulk_history_state(capture_spec=capture_spec)
         self._restore_bulk_history_state(entry["before"])
         self.bulk_redo_stack.append({
             "label": entry.get("label", ""),
             "before": copy.deepcopy(entry["before"]),
             "after": current_state,
             "_coalesce_key": copy.deepcopy(entry.get("_coalesce_key")),
+            "_capture_spec": capture_spec,
         })
         return "break" if event is not None else None
 
@@ -1262,13 +1265,15 @@ class POBuilderApp:
         if not self.bulk_redo_stack:
             return "break" if event is not None else None
         entry = self.bulk_redo_stack.pop()
-        current_state = self._capture_bulk_history_state()
+        capture_spec = copy.deepcopy(entry.get("_capture_spec"))
+        current_state = self._capture_bulk_history_state(capture_spec=capture_spec)
         self._restore_bulk_history_state(entry["after"])
         self.bulk_undo_stack.append({
             "label": entry.get("label", ""),
             "before": current_state,
             "after": copy.deepcopy(entry["after"]),
             "_coalesce_key": copy.deepcopy(entry.get("_coalesce_key")),
+            "_capture_spec": capture_spec,
         })
         return "break" if event is not None else None
 

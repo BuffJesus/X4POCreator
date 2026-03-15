@@ -19,6 +19,18 @@ def refresh_bulk_view_after_edit(app, row_ids, col_name):
         return app._refresh_bulk_view_after_edit(row_ids)
 
 
+def capture_bulk_history_state(app, *, capture_spec=None):
+    capture = getattr(app, "_capture_bulk_history_state", None)
+    if not callable(capture):
+        return None
+    if capture_spec is None:
+        return capture()
+    try:
+        return capture(capture_spec=capture_spec)
+    except TypeError:
+        return capture()
+
+
 def bulk_edit_history_coalesce_key(kind, col_name, row_ids, *, selection_serial=None):
     return session_state_flow.bulk_history_coalesce_key(
         kind,
@@ -28,14 +40,21 @@ def bulk_edit_history_coalesce_key(kind, col_name, row_ids, *, selection_serial=
     )
 
 
-def finalize_bulk_history_action(app, label, before_state, *, coalesce_key=None):
+def finalize_bulk_history_action(app, label, before_state, *, coalesce_key=None, capture_spec=None):
     finalize = getattr(app, "_finalize_bulk_history_action", None)
     if not callable(finalize):
         return None
     if coalesce_key is None:
-        return finalize(label, before_state)
+        if capture_spec is None:
+            return finalize(label, before_state)
+        try:
+            return finalize(label, before_state, capture_spec=capture_spec)
+        except TypeError:
+            return finalize(label, before_state)
     try:
-        return finalize(label, before_state, coalesce_key=coalesce_key)
+        if capture_spec is None:
+            return finalize(label, before_state, coalesce_key=coalesce_key)
+        return finalize(label, before_state, coalesce_key=coalesce_key, capture_spec=capture_spec)
     except TypeError:
         return finalize(label, before_state)
 
@@ -179,7 +198,8 @@ def bulk_fill_selection_with_current_value(app, editable_cols, write_debug, even
     if col_name not in editable_cols or not row_ids:
         return "break"
     value = app.bulk_sheet.current_cell_value().strip()
-    before_state = app._capture_bulk_history_state() if hasattr(app, "_capture_bulk_history_state") else None
+    capture_spec = session_state_flow.bulk_history_capture_spec_for_columns((col_name,))
+    before_state = capture_bulk_history_state(app, capture_spec=capture_spec)
     write_debug(
         "bulk_shortcut_fill",
         alias=alias,
@@ -199,6 +219,7 @@ def bulk_fill_selection_with_current_value(app, editable_cols, write_debug, even
         f"{alias}:{col_name}",
         before_state,
         coalesce_key=bulk_edit_history_coalesce_key(alias, col_name, row_ids),
+        capture_spec=capture_spec,
     )
     return "break"
 
@@ -257,7 +278,8 @@ def bulk_begin_edit(app, editable_cols, askstring, write_debug, event=None):
         write_debug("bulk_begin_edit.open_cell", col_name=col_name, row_count=len(row_ids))
         app._right_click_bulk_context = None
         return "break"
-    before_state = app._capture_bulk_history_state() if hasattr(app, "_capture_bulk_history_state") else None
+    capture_spec = session_state_flow.bulk_history_capture_spec_for_columns((col_name,))
+    before_state = capture_bulk_history_state(app, capture_spec=capture_spec)
     write_debug(
         "bulk_begin_edit.apply",
         col_name=col_name,
@@ -298,6 +320,7 @@ def bulk_begin_edit(app, editable_cols, askstring, write_debug, event=None):
         f"edit:{col_name}",
         before_state,
         coalesce_key=bulk_edit_history_coalesce_key("edit", col_name, row_ids),
+        capture_spec=capture_spec,
     )
     return "break"
 
@@ -362,7 +385,8 @@ def bulk_fill_selected_cells(app, editable_cols, askstring, showinfo):
     value = askstring("Fill Selected Cells", f"Enter a value for {col_name}:", parent=app.root)
     if value is None:
         return
-    before_state = app._capture_bulk_history_state() if hasattr(app, "_capture_bulk_history_state") else None
+    capture_spec = session_state_flow.bulk_history_capture_spec_for_columns((col_name,))
+    before_state = capture_bulk_history_state(app, capture_spec=capture_spec)
     for row_id in row_ids:
         app._bulk_apply_editor_value(row_id, col_name, value.strip())
     refresh_bulk_view_after_edit(app, row_ids, col_name)
@@ -375,6 +399,7 @@ def bulk_fill_selected_cells(app, editable_cols, askstring, showinfo):
         f"fill:{col_name}",
         before_state,
         coalesce_key=bulk_edit_history_coalesce_key("fill", col_name, row_ids),
+        capture_spec=capture_spec,
     )
 
 
@@ -390,7 +415,8 @@ def bulk_clear_selected_cells(app, editable_cols, showinfo):
     if col_name not in editable_cols or not row_ids:
         showinfo("No Cell Selection", "Select one or more rows or cells in a single editable column first.")
         return
-    before_state = app._capture_bulk_history_state() if hasattr(app, "_capture_bulk_history_state") else None
+    capture_spec = session_state_flow.bulk_history_capture_spec_for_columns((col_name,))
+    before_state = capture_bulk_history_state(app, capture_spec=capture_spec)
     for row_id in row_ids:
         app._bulk_apply_editor_value(row_id, col_name, "")
     refresh_bulk_view_after_edit(app, row_ids, col_name)
@@ -403,6 +429,7 @@ def bulk_clear_selected_cells(app, editable_cols, showinfo):
         f"clear:{col_name}",
         before_state,
         coalesce_key=bulk_edit_history_coalesce_key("clear", col_name, row_ids),
+        capture_spec=capture_spec,
     )
 
 
