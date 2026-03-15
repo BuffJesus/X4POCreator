@@ -240,6 +240,7 @@ This is the next high-value shipping slice. The current model already uses `repl
 - [x] Carry stable bulk row-id resolution through vendor assignment actions so selected/visible sheet updates keep targeting the correct items.
 - [x] Route bulk removal operations through the same undo/redo history capture path as other bulk actions.
 - [x] Make the dedicated remove-undo path respect the real bulk history stack before falling back to legacy payload restore.
+- [x] Flush queued edits before mouse-driven selection and right-click context changes so click-away paths respect the same edit boundary model.
 - [ ] Eliminate remaining previous-cell / rapid-click commit bleed under real timing pressure.
 - [ ] Guarantee edit-target integrity under rapid click-edit, keyboard-edit, filtered, sorted, and multi-selection workflows.
 - [x] Document and centralize final precedence between current cell, selected cells, selected rows, and right-click snapshot state.

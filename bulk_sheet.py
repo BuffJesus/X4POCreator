@@ -81,6 +81,7 @@ class BulkSheetView:
         return [row.split("\t") for row in normalized.split("\n")]
 
     def _handle_select(self, event_data):
+        self._flush_pending_before_navigation()
         if getattr(self.app, "_right_click_bulk_context", None):
             self.app._right_click_bulk_context = None
             write_debug("bulk_sheet.select.clear_right_click_context")
@@ -100,6 +101,7 @@ class BulkSheetView:
             return None
         if row < 0 or row >= len(self.row_ids) or col < 0 or col >= len(self.columns):
             return None
+        self._flush_pending_before_navigation()
 
         # Snapshot the selection BEFORE set_currently_selected() can clear it.
         # If the right-clicked row is already part of the selection, keep the
@@ -339,6 +341,7 @@ class BulkSheetView:
         self.app._update_bulk_sheet_status()
 
     def clear_selection(self):
+        self._flush_pending_before_navigation()
         try:
             self.sheet.deselect("all", redraw=True)
         except Exception:
@@ -351,6 +354,7 @@ class BulkSheetView:
     def select_all_visible(self):
         if not self.row_ids:
             return False
+        self._flush_pending_before_navigation()
         try:
             self.sheet.deselect("all", redraw=False)
         except Exception:

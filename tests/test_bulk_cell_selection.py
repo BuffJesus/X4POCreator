@@ -452,6 +452,41 @@ class BulkSheetViewTests(unittest.TestCase):
         self.assertEqual(view.row_ids, ["0"])
         self.assertEqual(calls[-1], ("status",))
 
+    def test_clear_selection_flushes_pending_edit_before_deselecting(self):
+        calls = []
+        view = BulkSheetView.__new__(BulkSheetView)
+        view._pending_edit = {"row_id": "4", "col_name": "vendor"}
+        view.flush_pending_edit = lambda: calls.append(("flush",))
+        view.app = SimpleNamespace(_update_bulk_sheet_status=lambda: calls.append(("status",)))
+        view.sheet = SimpleNamespace(deselect=lambda *args, **kwargs: calls.append(("deselect",)))
+
+        view.clear_selection()
+
+        self.assertEqual(calls[:2], [("flush",), ("deselect",)])
+
+    def test_select_all_visible_flushes_pending_edit_before_selecting_rows(self):
+        calls = []
+        view = BulkSheetView.__new__(BulkSheetView)
+        view.row_ids = [4, 8]
+        view._pending_edit = {"row_id": "4", "col_name": "vendor"}
+        view.flush_pending_edit = lambda: calls.append(("flush",))
+        view._selection_snapshot = {"cells": (), "rows": (), "columns": (), "current": (None, None)}
+        view.current_cell = lambda: (None, None)
+        view._remember_selection = lambda: calls.append(("remember",))
+        view.app = SimpleNamespace(_update_bulk_sheet_status=lambda: calls.append(("status",)))
+        view.sheet = SimpleNamespace(
+            deselect=lambda *args, **kwargs: calls.append(("deselect",)),
+            select_row=lambda row, redraw=False: calls.append(("row", row, redraw)),
+            set_currently_selected=lambda row, column: calls.append(("current", row, column)),
+            refresh=lambda: calls.append(("refresh",)),
+            redraw=lambda: calls.append(("redraw",)),
+        )
+
+        result = view.select_all_visible()
+
+        self.assertTrue(result)
+        self.assertEqual(calls[:2], [("flush",), ("deselect",)])
+
     def test_handle_select_clears_stale_right_click_context(self):
         calls = []
         view = BulkSheetView.__new__(BulkSheetView)
@@ -465,6 +500,50 @@ class BulkSheetViewTests(unittest.TestCase):
 
         self.assertIsNone(view.app._right_click_bulk_context)
         self.assertEqual(calls, [("remember",), ("status",)])
+
+    def test_handle_select_flushes_pending_edit_before_remembering_new_selection(self):
+        calls = []
+        view = BulkSheetView.__new__(BulkSheetView)
+        view.app = SimpleNamespace(
+            _right_click_bulk_context=None,
+            _update_bulk_sheet_status=lambda: calls.append(("status",)),
+        )
+        view._pending_edit = {"row_id": "4", "col_name": "vendor"}
+        view.flush_pending_edit = lambda: calls.append(("flush",))
+        view._remember_selection = lambda: calls.append(("remember",))
+
+        view._handle_select({})
+
+        self.assertEqual(calls, [("flush",), ("remember",), ("status",)])
+
+    def test_handle_right_click_flushes_pending_edit_before_moving_context(self):
+        calls = []
+        view = BulkSheetView.__new__(BulkSheetView)
+        view.row_ids = ["4", "8"]
+        view.columns = ("vendor", "pack_size")
+        view._pending_edit = {"row_id": "4", "col_name": "vendor"}
+        view.flush_pending_edit = lambda: calls.append(("flush",))
+        view._remember_selection = lambda: calls.append(("remember",))
+        view.app = SimpleNamespace(
+            _right_click_bulk_context=None,
+            _update_bulk_sheet_status=lambda: calls.append(("status",)),
+        )
+        view.context_menu = SimpleNamespace(
+            tk_popup=lambda x, y: calls.append(("popup", x, y)),
+            grab_release=lambda: calls.append(("release",)),
+        )
+        view.sheet = SimpleNamespace(
+            identify_row=lambda event, exclude_index=True, allow_end=False: 1,
+            identify_column=lambda event, exclude_header=True, allow_end=False: 0,
+            get_selected_rows=lambda: set(),
+            set_currently_selected=lambda row, column: calls.append(("current", row, column)),
+        )
+
+        event = SimpleNamespace(x_root=10, y_root=20)
+        result = view.handle_right_click(event)
+
+        self.assertEqual(result, "break")
+        self.assertEqual(calls[:3], [("flush",), ("current", 1, 0), ("remember",)])
 
     def test_handle_edit_applies_value_to_selected_target_rows(self):
         calls = []
