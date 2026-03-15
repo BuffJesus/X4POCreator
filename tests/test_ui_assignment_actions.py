@@ -58,7 +58,7 @@ class AssignmentActionTests(unittest.TestCase):
             filtered_items=[{"vendor": ""}, {"vendor": ""}],
             vendor_codes_used=[],
             _capture_bulk_history_state=lambda: {"before": True},
-            _finalize_bulk_history_action=lambda label, before: calls.append((label, before)),
+            _finalize_bulk_history_action=lambda label, before, coalesce_key=None: calls.append((label, before, coalesce_key)),
             _update_bulk_summary=lambda: calls.append("summary"),
         )
 
@@ -67,7 +67,17 @@ class AssignmentActionTests(unittest.TestCase):
         self.assertEqual(app.filtered_items[0]["vendor"], "GREGDIST")
         self.assertEqual(app.filtered_items[1]["vendor"], "GREGDIST")
         self.assertIn("GREGDIST", app.vendor_codes_used)
-        self.assertEqual(calls, ["summary", ("vendor:selected", {"before": True})])
+        self.assertEqual(
+            calls,
+            [
+                "summary",
+                (
+                    "vendor:selected",
+                    {"before": True},
+                    {"kind": "vendor_selected", "col_name": "vendor", "row_ids": ("0", "1"), "scope": {"vendor": "GREGDIST"}},
+                ),
+            ],
+        )
 
     def test_bulk_apply_selected_with_bulk_sheet_refreshes_rows_once(self):
         calls = []
@@ -82,7 +92,7 @@ class AssignmentActionTests(unittest.TestCase):
             vendor_codes_used=[],
             _capture_bulk_history_state=lambda: {"before": True},
             _refresh_bulk_view_after_edit=lambda row_ids: calls.append(("refresh", tuple(row_ids))),
-            _finalize_bulk_history_action=lambda label, before: calls.append((label, before)),
+            _finalize_bulk_history_action=lambda label, before, coalesce_key=None: calls.append((label, before, coalesce_key)),
             _update_bulk_summary=lambda: calls.append("summary"),
         )
 
@@ -91,7 +101,19 @@ class AssignmentActionTests(unittest.TestCase):
         self.assertEqual(app.filtered_items[0]["vendor"], "GREGDIST")
         self.assertEqual(app.filtered_items[1]["vendor"], "GREGDIST")
         self.assertIn("GREGDIST", app.vendor_codes_used)
-        self.assertEqual(calls, ["flush", ("refresh", ("0", "1")), "summary", ("vendor:selected", {"before": True})])
+        self.assertEqual(
+            calls,
+            [
+                "flush",
+                ("refresh", ("0", "1")),
+                "summary",
+                (
+                    "vendor:selected",
+                    {"before": True},
+                    {"kind": "vendor_selected", "col_name": "vendor", "row_ids": ("0", "1"), "scope": {"vendor": "GREGDIST"}},
+                ),
+            ],
+        )
         self.assertEqual(app._bulk_summary_counts, {"total": 2, "assigned": 2, "review": 0, "warning": 0})
 
     def test_bulk_apply_visible_with_bulk_sheet_refreshes_rows_once(self):
@@ -106,7 +128,7 @@ class AssignmentActionTests(unittest.TestCase):
             vendor_codes_used=[],
             _capture_bulk_history_state=lambda: {"before": True},
             _refresh_bulk_view_after_edit=lambda row_ids: calls.append(("refresh", tuple(row_ids))),
-            _finalize_bulk_history_action=lambda label, before: calls.append((label, before)),
+            _finalize_bulk_history_action=lambda label, before, coalesce_key=None: calls.append((label, before, coalesce_key)),
             _update_bulk_summary=lambda: calls.append("summary"),
         )
 
@@ -114,7 +136,19 @@ class AssignmentActionTests(unittest.TestCase):
 
         self.assertEqual([item["vendor"] for item in app.filtered_items], ["MOTION", "MOTION", "MOTION"])
         self.assertIn("MOTION", app.vendor_codes_used)
-        self.assertEqual(calls, ["flush", ("refresh", ("0", "1", "2")), "summary", ("vendor:visible", {"before": True})])
+        self.assertEqual(
+            calls,
+            [
+                "flush",
+                ("refresh", ("0", "1", "2")),
+                "summary",
+                (
+                    "vendor:visible",
+                    {"before": True},
+                    {"kind": "vendor_visible", "col_name": "vendor", "row_ids": ("0", "1", "2"), "scope": {"vendor": "MOTION"}},
+                ),
+            ],
+        )
 
     def test_bulk_apply_selected_resolves_stable_bulk_row_ids(self):
         calls = []
@@ -132,7 +166,7 @@ class AssignmentActionTests(unittest.TestCase):
             vendor_codes_used=[],
             _capture_bulk_history_state=lambda: {"before": True},
             _refresh_bulk_view_after_edit=lambda row_ids: calls.append(("refresh", tuple(row_ids))),
-            _finalize_bulk_history_action=lambda label, before: calls.append((label, before)),
+            _finalize_bulk_history_action=lambda label, before, coalesce_key=None: calls.append((label, before, coalesce_key)),
             _update_bulk_summary=lambda: calls.append("summary"),
             _find_filtered_item=lambda key: next((item for item in (item_a, item_b) if (item["line_code"], item["item_code"]) == key), None),
         )
@@ -141,7 +175,19 @@ class AssignmentActionTests(unittest.TestCase):
 
         self.assertEqual(item_a["vendor"], "GREGDIST")
         self.assertEqual(item_b["vendor"], "GREGDIST")
-        self.assertEqual(calls, ["flush", ("refresh", (row_id_b, row_id_a)), "summary", ("vendor:selected", {"before": True})])
+        self.assertEqual(
+            calls,
+            [
+                "flush",
+                ("refresh", (row_id_b, row_id_a)),
+                "summary",
+                (
+                    "vendor:selected",
+                    {"before": True},
+                    {"kind": "vendor_selected", "col_name": "vendor", "row_ids": (row_id_b, row_id_a), "scope": {"vendor": "GREGDIST"}},
+                ),
+            ],
+        )
 
     def test_bulk_apply_visible_resolves_stable_bulk_row_ids(self):
         calls = []
@@ -159,7 +205,7 @@ class AssignmentActionTests(unittest.TestCase):
             vendor_codes_used=[],
             _capture_bulk_history_state=lambda: {"before": True},
             _refresh_bulk_view_after_edit=lambda row_ids: calls.append(("refresh", tuple(row_ids))),
-            _finalize_bulk_history_action=lambda label, before: calls.append((label, before)),
+            _finalize_bulk_history_action=lambda label, before, coalesce_key=None: calls.append((label, before, coalesce_key)),
             _update_bulk_summary=lambda: calls.append("summary"),
             _find_filtered_item=lambda key: next((item for item in (item_a, item_b) if (item["line_code"], item["item_code"]) == key), None),
         )
@@ -168,7 +214,38 @@ class AssignmentActionTests(unittest.TestCase):
 
         self.assertEqual(item_a["vendor"], "MOTION")
         self.assertEqual(item_b["vendor"], "MOTION")
-        self.assertEqual(calls, ["flush", ("refresh", (row_id_a, row_id_b)), "summary", ("vendor:visible", {"before": True})])
+        self.assertEqual(
+            calls,
+            [
+                "flush",
+                ("refresh", (row_id_a, row_id_b)),
+                "summary",
+                (
+                    "vendor:visible",
+                    {"before": True},
+                    {"kind": "vendor_visible", "col_name": "vendor", "row_ids": (row_id_a, row_id_b), "scope": {"vendor": "MOTION"}},
+                ),
+            ],
+        )
+
+    def test_bulk_apply_selected_history_key_includes_vendor_value(self):
+        calls = []
+        app = SimpleNamespace(
+            var_bulk_vendor=DummyVar("gregdist"),
+            bulk_tree=DummyTree(selected=("0",)),
+            filtered_items=[{"vendor": ""}],
+            vendor_codes_used=[],
+            _capture_bulk_history_state=lambda: {"before": True},
+            _finalize_bulk_history_action=lambda label, before, coalesce_key=None: calls.append(coalesce_key),
+            _update_bulk_summary=lambda: None,
+        )
+
+        ui_assignment_actions.bulk_apply_selected(app)
+
+        self.assertEqual(
+            calls,
+            [{"kind": "vendor_selected", "col_name": "vendor", "row_ids": ("0",), "scope": {"vendor": "GREGDIST"}}],
+        )
 
     def test_go_to_individual_flushes_pending_sheet_edit_before_switching_tabs(self):
         calls = []

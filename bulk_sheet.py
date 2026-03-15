@@ -1,6 +1,8 @@
 import tkinter as tk
 from types import SimpleNamespace
 
+import session_state_flow
+
 try:
     from tksheet import Sheet
     HAS_TKSHEET = True
@@ -315,9 +317,34 @@ class BulkSheetView:
             )
         self.app._update_bulk_summary()
         self.app._update_bulk_sheet_status()
-        if pending and pending.get("editable") and hasattr(self.app, "_finalize_bulk_history_action"):
-            self.app._finalize_bulk_history_action(f"sheet_edit:{pending.get('col_name', '')}", before_state)
+        if pending and pending.get("editable"):
+            self._finalize_bulk_history_action(
+                f"sheet_edit:{pending.get('col_name', '')}",
+                before_state,
+                coalesce_key=self._history_coalesce_key_for_pending_edit(pending),
+            )
         return bool(pending)
+
+    def _history_coalesce_key_for_pending_edit(self, pending):
+        if not pending or not pending.get("editable"):
+            return None
+        return session_state_flow.bulk_history_coalesce_key(
+            "sheet_edit",
+            col_name=pending.get("col_name", ""),
+            row_ids=pending.get("target_row_ids", ()),
+            selection_serial=pending.get("selection_serial"),
+        )
+
+    def _finalize_bulk_history_action(self, label, before_state, *, coalesce_key=None):
+        finalize = getattr(self.app, "_finalize_bulk_history_action", None)
+        if not callable(finalize):
+            return None
+        if coalesce_key is None:
+            return finalize(label, before_state)
+        try:
+            return finalize(label, before_state, coalesce_key=coalesce_key)
+        except TypeError:
+            return finalize(label, before_state)
 
     def _drain_pending_edit(self):
         pending = getattr(self, "_pending_edit", None)
@@ -906,8 +933,15 @@ class BulkSheetView:
             self.clear_selection()
             self.app._update_bulk_summary()
             self.app._update_bulk_sheet_status()
-            if hasattr(self.app, "_finalize_bulk_history_action"):
-                self.app._finalize_bulk_history_action(f"paste:{target_col}", before_state)
+            self._finalize_bulk_history_action(
+                f"paste:{target_col}",
+                before_state,
+                coalesce_key=session_state_flow.bulk_history_coalesce_key(
+                    "paste",
+                    col_name=target_col,
+                    row_ids=row_ids,
+                ),
+            )
             return True
 
         if current_row is None or current_col is None:
@@ -943,6 +977,14 @@ class BulkSheetView:
         self.clear_selection()
         self.app._update_bulk_summary()
         self.app._update_bulk_sheet_status()
-        if hasattr(self.app, "_finalize_bulk_history_action"):
-            self.app._finalize_bulk_history_action("paste:block", before_state)
+        self._finalize_bulk_history_action(
+            "paste:block",
+            before_state,
+            coalesce_key=session_state_flow.bulk_history_coalesce_key(
+                "paste_block",
+                col_name=self.columns[current_col] if 0 <= current_col < len(self.columns) else "",
+                row_ids=touched_row_ids,
+                scope=changed_cols,
+            ),
+        )
         return True

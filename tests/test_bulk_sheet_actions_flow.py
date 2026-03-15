@@ -57,7 +57,7 @@ class BulkSheetActionsFlowTests(unittest.TestCase):
             _refresh_bulk_view_after_edit=lambda row_ids: events.append(("refresh", tuple(row_ids))),
             _update_bulk_summary=lambda: events.append("summary"),
             _update_bulk_cell_status=lambda: events.append("status"),
-            _finalize_bulk_history_action=lambda label, before: events.append((label, before)),
+            _finalize_bulk_history_action=lambda label, before, coalesce_key=None: events.append((label, before, coalesce_key)),
         )
 
         result = bulk_sheet_actions_flow.bulk_fill_selection_with_current_value(
@@ -78,7 +78,7 @@ class BulkSheetActionsFlowTests(unittest.TestCase):
                 "clear",
                 "summary",
                 "status",
-                ("fill_down:pack_size", {"before": True}),
+                ("fill_down:pack_size", {"before": True}, {"kind": "fill_down", "col_name": "pack_size", "row_ids": ("0", "1")}),
             ],
         )
 
@@ -249,7 +249,7 @@ class BulkSheetActionsFlowTests(unittest.TestCase):
             _refresh_bulk_view_after_edit=lambda row_ids: events.append(("refresh", tuple(row_ids))),
             _update_bulk_summary=lambda: events.append("summary"),
             _update_bulk_cell_status=lambda: events.append("status"),
-            _finalize_bulk_history_action=lambda label, before: events.append((label, before)),
+            _finalize_bulk_history_action=lambda label, before, coalesce_key=None: events.append((label, before, coalesce_key)),
         )
 
         bulk_sheet_actions_flow.bulk_fill_selected_cells(
@@ -269,7 +269,7 @@ class BulkSheetActionsFlowTests(unittest.TestCase):
                 "clear",
                 "summary",
                 "status",
-                ("fill:pack_size", {"before": True}),
+                ("fill:pack_size", {"before": True}, {"kind": "fill", "col_name": "pack_size", "row_ids": (row_id_a, row_id_b)}),
             ],
         )
 
@@ -294,7 +294,7 @@ class BulkSheetActionsFlowTests(unittest.TestCase):
             _refresh_bulk_view_after_edit=lambda row_ids: events.append(("refresh", tuple(row_ids))),
             _update_bulk_summary=lambda: events.append("summary"),
             _update_bulk_cell_status=lambda: events.append("status"),
-            _finalize_bulk_history_action=lambda label, before: events.append((label, before)),
+            _finalize_bulk_history_action=lambda label, before, coalesce_key=None: events.append((label, before, coalesce_key)),
         )
 
         bulk_sheet_actions_flow.bulk_clear_selected_cells(
@@ -312,7 +312,7 @@ class BulkSheetActionsFlowTests(unittest.TestCase):
                 "clear",
                 "summary",
                 "status",
-                ("clear:vendor", {"before": True}),
+                ("clear:vendor", {"before": True}, {"kind": "clear", "col_name": "vendor", "row_ids": (row_id_a,)}),
             ],
         )
 
@@ -338,7 +338,7 @@ class BulkSheetActionsFlowTests(unittest.TestCase):
             _refresh_bulk_view_after_edit=lambda row_ids: events.append(("refresh", tuple(row_ids))),
             _update_bulk_summary=lambda: events.append("summary"),
             _update_bulk_cell_status=lambda: events.append("status"),
-            _finalize_bulk_history_action=lambda label, before: events.append((label, before)),
+            _finalize_bulk_history_action=lambda label, before, coalesce_key=None: events.append((label, before, coalesce_key)),
         )
 
         bulk_sheet_actions_flow.bulk_fill_selected_cells(
@@ -357,8 +357,45 @@ class BulkSheetActionsFlowTests(unittest.TestCase):
                 "clear",
                 "summary",
                 "status",
-                ("fill:pack_size", {"before": True}),
+                ("fill:pack_size", {"before": True}, {"kind": "fill", "col_name": "pack_size", "row_ids": (row_id_b,)}),
             ],
+        )
+
+    def test_bulk_begin_edit_passes_history_coalesce_key(self):
+        events = []
+        row_id_a = ui_bulk.bulk_row_id({"line_code": "AER-", "item_code": "A"})
+        row_id_b = ui_bulk.bulk_row_id({"line_code": "AER-", "item_code": "B"})
+        fake_app = SimpleNamespace(
+            bulk_sheet=SimpleNamespace(
+                flush_pending_edit=lambda: events.append("flush"),
+                selected_editable_column_name=lambda: "pack_size",
+                current_editable_column_name=lambda: "pack_size",
+                selected_target_row_ids=lambda col_name: (row_id_a, row_id_b),
+                selected_row_ids=lambda: (row_id_a, row_id_b),
+                current_cell_value=lambda: "2",
+                clear_selection=lambda: events.append("clear"),
+            ),
+            root=None,
+            _right_click_bulk_context=None,
+            _capture_bulk_history_state=lambda: {"before": True},
+            _bulk_apply_editor_value=lambda row_id, col_name, value: events.append((row_id, col_name, value)),
+            _refresh_bulk_view_after_edit=lambda row_ids: events.append(("refresh", tuple(row_ids))),
+            _update_bulk_summary=lambda: events.append("summary"),
+            _update_bulk_cell_status=lambda: events.append("status"),
+            _finalize_bulk_history_action=lambda label, before, coalesce_key=None: events.append((label, before, coalesce_key)),
+        )
+
+        result = bulk_sheet_actions_flow.bulk_begin_edit(
+            fake_app,
+            ("pack_size",),
+            lambda *args, **kwargs: " 5 ",
+            lambda *args, **kwargs: None,
+        )
+
+        self.assertEqual(result, "break")
+        self.assertEqual(
+            events[-1],
+            ("edit:pack_size", {"before": True}, {"kind": "edit", "col_name": "pack_size", "row_ids": (row_id_a, row_id_b)}),
         )
 
     def test_bulk_remove_selected_rows_flushes_pending_sheet_edit_first(self):

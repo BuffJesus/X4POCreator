@@ -17,6 +17,27 @@ def refresh_bulk_view_after_edit(app, row_ids, col_name):
         return app._refresh_bulk_view_after_edit(row_ids)
 
 
+def bulk_vendor_history_coalesce_key(kind, row_ids, vendor):
+    return session_state_flow.bulk_history_coalesce_key(
+        kind,
+        col_name="vendor",
+        row_ids=row_ids,
+        scope={"vendor": str(vendor or "")},
+    )
+
+
+def finalize_bulk_history_action(app, label, before_state, *, coalesce_key=None):
+    finalize = getattr(app, "_finalize_bulk_history_action", None)
+    if not callable(finalize):
+        return None
+    if coalesce_key is None:
+        return finalize(label, before_state)
+    try:
+        return finalize(label, before_state, coalesce_key=coalesce_key)
+    except TypeError:
+        return finalize(label, before_state)
+
+
 def bulk_vendor_autocomplete(app, event):
     if event.keysym in ("Return", "Escape", "Tab", "Up", "Down"):
         return
@@ -68,8 +89,12 @@ def bulk_apply_selected(app):
     if getattr(app, "bulk_sheet", None) and hasattr(app, "_refresh_bulk_view_after_edit"):
         refresh_bulk_view_after_edit(app, selected, "vendor")
     app._update_bulk_summary()
-    if hasattr(app, "_finalize_bulk_history_action"):
-        app._finalize_bulk_history_action("vendor:selected", before_state)
+    finalize_bulk_history_action(
+        app,
+        "vendor:selected",
+        before_state,
+        coalesce_key=bulk_vendor_history_coalesce_key("vendor_selected", selected, vendor),
+    )
 
 
 def bulk_apply_visible(app):
@@ -110,8 +135,12 @@ def bulk_apply_visible(app):
     if getattr(app, "bulk_sheet", None) and hasattr(app, "_refresh_bulk_view_after_edit"):
         refresh_bulk_view_after_edit(app, visible, "vendor")
     app._update_bulk_summary()
-    if hasattr(app, "_finalize_bulk_history_action"):
-        app._finalize_bulk_history_action("vendor:visible", before_state)
+    finalize_bulk_history_action(
+        app,
+        "vendor:visible",
+        before_state,
+        coalesce_key=bulk_vendor_history_coalesce_key("vendor_visible", visible, vendor),
+    )
 
 
 def undo_last_bulk_removal(app):

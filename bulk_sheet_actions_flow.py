@@ -1,4 +1,5 @@
 import bulk_remove_flow
+import session_state_flow
 
 
 def maybe_break(result):
@@ -16,6 +17,27 @@ def refresh_bulk_view_after_edit(app, row_ids, col_name):
         return app._refresh_bulk_view_after_edit(row_ids, changed_cols=(col_name,))
     except TypeError:
         return app._refresh_bulk_view_after_edit(row_ids)
+
+
+def bulk_edit_history_coalesce_key(kind, col_name, row_ids, *, selection_serial=None):
+    return session_state_flow.bulk_history_coalesce_key(
+        kind,
+        col_name=col_name,
+        row_ids=row_ids,
+        selection_serial=selection_serial,
+    )
+
+
+def finalize_bulk_history_action(app, label, before_state, *, coalesce_key=None):
+    finalize = getattr(app, "_finalize_bulk_history_action", None)
+    if not callable(finalize):
+        return None
+    if coalesce_key is None:
+        return finalize(label, before_state)
+    try:
+        return finalize(label, before_state, coalesce_key=coalesce_key)
+    except TypeError:
+        return finalize(label, before_state)
 
 
 def resolve_bulk_edit_context(app, *, include_current_row=False):
@@ -172,8 +194,12 @@ def bulk_fill_selection_with_current_value(app, editable_cols, write_debug, even
     app.bulk_sheet.clear_selection()
     app._update_bulk_summary()
     app._update_bulk_cell_status()
-    if hasattr(app, "_finalize_bulk_history_action"):
-        app._finalize_bulk_history_action(f"{alias}:{col_name}", before_state)
+    finalize_bulk_history_action(
+        app,
+        f"{alias}:{col_name}",
+        before_state,
+        coalesce_key=bulk_edit_history_coalesce_key(alias, col_name, row_ids),
+    )
     return "break"
 
 
@@ -267,8 +293,12 @@ def bulk_begin_edit(app, editable_cols, askstring, write_debug, event=None):
     app._right_click_bulk_context = None
     app._update_bulk_summary()
     app._update_bulk_cell_status()
-    if hasattr(app, "_finalize_bulk_history_action"):
-        app._finalize_bulk_history_action(f"edit:{col_name}", before_state)
+    finalize_bulk_history_action(
+        app,
+        f"edit:{col_name}",
+        before_state,
+        coalesce_key=bulk_edit_history_coalesce_key("edit", col_name, row_ids),
+    )
     return "break"
 
 
@@ -340,8 +370,12 @@ def bulk_fill_selected_cells(app, editable_cols, askstring, showinfo):
         app.bulk_sheet.clear_selection()
     app._update_bulk_summary()
     app._update_bulk_cell_status()
-    if hasattr(app, "_finalize_bulk_history_action"):
-        app._finalize_bulk_history_action(f"fill:{col_name}", before_state)
+    finalize_bulk_history_action(
+        app,
+        f"fill:{col_name}",
+        before_state,
+        coalesce_key=bulk_edit_history_coalesce_key("fill", col_name, row_ids),
+    )
 
 
 def bulk_clear_selected_cells(app, editable_cols, showinfo):
@@ -364,8 +398,12 @@ def bulk_clear_selected_cells(app, editable_cols, showinfo):
         app.bulk_sheet.clear_selection()
     app._update_bulk_summary()
     app._update_bulk_cell_status()
-    if hasattr(app, "_finalize_bulk_history_action"):
-        app._finalize_bulk_history_action(f"clear:{col_name}", before_state)
+    finalize_bulk_history_action(
+        app,
+        f"clear:{col_name}",
+        before_state,
+        coalesce_key=bulk_edit_history_coalesce_key("clear", col_name, row_ids),
+    )
 
 
 def bulk_delete_selected(app, event=None):

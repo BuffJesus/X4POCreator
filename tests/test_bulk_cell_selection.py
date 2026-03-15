@@ -781,6 +781,61 @@ class BulkSheetViewTests(unittest.TestCase):
         )
         self.assertIsNone(view._pending_edit)
 
+    def test_run_post_edit_refresh_coalesces_matching_sheet_edit_history(self):
+        calls = []
+        view = BulkSheetView.__new__(BulkSheetView)
+        view.row_ids = [4, 8]
+        view.columns = ("vendor", "pack_size")
+        view.editable_cols = {"vendor", "pack_size"}
+        view._selection_serial = 4
+        view._edit_refresh_after_id = None
+        view._scheduled_edit_generation = 2
+        view._pending_edit = {
+            "row": 0,
+            "col": 1,
+            "row_id": "4",
+            "col_name": "pack_size",
+            "editable": True,
+            "target_row_ids": ("4", "8"),
+            "committed_value": "12",
+            "selection_serial": 4,
+            "generation": 2,
+        }
+        view.app = SimpleNamespace(
+            _capture_bulk_history_state=lambda: {"before": True},
+            _bulk_apply_editor_value=lambda row_id, col_name, value: calls.append((row_id, col_name, value)),
+            _refresh_bulk_view_after_edit=lambda row_ids, changed_cols=None: calls.append(("refresh", tuple(row_ids), changed_cols)) or True,
+            _update_bulk_summary=lambda: calls.append(("summary",)),
+            _update_bulk_sheet_status=lambda: calls.append(("status",)),
+            _finalize_bulk_history_action=lambda label, before, coalesce_key=None: calls.append((label, before, coalesce_key)),
+        )
+        view.clear_selection = lambda: calls.append(("cleared",))
+        view.sheet = SimpleNamespace(get_cell_data=lambda row, col: "12")
+
+        view._run_post_edit_refresh(2)
+
+        self.assertEqual(
+            calls,
+            [
+                ("4", "pack_size", "12"),
+                ("8", "pack_size", "12"),
+                ("refresh", ("4", "8"), ("pack_size",)),
+                ("cleared",),
+                ("summary",),
+                ("status",),
+                (
+                    "sheet_edit:pack_size",
+                    {"before": True},
+                    {
+                        "kind": "sheet_edit",
+                        "col_name": "pack_size",
+                        "row_ids": ("4", "8"),
+                        "selection_serial": 4,
+                    },
+                ),
+            ],
+        )
+
     def test_select_all_visible_selects_all_rows_and_updates_status(self):
         calls = []
         view = BulkSheetView.__new__(BulkSheetView)
@@ -1179,7 +1234,7 @@ class BulkSheetViewTests(unittest.TestCase):
             _capture_bulk_history_state=lambda: {"before": True},
             _update_bulk_summary=lambda: calls.append(("summary",)),
             _update_bulk_sheet_status=lambda: calls.append(("status",)),
-            _finalize_bulk_history_action=lambda label, before: calls.append((label, before)),
+            _finalize_bulk_history_action=lambda label, before, coalesce_key=None: calls.append((label, before, coalesce_key)),
         )
         view.clear_selection = lambda: calls.append(("cleared",))
 
@@ -1196,7 +1251,7 @@ class BulkSheetViewTests(unittest.TestCase):
                 ("cleared",),
                 ("summary",),
                 ("status",),
-                ("paste:pack_size", {"before": True}),
+                ("paste:pack_size", {"before": True}, {"kind": "paste", "col_name": "pack_size", "row_ids": ("4", "8")}),
             ],
         )
 
@@ -1219,7 +1274,7 @@ class BulkSheetViewTests(unittest.TestCase):
             _capture_bulk_history_state=lambda: {"before": True},
             _update_bulk_summary=lambda: calls.append(("summary",)),
             _update_bulk_sheet_status=lambda: calls.append(("status",)),
-            _finalize_bulk_history_action=lambda label, before: calls.append((label, before)),
+            _finalize_bulk_history_action=lambda label, before, coalesce_key=None: calls.append((label, before, coalesce_key)),
         )
         view.clear_selection = lambda: calls.append(("cleared",))
 
@@ -1238,7 +1293,7 @@ class BulkSheetViewTests(unittest.TestCase):
                 ("cleared",),
                 ("summary",),
                 ("status",),
-                ("paste:block", {"before": True}),
+                ("paste:block", {"before": True}, {"kind": "paste_block", "col_name": "vendor", "row_ids": ("8", "12"), "scope": ("vendor", "pack_size")}),
             ],
         )
 

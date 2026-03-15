@@ -37,6 +37,34 @@ class SessionStateFlowTests(unittest.TestCase):
         self.assertEqual([entry["label"] for entry in fake_app.bulk_undo_stack], ["2", "3"])
         self.assertEqual(fake_app.bulk_redo_stack, [])
 
+    def test_finalize_bulk_history_action_coalesces_matching_top_entry(self):
+        fake_app = SimpleNamespace(
+            bulk_undo_stack=[
+                {
+                    "label": "sheet_edit:pack_size",
+                    "before": {"n": 1},
+                    "after": {"n": 2},
+                    "_coalesce_key": ("kind", "sheet_edit"),
+                }
+            ],
+            bulk_redo_stack=[{"label": "redo"}],
+            _capture_bulk_history_state=lambda: {"n": 3},
+        )
+
+        changed = session_state_flow.finalize_bulk_history_action(
+            fake_app,
+            "sheet_edit:pack_size",
+            {"n": 2},
+            max_bulk_history=5,
+            coalesce_key=("kind", "sheet_edit"),
+        )
+
+        self.assertTrue(changed)
+        self.assertEqual(len(fake_app.bulk_undo_stack), 1)
+        self.assertEqual(fake_app.bulk_undo_stack[0]["before"], {"n": 1})
+        self.assertEqual(fake_app.bulk_undo_stack[0]["after"], {"n": 3})
+        self.assertEqual(fake_app.bulk_redo_stack, [])
+
     def test_restore_bulk_history_state_rehydrates_state_and_refreshes_views(self):
         events = []
 

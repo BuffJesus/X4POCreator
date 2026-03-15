@@ -1229,8 +1229,14 @@ class POBuilderApp:
     def _capture_bulk_history_state(self):
         return session_state_flow.capture_bulk_history_state(self)
 
-    def _finalize_bulk_history_action(self, label, before_state):
-        return session_state_flow.finalize_bulk_history_action(self, label, before_state, MAX_BULK_HISTORY)
+    def _finalize_bulk_history_action(self, label, before_state, *, coalesce_key=None):
+        return session_state_flow.finalize_bulk_history_action(
+            self,
+            label,
+            before_state,
+            MAX_BULK_HISTORY,
+            coalesce_key=coalesce_key,
+        )
 
     def _restore_bulk_history_state(self, state):
         session_state_flow.restore_bulk_history_state(self, state)
@@ -1245,6 +1251,7 @@ class POBuilderApp:
             "label": entry.get("label", ""),
             "before": copy.deepcopy(entry["before"]),
             "after": current_state,
+            "_coalesce_key": copy.deepcopy(entry.get("_coalesce_key")),
         })
         return "break" if event is not None else None
 
@@ -1258,6 +1265,7 @@ class POBuilderApp:
             "label": entry.get("label", ""),
             "before": current_state,
             "after": copy.deepcopy(entry["after"]),
+            "_coalesce_key": copy.deepcopy(entry.get("_coalesce_key")),
         })
         return "break" if event is not None else None
 

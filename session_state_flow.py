@@ -10,6 +10,19 @@ def ignore_key(line_code, item_code):
     return f"{str(line_code).strip()}:{str(item_code).strip()}"
 
 
+def bulk_history_coalesce_key(kind, *, col_name="", row_ids=(), selection_serial=None, scope=None):
+    key = {"kind": str(kind or "")}
+    if col_name:
+        key["col_name"] = str(col_name)
+    if row_ids:
+        key["row_ids"] = tuple(str(row_id) for row_id in row_ids)
+    if selection_serial is not None:
+        key["selection_serial"] = selection_serial
+    if scope:
+        key["scope"] = scope
+    return key
+
+
 def ignore_items_by_keys(app, ignore_keys):
     normalized = {str(key).strip() for key in ignore_keys if str(key).strip()}
     if not normalized:
@@ -48,16 +61,47 @@ def capture_bulk_history_state(app):
     }
 
 
-def finalize_bulk_history_action(app, label, before_state, max_bulk_history):
+def _normalize_bulk_history_coalesce_key(key):
+    if key is None:
+        return None
+    if isinstance(key, dict):
+        return tuple(sorted((str(name), _normalize_bulk_history_coalesce_key(value)) for name, value in key.items()))
+    if isinstance(key, (list, tuple, set)):
+        return tuple(_normalize_bulk_history_coalesce_key(value) for value in key)
+    return key
+
+
+def _merge_bulk_history_entry(app, label, before_state, after_state, coalesce_key):
+    if coalesce_key is None:
+        return False
+    undo_stack = getattr(app, "bulk_undo_stack", None)
+    if not undo_stack:
+        return False
+    previous = undo_stack[-1]
+    if previous.get("_coalesce_key") != coalesce_key:
+        return False
+    if previous.get("after") != before_state:
+        return False
+    previous["label"] = label
+    previous["after"] = after_state
+    return True
+
+
+def finalize_bulk_history_action(app, label, before_state, max_bulk_history, *, coalesce_key=None):
     if before_state is None:
         return False
     after_state = app._capture_bulk_history_state()
     if after_state == before_state:
         return False
+    normalized_coalesce_key = _normalize_bulk_history_coalesce_key(coalesce_key)
+    if _merge_bulk_history_entry(app, label, before_state, after_state, normalized_coalesce_key):
+        app.bulk_redo_stack = []
+        return True
     app.bulk_undo_stack.append({
         "label": label,
         "before": before_state,
         "after": after_state,
+        "_coalesce_key": normalized_coalesce_key,
     })
     if len(app.bulk_undo_stack) > max_bulk_history:
         app.bulk_undo_stack = app.bulk_undo_stack[-max_bulk_history:]
