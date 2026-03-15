@@ -370,6 +370,27 @@ class POBuilderTests(unittest.TestCase):
         self.assertEqual(fake_app.lbl_assign_data_source.text, "Shared Folder: C:\\Shared")
         self.assertEqual(fake_app.lbl_review_data_source.text, "Shared Folder: C:\\Shared")
 
+    def test_bulk_undo_preserves_entry_capture_spec_for_redo(self):
+        calls = []
+        capture_specs = []
+        capture_spec = {"inventory_lookup": True, "qoh_adjustments": True}
+        fake_app = SimpleNamespace(
+            bulk_undo_stack=[{
+                "label": "edit:qoh",
+                "before": {"filtered_items": [{"item_code": "A"}]},
+                "after": {"filtered_items": [{"item_code": "B"}]},
+                "_capture_spec": capture_spec,
+            }],
+            bulk_redo_stack=[],
+            _capture_bulk_history_state=lambda capture_spec=None: capture_specs.append(capture_spec) or {"filtered_items": [{"item_code": "LIVE"}]},
+            _restore_bulk_history_state=lambda state: calls.append(("restore", state)),
+        )
+
+        po_builder.POBuilderApp._bulk_undo(fake_app)
+
+        self.assertEqual(capture_specs, [capture_spec])
+        self.assertEqual(fake_app.bulk_redo_stack[0]["_capture_spec"], capture_spec)
+
     def test_refresh_active_data_state_without_session_only_reloads_persistent_state(self):
         events = []
         fake_app = SimpleNamespace(

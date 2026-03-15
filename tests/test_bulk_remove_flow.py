@@ -20,8 +20,8 @@ class BulkRemoveFlowTests(unittest.TestCase):
                 {"item_code": "C"},
             ],
             last_removed_bulk_items=[],
-            _capture_bulk_history_state=lambda: {"before": True},
-            _finalize_bulk_history_action=lambda label, before: events.append((label, before)),
+            _capture_bulk_history_state=lambda capture_spec=None: {"before": True, "capture_spec": capture_spec},
+            _finalize_bulk_history_action=lambda label, before, capture_spec=None: events.append((label, before, capture_spec)),
         )
 
         removed = bulk_remove_flow.remove_filtered_rows(
@@ -34,7 +34,29 @@ class BulkRemoveFlowTests(unittest.TestCase):
         self.assertEqual(app.filtered_items, [{"item_code": "A"}])
         self.assertEqual(removed, [(2, {"item_code": "C"}), (1, {"item_code": "B"})])
         self.assertEqual(app.last_removed_bulk_items, removed)
-        self.assertEqual(events, [("remove:selected_rows", {"before": True})])
+        self.assertEqual(
+            events,
+            [(
+                "remove:selected_rows",
+                {
+                    "before": True,
+                    "capture_spec": {
+                        "inventory_lookup": False,
+                        "qoh_adjustments": False,
+                        "order_rules": False,
+                        "vendor_codes_used": False,
+                        "last_removed_bulk_items": True,
+                    },
+                },
+                {
+                    "inventory_lookup": False,
+                    "qoh_adjustments": False,
+                    "order_rules": False,
+                    "vendor_codes_used": False,
+                    "last_removed_bulk_items": True,
+                },
+            )],
+        )
 
     def test_remove_filtered_rows_invalidates_bulk_row_index(self):
         item_a = {"line_code": "AER-", "item_code": "A"}

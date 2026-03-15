@@ -57,7 +57,7 @@ class AssignmentActionTests(unittest.TestCase):
             bulk_tree=DummyTree(selected=("0", "1")),
             filtered_items=[{"vendor": ""}, {"vendor": ""}],
             vendor_codes_used=[],
-            _capture_bulk_history_state=lambda: {"before": True},
+            _capture_bulk_history_state=lambda capture_spec=None: {"before": True, "capture_spec": capture_spec},
             _finalize_bulk_history_action=lambda label, before, coalesce_key=None: calls.append((label, before, coalesce_key)),
             _update_bulk_summary=lambda: calls.append("summary"),
         )
@@ -73,7 +73,16 @@ class AssignmentActionTests(unittest.TestCase):
                 "summary",
                 (
                     "vendor:selected",
-                    {"before": True},
+                    {
+                        "before": True,
+                        "capture_spec": {
+                            "inventory_lookup": False,
+                            "qoh_adjustments": False,
+                            "order_rules": False,
+                            "vendor_codes_used": True,
+                            "last_removed_bulk_items": True,
+                        },
+                    },
                     {"kind": "vendor_selected", "col_name": "vendor", "row_ids": ("0", "1"), "scope": {"vendor": "GREGDIST"}},
                 ),
             ],

@@ -42,18 +42,20 @@ def finalize_bulk_history_action(app, label, before_state, *, coalesce_key=None,
     finalize = getattr(app, "_finalize_bulk_history_action", None)
     if not callable(finalize):
         return None
-    if coalesce_key is None:
-        if capture_spec is None:
-            return finalize(label, before_state)
-        try:
-            return finalize(label, before_state, capture_spec=capture_spec)
-        except TypeError:
-            return finalize(label, before_state)
     try:
-        if capture_spec is None:
+        if capture_spec is not None and coalesce_key is not None:
+            return finalize(label, before_state, coalesce_key=coalesce_key, capture_spec=capture_spec)
+        if capture_spec is not None:
+            return finalize(label, before_state, capture_spec=capture_spec)
+        if coalesce_key is not None:
             return finalize(label, before_state, coalesce_key=coalesce_key)
-        return finalize(label, before_state, coalesce_key=coalesce_key, capture_spec=capture_spec)
+        return finalize(label, before_state)
     except TypeError:
+        if coalesce_key is not None:
+            try:
+                return finalize(label, before_state, coalesce_key=coalesce_key)
+            except TypeError:
+                return finalize(label, before_state)
         return finalize(label, before_state)
 
 

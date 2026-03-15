@@ -1250,7 +1250,10 @@ class POBuilderApp:
             return "break" if event is not None else None
         entry = self.bulk_undo_stack.pop()
         capture_spec = copy.deepcopy(entry.get("_capture_spec"))
-        current_state = self._capture_bulk_history_state(capture_spec=capture_spec)
+        try:
+            current_state = self._capture_bulk_history_state(capture_spec=capture_spec)
+        except TypeError:
+            current_state = self._capture_bulk_history_state()
         self._restore_bulk_history_state(entry["before"])
         self.bulk_redo_stack.append({
             "label": entry.get("label", ""),
@@ -1266,7 +1269,10 @@ class POBuilderApp:
             return "break" if event is not None else None
         entry = self.bulk_redo_stack.pop()
         capture_spec = copy.deepcopy(entry.get("_capture_spec"))
-        current_state = self._capture_bulk_history_state(capture_spec=capture_spec)
+        try:
+            current_state = self._capture_bulk_history_state(capture_spec=capture_spec)
+        except TypeError:
+            current_state = self._capture_bulk_history_state()
         self._restore_bulk_history_state(entry["after"])
         self.bulk_undo_stack.append({
             "label": entry.get("label", ""),

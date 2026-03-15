@@ -65,6 +65,45 @@ class SessionStateFlowTests(unittest.TestCase):
         self.assertEqual(fake_app.bulk_undo_stack[0]["after"], {"n": 3})
         self.assertEqual(fake_app.bulk_redo_stack, [])
 
+    def test_finalize_bulk_history_action_stores_capture_spec_on_new_entry(self):
+        fake_app = SimpleNamespace(
+            bulk_undo_stack=[],
+            bulk_redo_stack=[],
+            _capture_bulk_history_state=lambda capture_spec=None: {"n": 2, "capture_spec": capture_spec},
+        )
+        capture_spec = session_state_flow.bulk_history_capture_spec_for_columns(("qoh",))
+
+        changed = session_state_flow.finalize_bulk_history_action(
+            fake_app,
+            "edit:qoh",
+            {"n": 1, "capture_spec": capture_spec},
+            max_bulk_history=5,
+            capture_spec=capture_spec,
+        )
+
+        self.assertTrue(changed)
+        self.assertEqual(fake_app.bulk_undo_stack[0]["_capture_spec"], capture_spec)
+
+    def test_capture_bulk_history_state_respects_column_capture_spec(self):
+        fake_app = SimpleNamespace(
+            filtered_items=[{"item_code": "ABC123"}],
+            inventory_lookup={("AER-", "ABC123"): {"qoh": 4}},
+            qoh_adjustments={("AER-", "ABC123"): {"new": 4}},
+            order_rules={"AER-:ABC123": {"pack_size": 6}},
+            vendor_codes_used=["MOTION"],
+            last_removed_bulk_items=[(1, {"item_code": "OLD"})],
+        )
+
+        state = session_state_flow.capture_bulk_history_state(
+            fake_app,
+            capture_spec=session_state_flow.bulk_history_capture_spec_for_columns(("final_qty",)),
+        )
+
+        self.assertEqual(state, {
+            "filtered_items": [{"item_code": "ABC123"}],
+            "last_removed_bulk_items": [(1, {"item_code": "OLD"})],
+        })
+
     def test_restore_bulk_history_state_rehydrates_state_and_refreshes_views(self):
         events = []
 
@@ -106,6 +145,39 @@ class SessionStateFlowTests(unittest.TestCase):
         self.assertEqual(fake_app._loaded_order_rules, {"KEEP": {"pack_size": 4}})
         self.assertEqual(fake_app._loaded_vendor_codes, ["KEEPVENDOR"])
         self.assertEqual(events, ["vendors", "clear", "bulk", "summary", "status"])
+
+    def test_restore_bulk_history_state_preserves_omitted_state_fields(self):
+        events = []
+        fake_app = SimpleNamespace(
+            filtered_items=[],
+            inventory_lookup={("KEEP",): {"qoh": 9}},
+            qoh_adjustments={("KEEP",): {"new": 9}},
+            order_rules={"KEEP": {"pack_size": 4}},
+            vendor_codes_used=["KEEPVENDOR"],
+            _loaded_order_rules={},
+            _loaded_vendor_codes=[],
+            last_removed_bulk_items=[("keep", {"item_code": "OLD"})],
+            bulk_sheet=None,
+            _refresh_vendor_inputs=lambda: events.append("vendors"),
+            _apply_bulk_filter=lambda: events.append("bulk"),
+            _update_bulk_summary=lambda: events.append("summary"),
+            _update_bulk_cell_status=lambda: events.append("status"),
+        )
+
+        session_state_flow.restore_bulk_history_state(
+            fake_app,
+            {
+                "filtered_items": [{"item_code": "ABC123"}],
+            },
+        )
+
+        self.assertEqual(fake_app.filtered_items, [{"item_code": "ABC123"}])
+        self.assertEqual(fake_app.inventory_lookup, {("KEEP",): {"qoh": 9}})
+        self.assertEqual(fake_app.qoh_adjustments, {("KEEP",): {"new": 9}})
+        self.assertEqual(fake_app.order_rules, {"KEEP": {"pack_size": 4}})
+        self.assertEqual(fake_app.vendor_codes_used, ["KEEPVENDOR"])
+        self.assertEqual(fake_app.last_removed_bulk_items, [("keep", {"item_code": "OLD"})])
+        self.assertEqual(events, ["vendors", "bulk", "summary", "status"])
 
     def test_capture_bulk_history_state_does_not_deepcopy_last_removed_bulk_items(self):
         class NoDeepcopy:
