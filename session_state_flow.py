@@ -3,6 +3,12 @@ import copy
 import ui_bulk
 
 
+ITEM_RUNTIME_CACHE_KEYS = frozenset({
+    "_bulk_row_id",
+    "_bulk_row_id_key",
+})
+
+
 def is_bulk_removal_history_label(label):
     normalized = str(label or "").strip().lower()
     return normalized.startswith("remove:")
@@ -53,7 +59,7 @@ def ignore_items_by_keys(app, ignore_keys):
 def capture_bulk_history_state(app):
     last_removed_bulk_items = list(getattr(app, "last_removed_bulk_items", ()) or ())
     return {
-        "filtered_items": copy.deepcopy(app.filtered_items),
+        "filtered_items": _copy_bulk_history_items(app.filtered_items),
         "inventory_lookup": copy.deepcopy(app.inventory_lookup),
         "qoh_adjustments": copy.deepcopy(app.qoh_adjustments),
         "order_rules": copy.deepcopy(app.order_rules),
@@ -113,7 +119,7 @@ def finalize_bulk_history_action(app, label, before_state, max_bulk_history, *, 
 
 
 def restore_bulk_history_state(app, state):
-    ui_bulk.replace_filtered_items(app, copy.deepcopy(state.get("filtered_items", [])))
+    ui_bulk.replace_filtered_items(app, _copy_bulk_history_items(state.get("filtered_items", [])))
     app.inventory_lookup = copy.deepcopy(state.get("inventory_lookup", {}))
     app.qoh_adjustments = copy.deepcopy(state.get("qoh_adjustments", {}))
     app.order_rules = copy.deepcopy(state.get("order_rules", {}))
@@ -127,3 +133,15 @@ def restore_bulk_history_state(app, state):
     app._apply_bulk_filter()
     app._update_bulk_summary()
     app._update_bulk_cell_status()
+
+
+def _sanitize_bulk_history_item(item):
+    copied = copy.deepcopy(item)
+    if isinstance(copied, dict):
+        for key in ITEM_RUNTIME_CACHE_KEYS:
+            copied.pop(key, None)
+    return copied
+
+
+def _copy_bulk_history_items(items):
+    return [_sanitize_bulk_history_item(item) for item in list(items or [])]

@@ -129,6 +129,62 @@ class SessionStateFlowTests(unittest.TestCase):
         self.assertEqual(state["last_removed_bulk_items"], [(3, removed_item)])
         self.assertIsNot(state["last_removed_bulk_items"], fake_app.last_removed_bulk_items)
 
+    def test_capture_bulk_history_state_strips_runtime_bulk_item_cache_fields(self):
+        filtered_item = {
+            "line_code": "AER-",
+            "item_code": "ABC123",
+            "_bulk_row_id": "[\"AER-\",\"ABC123\"]",
+            "_bulk_row_id_key": ("AER-", "ABC123"),
+            "vendor": "MOTION",
+        }
+        fake_app = SimpleNamespace(
+            filtered_items=[filtered_item],
+            inventory_lookup={},
+            qoh_adjustments={},
+            order_rules={},
+            vendor_codes_used=[],
+            _loaded_order_rules={},
+            _loaded_vendor_codes=[],
+            last_removed_bulk_items=[],
+        )
+
+        state = session_state_flow.capture_bulk_history_state(fake_app)
+
+        self.assertEqual(state["filtered_items"], [{"line_code": "AER-", "item_code": "ABC123", "vendor": "MOTION"}])
+
+    def test_restore_bulk_history_state_does_not_rehydrate_runtime_bulk_item_cache_fields(self):
+        events = []
+        fake_app = SimpleNamespace(
+            filtered_items=[],
+            inventory_lookup={},
+            qoh_adjustments={},
+            order_rules={},
+            vendor_codes_used=[],
+            _loaded_order_rules={},
+            _loaded_vendor_codes=[],
+            last_removed_bulk_items=[],
+            bulk_sheet=None,
+            _refresh_vendor_inputs=lambda: events.append("vendors"),
+            _apply_bulk_filter=lambda: events.append("bulk"),
+            _update_bulk_summary=lambda: events.append("summary"),
+            _update_bulk_cell_status=lambda: events.append("status"),
+        )
+
+        session_state_flow.restore_bulk_history_state(
+            fake_app,
+            {
+                "filtered_items": [{
+                    "line_code": "AER-",
+                    "item_code": "ABC123",
+                    "_bulk_row_id": "[\"AER-\",\"ABC123\"]",
+                    "_bulk_row_id_key": ("AER-", "ABC123"),
+                    "vendor": "MOTION",
+                }],
+            },
+        )
+
+        self.assertEqual(fake_app.filtered_items, [{"line_code": "AER-", "item_code": "ABC123", "vendor": "MOTION"}])
+
     def test_ignore_items_by_keys_removes_items_and_refreshes_review_when_present(self):
         events = []
         fake_app = SimpleNamespace(
