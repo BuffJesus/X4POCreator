@@ -73,7 +73,7 @@ class UIBulkTests(unittest.TestCase):
         self.assertEqual(list(fake_app._bulk_row_render_cache.keys()), [ui_bulk.bulk_row_id(keep_item)])
 
     def test_replace_filtered_items_updates_plain_object_and_syncs_caches(self):
-        keep_item = {"line_code": "AER-", "item_code": "KEEP"}
+        keep_item = {"line_code": "AER-", "item_code": "KEEP", "vendor": "MOTION", "status": "review"}
         drop_item = {"line_code": "AER-", "item_code": "DROP"}
         fake_app = SimpleNamespace(
             filtered_items=[drop_item],
@@ -92,6 +92,8 @@ class UIBulkTests(unittest.TestCase):
         self.assertIsNone(fake_app._bulk_row_index_cache)
         self.assertEqual(fake_app._bulk_row_index_generation, 1)
         self.assertEqual(list(fake_app._bulk_row_render_cache.keys()), [ui_bulk.bulk_row_id(keep_item)])
+        self.assertEqual(fake_app._bulk_summary_counts, {"total": 1, "assigned": 1, "review": 1, "warning": 0})
+        self.assertEqual(fake_app._bulk_line_code_values, ["AER-"])
 
     def test_sort_filtered_items_replaces_list_and_invalidates_index(self):
         item_a = {"line_code": "AER-", "item_code": "A"}

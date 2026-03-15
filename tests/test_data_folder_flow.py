@@ -69,6 +69,33 @@ class DataFolderFlowTests(unittest.TestCase):
         self.assertEqual(fake_app._loaded_vendor_codes, ["MOTION"])
         mocked_refresh.assert_called_once_with()
 
+    def test_prune_ignored_items_from_session_replaces_filtered_items_and_syncs_caches(self):
+        keep_item = {"line_code": "MOT-", "item_code": "ABC123"}
+        drop_item = {"line_code": "AER-", "item_code": "GH781-4"}
+        fake_app = SimpleNamespace(
+            filtered_items=[drop_item, keep_item],
+            assigned_items=[drop_item],
+            individual_items=[keep_item],
+            ignored_item_keys={"AER-:GH781-4"},
+            _ignore_key=lambda lc, ic: f"{lc}:{ic}",
+            _bulk_row_index_generation=0,
+            _bulk_row_index_cache={"generation": 0, "by_row_id": {}, "by_key": {}},
+            _bulk_row_render_cache={
+                po_builder.ui_bulk.bulk_row_id(drop_item): (("sig",), ("row",)),
+                po_builder.ui_bulk.bulk_row_id(keep_item): (("sig",), ("row",)),
+            },
+        )
+
+        changed = data_folder_flow.prune_ignored_items_from_session(fake_app)
+
+        self.assertTrue(changed)
+        self.assertEqual(fake_app.filtered_items, [keep_item])
+        self.assertEqual(fake_app.assigned_items, [])
+        self.assertEqual(fake_app.individual_items, [keep_item])
+        self.assertIsNone(fake_app._bulk_row_index_cache)
+        self.assertEqual(fake_app._bulk_row_index_generation, 1)
+        self.assertEqual(list(fake_app._bulk_row_render_cache.keys()), [po_builder.ui_bulk.bulk_row_id(keep_item)])
+
     def test_refresh_active_data_state_uses_default_lookback_when_control_fails(self):
         events = []
         filtered = [{

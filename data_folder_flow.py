@@ -4,6 +4,7 @@ from collections import defaultdict
 from tkinter import filedialog, messagebox
 
 import storage
+import ui_bulk
 from rules import get_rule_pack_size
 
 
@@ -91,10 +92,10 @@ def prune_ignored_items_from_session(app):
         len(app.assigned_items),
         len(app.individual_items),
     )
-    app.filtered_items = [
+    ui_bulk.replace_filtered_items(app, [
         item for item in app.filtered_items
         if app._ignore_key(item.get("line_code", ""), item.get("item_code", "")) not in app.ignored_item_keys
-    ]
+    ])
     app.assigned_items = [
         item for item in app.assigned_items
         if app._ignore_key(item.get("line_code", ""), item.get("item_code", "")) not in app.ignored_item_keys

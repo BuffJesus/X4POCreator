@@ -151,6 +151,7 @@ def _session_field(name):
         setattr(self.session, name, value)
         if name == "filtered_items":
             ui_bulk.sync_bulk_cache_state(self, filtered_items_changed=True, retain_items=value)
+            ui_bulk.sync_bulk_session_metadata(self, value)
 
     return property(_get, _set)
 

@@ -401,14 +401,15 @@ def build_bulk_tab(app, editable_cols):
 
 def populate_bulk_tree(app):
     sync_bulk_cache_state(app, filtered_items_changed=True)
-    lc_set = set()
-    counts = {"total": len(app.filtered_items), "assigned": 0, "review": 0, "warning": 0}
-    for item in app.filtered_items:
-        lc_set.add(item["line_code"])
-        _accumulate_summary_counts(counts, item)
+    metadata = getattr(app, "_bulk_line_code_values", None), getattr(app, "_bulk_summary_counts", None)
+    line_codes, counts = metadata
+    if not counts or counts.get("total") != len(app.filtered_items) or line_codes is None:
+        metadata = sync_bulk_session_metadata(app)
+        counts = metadata["counts"]
+        line_codes = list(metadata["line_codes"])
     row_ids, rows = build_bulk_sheet_rows(app, app.filtered_items, row_id_factory=lambda _item, idx: str(idx))
 
-    app.combo_bulk_lc["values"] = ["ALL"] + sorted(lc_set)
+    app.combo_bulk_lc["values"] = ["ALL"] + list(line_codes)
     app.combo_bulk_vendor["values"] = app.vendor_codes_used
     update_bulk_summary(app, counts=counts)
     if app.bulk_sheet:
@@ -456,6 +457,7 @@ def replace_filtered_items(app, items):
         return normalized
     setattr(app, "filtered_items", normalized)
     sync_bulk_cache_state(app, filtered_items_changed=True, retain_items=normalized)
+    sync_bulk_session_metadata(app, normalized)
     return normalized
 
 
@@ -581,6 +583,22 @@ def _recompute_summary_counts(items):
     for item in items:
         _accumulate_summary_counts(counts, item)
     return counts
+
+
+def build_bulk_session_metadata(items):
+    normalized = list(items or [])
+    return {
+        "counts": _recompute_summary_counts(normalized),
+        "line_codes": tuple(sorted({item.get("line_code", "") for item in normalized if item.get("line_code", "")})),
+    }
+
+
+def sync_bulk_session_metadata(app, items=None):
+    normalized = list(getattr(app, "filtered_items", ()) or ()) if items is None else list(items or [])
+    metadata = build_bulk_session_metadata(normalized)
+    app._bulk_summary_counts = dict(metadata["counts"])
+    app._bulk_line_code_values = list(metadata["line_codes"])
+    return metadata
 
 
 def update_bulk_summary(app, counts=None):
