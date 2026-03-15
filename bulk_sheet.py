@@ -27,6 +27,8 @@ class BulkSheetView:
         self.base_widths = {name: int(widths.get(name, 100)) for name in self.columns}
         self.row_ids = []
         self.row_lookup = {}
+        self._rendered_rows = ()
+        self._rendered_row_ids = ()
         self._selection_snapshot = {"cells": (), "rows": (), "columns": (), "current": (None, None)}
         self._selection_anchor = None
         self._resize_after_id = None
@@ -387,8 +389,20 @@ class BulkSheetView:
             self._run_post_edit_refresh(generation)
 
     def set_rows(self, rows, row_ids):
-        self.row_ids = [str(row_id) for row_id in row_ids]
+        normalized_row_ids = tuple(str(row_id) for row_id in row_ids)
+        normalized_rows = tuple(tuple(row) for row in rows)
+        if (
+            normalized_row_ids == getattr(self, "_rendered_row_ids", ())
+            and normalized_rows == getattr(self, "_rendered_rows", ())
+        ):
+            self.row_ids = list(normalized_row_ids)
+            self.row_lookup = {str(row_id): idx for idx, row_id in enumerate(self.row_ids)}
+            self.app._update_bulk_sheet_status()
+            return False
+        self.row_ids = list(normalized_row_ids)
         self.row_lookup = {str(row_id): idx for idx, row_id in enumerate(self.row_ids)}
+        self._rendered_row_ids = normalized_row_ids
+        self._rendered_rows = normalized_rows
         if getattr(self.app, "_right_click_bulk_context", None):
             self.app._right_click_bulk_context = None
             write_debug("bulk_sheet.set_rows.clear_right_click_context")
@@ -397,6 +411,7 @@ class BulkSheetView:
         self.sheet.headers([self.labels[col] for col in self.columns], redraw=False)
         self.sheet.display_rows("all", redraw=True)
         self.app._update_bulk_sheet_status()
+        return True
 
     def clear_selection(self):
         self._flush_pending_before_navigation()

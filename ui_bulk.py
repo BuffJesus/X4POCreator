@@ -497,6 +497,70 @@ def _filter_value(app, attr_name, default="ALL"):
         return default
 
 
+def bulk_filter_state(app):
+    return {
+        "lc": _filter_value(app, "var_bulk_lc_filter"),
+        "status": _filter_value(app, "var_bulk_status_filter"),
+        "source": _filter_value(app, "var_bulk_source_filter"),
+        "item_status": _filter_value(app, "var_bulk_item_status"),
+        "performance": _filter_value(app, "var_bulk_performance_filter"),
+        "sales_health": _filter_value(app, "var_bulk_sales_health_filter"),
+        "attention": _filter_value(app, "var_bulk_attention_filter"),
+    }
+
+
+def bulk_filter_is_default(filter_state):
+    return all(value == "ALL" for value in filter_state.values())
+
+
+def item_matches_bulk_filter(item, filter_state):
+    if filter_state["lc"] != "ALL" and item["line_code"] != filter_state["lc"]:
+        return False
+    if filter_state["status"] == "Assigned" and not item.get("vendor"):
+        return False
+    if filter_state["status"] == "Unassigned" and item.get("vendor"):
+        return False
+    if filter_state["source"] != "ALL":
+        has_sales = item.get("qty_sold", 0) > 0
+        has_susp = item.get("qty_suspended", 0) > 0
+        item_source = "Both" if (has_sales and has_susp) else ("Susp" if has_susp else "Sales")
+        if item_source != filter_state["source"]:
+            return False
+    if filter_state["item_status"] != "ALL":
+        item_status = item.get("status", "ok")
+        if filter_state["item_status"] == "OK" and item_status != "ok":
+            return False
+        if filter_state["item_status"] == "Review" and item_status != "review":
+            return False
+        if filter_state["item_status"] == "Warning" and item_status != "warning":
+            return False
+        if filter_state["item_status"] == "No Pack" and "missing_pack" not in item.get("data_flags", []):
+            return False
+    if filter_state["performance"] != "ALL":
+        performance = (item.get("performance_profile", "") or "").lower()
+        expected = {
+            "Top": "top_performer",
+            "Steady": "steady",
+            "Intermittent": "intermittent",
+            "Legacy": "legacy",
+        }.get(filter_state["performance"], "")
+        if performance != expected:
+            return False
+    if filter_state["sales_health"] != "ALL":
+        sales_health = (item.get("sales_health_signal", "") or "").lower()
+        if sales_health != filter_state["sales_health"].lower():
+            return False
+    if filter_state["attention"] != "ALL":
+        attention = (item.get("reorder_attention_signal", "") or "").lower()
+        expected_attention = {
+            "Normal": "normal",
+            "Missed Reorder": "review_missed_reorder",
+        }.get(filter_state["attention"], "")
+        if attention != expected_attention:
+            return False
+    return True
+
+
 def flush_pending_bulk_sheet_edit(app):
     bulk_sheet = getattr(app, "bulk_sheet", None)
     if bulk_sheet and hasattr(bulk_sheet, "flush_pending_edit"):
@@ -508,27 +572,31 @@ def can_incremental_refresh(app):
         return False
     if getattr(app, "_bulk_sort_col", None):
         return False
-    return (
-        _filter_value(app, "var_bulk_lc_filter") == "ALL"
-        and _filter_value(app, "var_bulk_status_filter") == "ALL"
-        and _filter_value(app, "var_bulk_source_filter") == "ALL"
-        and _filter_value(app, "var_bulk_item_status") == "ALL"
-        and _filter_value(app, "var_bulk_performance_filter") == "ALL"
-        and _filter_value(app, "var_bulk_sales_health_filter") == "ALL"
-        and _filter_value(app, "var_bulk_attention_filter") == "ALL"
-    )
+    return bulk_filter_is_default(bulk_filter_state(app))
 
 
-def _changed_columns_require_rebuild(app, changed_cols):
+def _filter_depends_on_changes(filter_state, changed_cols):
+    changed = set(changed_cols or ())
+    if not changed:
+        return not bulk_filter_is_default(filter_state)
+    if filter_state["status"] != "ALL" and "vendor" in changed:
+        return True
+    if filter_state["item_status"] != "ALL" and changed.intersection({"final_qty", "qoh", "cur_min", "cur_max", "pack_size"}):
+        return True
+    if filter_state["attention"] != "ALL" and changed.intersection({"final_qty", "qoh", "cur_min", "cur_max", "pack_size"}):
+        return True
+    return False
+
+
+def _changed_columns_require_rebuild(app, changed_cols, *, filter_state=None):
+    filter_state = filter_state or bulk_filter_state(app)
     changed = {col for col in (changed_cols or ()) if col}
     if not changed:
         return not can_incremental_refresh(app)
     sort_col = getattr(app, "_bulk_sort_col", None)
     if sort_col and _sort_column_depends_on_changes(sort_col, changed):
         return True
-    if _filter_value(app, "var_bulk_status_filter") != "ALL" and "vendor" in changed:
-        return True
-    if _filter_value(app, "var_bulk_item_status") != "ALL" and changed.intersection({"final_qty", "qoh", "cur_min", "cur_max", "pack_size"}):
+    if _filter_depends_on_changes(filter_state, changed):
         return True
     return False
 
@@ -553,7 +621,10 @@ def _sort_column_depends_on_changes(sort_col, changed_cols):
 
 
 def refresh_bulk_view_after_edit(app, row_ids, changed_cols=None):
-    if _changed_columns_require_rebuild(app, changed_cols):
+    filter_state = bulk_filter_state(app)
+    if _changed_columns_require_rebuild(app, changed_cols, filter_state=filter_state):
+        if _try_targeted_filtered_refresh(app, row_ids, filter_state=filter_state):
+            return True
         app._apply_bulk_filter()
         return False
     if not getattr(app, "bulk_sheet", None):
@@ -570,65 +641,46 @@ def refresh_bulk_view_after_edit(app, row_ids, changed_cols=None):
     return True
 
 
+def _try_targeted_filtered_refresh(app, row_ids, *, filter_state):
+    bulk_sheet = getattr(app, "bulk_sheet", None)
+    if not bulk_sheet:
+        return False
+    if getattr(app, "_bulk_sort_col", None):
+        return False
+    if bulk_filter_is_default(filter_state):
+        return False
+    visible_lookup = getattr(bulk_sheet, "row_lookup", {}) or {}
+    pending_refreshes = []
+    for row_id in row_ids:
+        idx, item = resolve_bulk_row_id(app, row_id)
+        if idx is None or item is None:
+            continue
+        effective_row_id = str(row_id)
+        if effective_row_id not in visible_lookup:
+            effective_row_id = bulk_row_id(item)
+        was_visible = effective_row_id in visible_lookup
+        matches_now = item_matches_bulk_filter(item, filter_state)
+        if was_visible != matches_now:
+            return False
+        if matches_now:
+            pending_refreshes.append((effective_row_id, app._bulk_row_values(item)))
+    for effective_row_id, values in pending_refreshes:
+        bulk_sheet.refresh_row(effective_row_id, values)
+    return True
+
+
 def apply_bulk_filter(app):
     flush_pending_bulk_sheet_edit(app)
-    lc_filter = _filter_value(app, "var_bulk_lc_filter")
-    status_filter = _filter_value(app, "var_bulk_status_filter")
-    source_filter = _filter_value(app, "var_bulk_source_filter")
-    item_status_filter = _filter_value(app, "var_bulk_item_status")
-    performance_filter = _filter_value(app, "var_bulk_performance_filter")
-    sales_health_filter = _filter_value(app, "var_bulk_sales_health_filter")
-    attention_filter = _filter_value(app, "var_bulk_attention_filter")
+    filter_state = bulk_filter_state(app)
 
     rows = []
     row_ids = []
-    counts = {"total": len(app.filtered_items), "assigned": 0, "review": 0, "warning": 0}
-    for i, item in enumerate(app.filtered_items):
-        _accumulate_summary_counts(counts, item)
-        if lc_filter != "ALL" and item["line_code"] != lc_filter:
+    counts = getattr(app, "_bulk_summary_counts", None)
+    if not counts or counts.get("total") != len(app.filtered_items):
+        counts = _recompute_summary_counts(app.filtered_items)
+    for item in app.filtered_items:
+        if not item_matches_bulk_filter(item, filter_state):
             continue
-        if status_filter == "Assigned" and not item.get("vendor"):
-            continue
-        if status_filter == "Unassigned" and item.get("vendor"):
-            continue
-        if source_filter != "ALL":
-            has_sales = item.get("qty_sold", 0) > 0
-            has_susp = item.get("qty_suspended", 0) > 0
-            item_source = "Both" if (has_sales and has_susp) else ("Susp" if has_susp else "Sales")
-            if item_source != source_filter:
-                continue
-        if item_status_filter != "ALL":
-            item_status = item.get("status", "ok")
-            if item_status_filter == "OK" and item_status != "ok":
-                continue
-            if item_status_filter == "Review" and item_status != "review":
-                continue
-            if item_status_filter == "Warning" and item_status != "warning":
-                continue
-            if item_status_filter == "No Pack" and "missing_pack" not in item.get("data_flags", []):
-                continue
-        if performance_filter != "ALL":
-            performance = (item.get("performance_profile", "") or "").lower()
-            expected = {
-                "Top": "top_performer",
-                "Steady": "steady",
-                "Intermittent": "intermittent",
-                "Legacy": "legacy",
-            }.get(performance_filter, "")
-            if performance != expected:
-                continue
-        if sales_health_filter != "ALL":
-            sales_health = (item.get("sales_health_signal", "") or "").lower()
-            if sales_health != sales_health_filter.lower():
-                continue
-        if attention_filter != "ALL":
-            attention = (item.get("reorder_attention_signal", "") or "").lower()
-            expected_attention = {
-                "Normal": "normal",
-                "Missed Reorder": "review_missed_reorder",
-            }.get(attention_filter, "")
-            if attention != expected_attention:
-                continue
         row_ids.append(bulk_row_id(item))
         rows.append(list(bulk_row_values(app, item)))
     update_bulk_summary(app, counts=counts)

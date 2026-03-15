@@ -102,6 +102,60 @@ class UIBulkTests(unittest.TestCase):
         self.assertFalse(result)
         self.assertEqual(events, ["filter"])
 
+    def test_refresh_bulk_view_after_edit_keeps_assigned_filter_incremental_when_row_stays_visible(self):
+        events = []
+        item = {"line_code": "AER-", "item_code": "GH781-4", "vendor": "SOURCE", "description": ""}
+        row_id = ui_bulk.bulk_row_id(item)
+        fake_app = SimpleNamespace(
+            bulk_sheet=SimpleNamespace(
+                refresh_row=lambda current_row_id, values: events.append((current_row_id, values)),
+                row_lookup={row_id: 0},
+            ),
+            filtered_items=[item],
+            _bulk_row_values=lambda current_item: (current_item["item_code"], current_item.get("vendor", "")),
+            _apply_bulk_filter=lambda: events.append("filter"),
+            _bulk_sort_col=None,
+            var_bulk_lc_filter=SimpleNamespace(get=lambda: "ALL"),
+            var_bulk_status_filter=SimpleNamespace(get=lambda: "Assigned"),
+            var_bulk_source_filter=SimpleNamespace(get=lambda: "ALL"),
+            var_bulk_item_status=SimpleNamespace(get=lambda: "ALL"),
+            var_bulk_performance_filter=SimpleNamespace(get=lambda: "ALL"),
+            var_bulk_sales_health_filter=SimpleNamespace(get=lambda: "ALL"),
+            var_bulk_attention_filter=SimpleNamespace(get=lambda: "ALL"),
+        )
+
+        result = ui_bulk.refresh_bulk_view_after_edit(fake_app, (row_id,), changed_cols=("vendor",))
+
+        self.assertTrue(result)
+        self.assertEqual(events, [(row_id, ("GH781-4", "SOURCE"))])
+
+    def test_refresh_bulk_view_after_edit_skips_rebuild_when_filtered_out_row_stays_out(self):
+        events = []
+        item = {"line_code": "AER-", "item_code": "GH781-4", "vendor": "", "description": ""}
+        row_id = ui_bulk.bulk_row_id(item)
+        fake_app = SimpleNamespace(
+            bulk_sheet=SimpleNamespace(
+                refresh_row=lambda current_row_id, values: events.append((current_row_id, values)),
+                row_lookup={},
+            ),
+            filtered_items=[item],
+            _bulk_row_values=lambda current_item: (current_item["item_code"], current_item.get("vendor", "")),
+            _apply_bulk_filter=lambda: events.append("filter"),
+            _bulk_sort_col=None,
+            var_bulk_lc_filter=SimpleNamespace(get=lambda: "ALL"),
+            var_bulk_status_filter=SimpleNamespace(get=lambda: "Assigned"),
+            var_bulk_source_filter=SimpleNamespace(get=lambda: "ALL"),
+            var_bulk_item_status=SimpleNamespace(get=lambda: "ALL"),
+            var_bulk_performance_filter=SimpleNamespace(get=lambda: "ALL"),
+            var_bulk_sales_health_filter=SimpleNamespace(get=lambda: "ALL"),
+            var_bulk_attention_filter=SimpleNamespace(get=lambda: "ALL"),
+        )
+
+        result = ui_bulk.refresh_bulk_view_after_edit(fake_app, (row_id,), changed_cols=("vendor",))
+
+        self.assertTrue(result)
+        self.assertEqual(events, [])
+
     def test_refresh_bulk_view_after_edit_keeps_filtered_refresh_incremental_when_column_cannot_affect_filter(self):
         events = []
         row_id = ui_bulk.bulk_row_id({"line_code": "AER-", "item_code": "GH781-4"})
@@ -127,6 +181,39 @@ class UIBulkTests(unittest.TestCase):
 
         self.assertTrue(result)
         self.assertEqual(events, [(row_id, ("GH781-4", 6))])
+
+    def test_refresh_bulk_view_after_edit_rebuilds_attention_filter_when_row_leaves_visible_set(self):
+        events = []
+        item = {
+            "line_code": "AER-",
+            "item_code": "GH781-4",
+            "description": "",
+            "qoh": 0,
+            "reorder_attention_signal": "normal",
+        }
+        row_id = ui_bulk.bulk_row_id(item)
+        fake_app = SimpleNamespace(
+            bulk_sheet=SimpleNamespace(
+                refresh_row=lambda current_row_id, values: events.append((current_row_id, values)),
+                row_lookup={row_id: 0},
+            ),
+            filtered_items=[item],
+            _bulk_row_values=lambda current_item: (current_item["item_code"], current_item.get("reorder_attention_signal", "")),
+            _apply_bulk_filter=lambda: events.append("filter"),
+            _bulk_sort_col=None,
+            var_bulk_lc_filter=SimpleNamespace(get=lambda: "ALL"),
+            var_bulk_status_filter=SimpleNamespace(get=lambda: "ALL"),
+            var_bulk_source_filter=SimpleNamespace(get=lambda: "ALL"),
+            var_bulk_item_status=SimpleNamespace(get=lambda: "ALL"),
+            var_bulk_performance_filter=SimpleNamespace(get=lambda: "ALL"),
+            var_bulk_sales_health_filter=SimpleNamespace(get=lambda: "ALL"),
+            var_bulk_attention_filter=SimpleNamespace(get=lambda: "Missed Reorder"),
+        )
+
+        result = ui_bulk.refresh_bulk_view_after_edit(fake_app, (row_id,), changed_cols=("qoh",))
+
+        self.assertFalse(result)
+        self.assertEqual(events, ["filter"])
 
     def test_refresh_bulk_view_after_edit_keeps_sorted_refresh_incremental_when_column_cannot_affect_sort(self):
         events = []
@@ -250,6 +337,40 @@ class UIBulkTests(unittest.TestCase):
         self.assertEqual(captured[1][1], [ui_bulk.bulk_row_id(fake_app.filtered_items[0])])
         self.assertEqual(captured[1][0][0][2], "A")
         self.assertEqual(fake_app._bulk_summary_counts, {"total": 2, "assigned": 2, "review": 0, "warning": 0})
+
+    def test_apply_bulk_filter_reuses_cached_summary_counts(self):
+        captured = []
+        label = SimpleNamespace(config=lambda **kwargs: setattr(label, "text", kwargs.get("text", "")))
+        fake_app = SimpleNamespace(
+            filtered_items=[
+                {"line_code": "AER-", "item_code": "A", "description": "Item A", "vendor": "MOTION", "qty_sold": 1, "qty_suspended": 0, "status": "ok"},
+                {"line_code": "AER-", "item_code": "B", "description": "Item B", "vendor": "", "qty_sold": 1, "qty_suspended": 0, "status": "warning"},
+            ],
+            _bulk_summary_counts={"total": 2, "assigned": 1, "review": 0, "warning": 1},
+            bulk_sheet=SimpleNamespace(
+                flush_pending_edit=lambda: captured.append(("flush",)),
+                set_rows=lambda rows, row_ids: captured.append((rows, row_ids)),
+            ),
+            var_bulk_lc_filter=SimpleNamespace(get=lambda: "ALL"),
+            var_bulk_status_filter=SimpleNamespace(get=lambda: "Assigned"),
+            var_bulk_source_filter=SimpleNamespace(get=lambda: "ALL"),
+            var_bulk_item_status=SimpleNamespace(get=lambda: "ALL"),
+            var_bulk_performance_filter=SimpleNamespace(get=lambda: "ALL"),
+            var_bulk_sales_health_filter=SimpleNamespace(get=lambda: "ALL"),
+            var_bulk_attention_filter=SimpleNamespace(get=lambda: "ALL"),
+            _suggest_min_max=lambda key: (None, None),
+            inventory_lookup={},
+            order_rules={},
+            bulk_tree_columns=(),
+            bulk_tree_labels={},
+            lbl_bulk_summary=label,
+        )
+
+        ui_bulk.apply_bulk_filter(fake_app)
+
+        self.assertEqual(fake_app._bulk_summary_counts, {"total": 2, "assigned": 1, "review": 0, "warning": 1})
+        self.assertIn("1 assigned", label.text)
+        self.assertEqual(len(captured[1][1]), 1)
 
     def test_refresh_bulk_view_after_edit_resolves_stable_row_id_after_item_reordering(self):
         events = []

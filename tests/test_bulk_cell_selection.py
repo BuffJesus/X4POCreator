@@ -452,6 +452,30 @@ class BulkSheetViewTests(unittest.TestCase):
         self.assertEqual(view.row_ids, ["0"])
         self.assertEqual(calls[-1], ("status",))
 
+    def test_set_rows_skips_sheet_reset_when_rendered_rows_are_unchanged(self):
+        calls = []
+        view = BulkSheetView.__new__(BulkSheetView)
+        view.labels = {"vendor": "Vendor", "pack_size": "Pack"}
+        view.columns = ("vendor", "pack_size")
+        view._rendered_row_ids = ("0",)
+        view._rendered_rows = (("A", "5"),)
+        view.app = SimpleNamespace(
+            _right_click_bulk_context=None,
+            _update_bulk_sheet_status=lambda: calls.append(("status",)),
+        )
+        view.sheet = SimpleNamespace(
+            set_sheet_data=lambda *args, **kwargs: calls.append(("set_rows",)),
+            headers=lambda *args, **kwargs: calls.append(("headers",)),
+            display_rows=lambda *args, **kwargs: calls.append(("display",)),
+        )
+
+        result = view.set_rows([["A", "5"]], ["0"])
+
+        self.assertFalse(result)
+        self.assertEqual(view.row_ids, ["0"])
+        self.assertEqual(view.row_lookup, {"0": 0})
+        self.assertEqual(calls, [("status",)])
+
     def test_clear_selection_flushes_pending_edit_before_deselecting(self):
         calls = []
         view = BulkSheetView.__new__(BulkSheetView)
