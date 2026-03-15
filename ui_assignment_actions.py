@@ -79,6 +79,7 @@ def bulk_apply_selected(app):
             app,
             before_summary_item,
             {"vendor": item.get("vendor", ""), "status": item.get("status", "")},
+            item=item,
         )
         if not getattr(app, "bulk_sheet", None):
             app.bulk_tree.set(item_id, "vendor", vendor)
@@ -125,6 +126,7 @@ def bulk_apply_visible(app):
             app,
             before_summary_item,
             {"vendor": item.get("vendor", ""), "status": item.get("status", "")},
+            item=item,
         )
         if not getattr(app, "bulk_sheet", None):
             app.bulk_tree.set(item_id, "vendor", vendor)

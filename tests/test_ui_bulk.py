@@ -172,6 +172,8 @@ class UIBulkTests(unittest.TestCase):
         self.assertEqual(list(fake_app._bulk_row_render_cache.keys()), [ui_bulk.bulk_row_id(keep_item)])
         self.assertEqual(fake_app._bulk_summary_counts, {"total": 1, "assigned": 1, "review": 1, "warning": 0})
         self.assertEqual(fake_app._bulk_line_code_values, ["AER-"])
+        self.assertEqual(fake_app._bulk_items_by_assignment_status, {"Assigned": (keep_item,)})
+        self.assertEqual(fake_app._bulk_items_by_item_status, {"Review": (keep_item,)})
 
     def test_sort_filtered_items_replaces_list_and_invalidates_index(self):
         item_a = {"line_code": "AER-", "item_code": "A"}
@@ -205,19 +207,25 @@ class UIBulkTests(unittest.TestCase):
         self.assertIn("1 warning", label.text)
 
     def test_adjust_bulk_summary_for_item_change_updates_cached_counts(self):
+        item = {"vendor": "OLD", "status": "review"}
         fake_app = SimpleNamespace(
-            filtered_items=[{"vendor": "OLD", "status": "review"}],
+            filtered_items=[item],
             _bulk_summary_counts={"total": 1, "assigned": 1, "review": 1, "warning": 0},
+            _bulk_items_by_assignment_status={"Assigned": (item,)},
+            _bulk_items_by_item_status={"Review": (item,)},
         )
 
         result = ui_bulk.adjust_bulk_summary_for_item_change(
             fake_app,
             {"vendor": "OLD", "status": "review"},
             {"vendor": "", "status": "warning"},
+            item=item,
         )
 
         self.assertTrue(result)
         self.assertEqual(fake_app._bulk_summary_counts, {"total": 1, "assigned": 0, "review": 0, "warning": 1})
+        self.assertEqual(fake_app._bulk_items_by_assignment_status, {"Unassigned": (item,)})
+        self.assertEqual(fake_app._bulk_items_by_item_status, {"Warning": (item,)})
 
     def test_flush_pending_bulk_sheet_edit_calls_sheet_hook(self):
         events = []
@@ -656,6 +664,74 @@ class UIBulkTests(unittest.TestCase):
 
         self.assertEqual(captured[1][1], [ui_bulk.bulk_row_id(item_sales)])
 
+    def test_apply_bulk_filter_assignment_status_path_uses_assignment_bucket(self):
+        captured = []
+        label = SimpleNamespace(config=lambda **kwargs: setattr(label, "text", kwargs.get("text", "")))
+        item_assigned = {"line_code": "AER-", "item_code": "A", "description": "Item A", "vendor": "MOTION", "qty_sold": 1, "qty_suspended": 0, "status": "ok"}
+        item_unassigned = {"line_code": "MOT-", "item_code": "B", "description": "Item B", "vendor": "", "qty_sold": 1, "qty_suspended": 0, "status": "ok"}
+        fake_app = SimpleNamespace(
+            filtered_items=[item_assigned, item_unassigned],
+            _bulk_summary_counts={"total": 2, "assigned": 1, "review": 0, "warning": 0},
+            _bulk_items_by_assignment_status={"Assigned": (item_assigned,), "Unassigned": (item_unassigned,)},
+            bulk_sheet=SimpleNamespace(
+                flush_pending_edit=lambda: captured.append(("flush",)),
+                set_rows=lambda rows, row_ids: captured.append((rows, row_ids)),
+            ),
+            var_bulk_lc_filter=SimpleNamespace(get=lambda: "ALL"),
+            var_bulk_status_filter=SimpleNamespace(get=lambda: "Assigned"),
+            var_bulk_source_filter=SimpleNamespace(get=lambda: "ALL"),
+            var_bulk_item_status=SimpleNamespace(get=lambda: "ALL"),
+            var_bulk_performance_filter=SimpleNamespace(get=lambda: "ALL"),
+            var_bulk_sales_health_filter=SimpleNamespace(get=lambda: "ALL"),
+            var_bulk_attention_filter=SimpleNamespace(get=lambda: "ALL"),
+            _suggest_min_max=lambda key: (None, None),
+            inventory_lookup={},
+            order_rules={},
+            combo_bulk_lc=type("Combo", (), {"__getitem__": lambda self, key: (), "__setitem__": lambda self, key, value: None})(),
+            combo_bulk_vendor=type("Combo", (), {"__getitem__": lambda self, key: (), "__setitem__": lambda self, key, value: None})(),
+            vendor_codes_used=[],
+            lbl_bulk_summary=label,
+        )
+
+        with patch("ui_bulk.item_matches_bulk_filter", side_effect=AssertionError("matcher should not run")):
+            ui_bulk.apply_bulk_filter(fake_app)
+
+        self.assertEqual(captured[1][1], [ui_bulk.bulk_row_id(item_assigned)])
+
+    def test_apply_bulk_filter_item_status_path_uses_item_status_bucket(self):
+        captured = []
+        label = SimpleNamespace(config=lambda **kwargs: setattr(label, "text", kwargs.get("text", "")))
+        item_ok = {"line_code": "AER-", "item_code": "A", "description": "Item A", "vendor": "", "qty_sold": 1, "qty_suspended": 0, "status": "ok"}
+        item_warning = {"line_code": "MOT-", "item_code": "B", "description": "Item B", "vendor": "", "qty_sold": 1, "qty_suspended": 0, "status": "warning"}
+        fake_app = SimpleNamespace(
+            filtered_items=[item_ok, item_warning],
+            _bulk_summary_counts={"total": 2, "assigned": 0, "review": 0, "warning": 1},
+            _bulk_items_by_item_status={"OK": (item_ok,), "Warning": (item_warning,)},
+            bulk_sheet=SimpleNamespace(
+                flush_pending_edit=lambda: captured.append(("flush",)),
+                set_rows=lambda rows, row_ids: captured.append((rows, row_ids)),
+            ),
+            var_bulk_lc_filter=SimpleNamespace(get=lambda: "ALL"),
+            var_bulk_status_filter=SimpleNamespace(get=lambda: "ALL"),
+            var_bulk_source_filter=SimpleNamespace(get=lambda: "ALL"),
+            var_bulk_item_status=SimpleNamespace(get=lambda: "Warning"),
+            var_bulk_performance_filter=SimpleNamespace(get=lambda: "ALL"),
+            var_bulk_sales_health_filter=SimpleNamespace(get=lambda: "ALL"),
+            var_bulk_attention_filter=SimpleNamespace(get=lambda: "ALL"),
+            _suggest_min_max=lambda key: (None, None),
+            inventory_lookup={},
+            order_rules={},
+            combo_bulk_lc=type("Combo", (), {"__getitem__": lambda self, key: (), "__setitem__": lambda self, key, value: None})(),
+            combo_bulk_vendor=type("Combo", (), {"__getitem__": lambda self, key: (), "__setitem__": lambda self, key, value: None})(),
+            vendor_codes_used=[],
+            lbl_bulk_summary=label,
+        )
+
+        with patch("ui_bulk.item_matches_bulk_filter", side_effect=AssertionError("matcher should not run")):
+            ui_bulk.apply_bulk_filter(fake_app)
+
+        self.assertEqual(captured[1][1], [ui_bulk.bulk_row_id(item_warning)])
+
     def test_apply_bulk_filter_line_code_and_source_path_uses_intersection_bucket(self):
         captured = []
         label = SimpleNamespace(config=lambda **kwargs: setattr(label, "text", kwargs.get("text", "")))
@@ -694,7 +770,7 @@ class UIBulkTests(unittest.TestCase):
 
         self.assertEqual(captured[1][1], [ui_bulk.bulk_row_id(item_match)])
 
-    def test_apply_bulk_filter_uses_matcher_when_unstable_filter_is_active(self):
+    def test_apply_bulk_filter_bucket_intersection_skips_matcher_for_status_and_source(self):
         seen = []
         captured = []
         label = SimpleNamespace(config=lambda **kwargs: setattr(label, "text", kwargs.get("text", "")))
@@ -706,7 +782,7 @@ class UIBulkTests(unittest.TestCase):
             _bulk_line_code_values=["AER-", "MOT-"],
             _bulk_items_by_line_code={"AER-": (item_sales,), "MOT-": (item_susp,)},
             _bulk_items_by_source={"Sales": (item_sales,), "Susp": (item_susp,)},
-            _bulk_items_by_line_code_source={("AER-", "Sales"): (item_sales,), ("MOT-", "Susp"): (item_susp,)},
+            _bulk_items_by_assignment_status={"Assigned": (item_sales,), "Unassigned": (item_susp,)},
             bulk_sheet=SimpleNamespace(
                 flush_pending_edit=lambda: captured.append(("flush",)),
                 set_rows=lambda rows, row_ids: captured.append((rows, row_ids)),
@@ -716,6 +792,41 @@ class UIBulkTests(unittest.TestCase):
             var_bulk_source_filter=SimpleNamespace(get=lambda: "Sales"),
             var_bulk_item_status=SimpleNamespace(get=lambda: "ALL"),
             var_bulk_performance_filter=SimpleNamespace(get=lambda: "ALL"),
+            var_bulk_sales_health_filter=SimpleNamespace(get=lambda: "ALL"),
+            var_bulk_attention_filter=SimpleNamespace(get=lambda: "ALL"),
+            _suggest_min_max=lambda key: (None, None),
+            inventory_lookup={},
+            order_rules={},
+            combo_bulk_lc=type("Combo", (), {"__getitem__": lambda self, key: (), "__setitem__": lambda self, key, value: None})(),
+            combo_bulk_vendor=type("Combo", (), {"__getitem__": lambda self, key: (), "__setitem__": lambda self, key, value: None})(),
+            vendor_codes_used=[],
+            lbl_bulk_summary=label,
+        )
+
+        with patch("ui_bulk.item_matches_bulk_filter", side_effect=AssertionError("matcher should not run")):
+            ui_bulk.apply_bulk_filter(fake_app)
+
+        self.assertEqual(captured[1][1], [ui_bulk.bulk_row_id(item_sales)])
+
+    def test_apply_bulk_filter_uses_matcher_when_performance_filter_is_active(self):
+        seen = []
+        captured = []
+        label = SimpleNamespace(config=lambda **kwargs: setattr(label, "text", kwargs.get("text", "")))
+        item_top = {"line_code": "AER-", "item_code": "A", "description": "Item A", "vendor": "MOTION", "qty_sold": 1, "qty_suspended": 0, "status": "ok", "performance_profile": "top_performer"}
+        item_steady = {"line_code": "MOT-", "item_code": "B", "description": "Item B", "vendor": "", "qty_sold": 0, "qty_suspended": 1, "status": "ok", "performance_profile": "steady"}
+        fake_app = SimpleNamespace(
+            filtered_items=[item_top, item_steady],
+            _bulk_summary_counts={"total": 2, "assigned": 1, "review": 0, "warning": 0},
+            _bulk_items_by_assignment_status={"Assigned": (item_top,), "Unassigned": (item_steady,)},
+            bulk_sheet=SimpleNamespace(
+                flush_pending_edit=lambda: captured.append(("flush",)),
+                set_rows=lambda rows, row_ids: captured.append((rows, row_ids)),
+            ),
+            var_bulk_lc_filter=SimpleNamespace(get=lambda: "ALL"),
+            var_bulk_status_filter=SimpleNamespace(get=lambda: "Assigned"),
+            var_bulk_source_filter=SimpleNamespace(get=lambda: "ALL"),
+            var_bulk_item_status=SimpleNamespace(get=lambda: "ALL"),
+            var_bulk_performance_filter=SimpleNamespace(get=lambda: "Top"),
             var_bulk_sales_health_filter=SimpleNamespace(get=lambda: "ALL"),
             var_bulk_attention_filter=SimpleNamespace(get=lambda: "ALL"),
             _suggest_min_max=lambda key: (None, None),
@@ -737,7 +848,7 @@ class UIBulkTests(unittest.TestCase):
             ui_bulk.apply_bulk_filter(fake_app)
 
         self.assertEqual(seen, ["A"])
-        self.assertEqual(captured[1][1], [ui_bulk.bulk_row_id(item_sales)])
+        self.assertEqual(captured[1][1], [ui_bulk.bulk_row_id(item_top)])
 
     def test_apply_bulk_filter_reuses_cached_summary_counts(self):
         captured = []

@@ -609,11 +609,34 @@ def _recompute_summary_counts(items):
     return counts
 
 
+def bulk_assignment_status(item):
+    return "Assigned" if item.get("vendor") else "Unassigned"
+
+
+def bulk_item_status(item):
+    if "missing_pack" in item.get("data_flags", []):
+        return "No Pack"
+    status = (item.get("status", "ok") or "ok").lower()
+    return {
+        "ok": "OK",
+        "review": "Review",
+        "warning": "Warning",
+    }.get(status)
+
+
+def _append_bucket_item(buckets, key, item):
+    if key is None:
+        return
+    buckets.setdefault(key, []).append(item)
+
+
 def build_bulk_session_metadata(items):
     normalized = list(items or [])
     items_by_line_code = {}
     items_by_source = {}
     items_by_line_code_source = {}
+    items_by_assignment_status = {}
+    items_by_item_status = {}
     for item in normalized:
         line_code = item.get("line_code", "")
         source = item_source(item)
@@ -623,12 +646,16 @@ def build_bulk_session_metadata(items):
             items_by_line_code.setdefault(line_code, []).append(item)
         items_by_source.setdefault(source, []).append(item)
         items_by_line_code_source.setdefault((line_code, source), []).append(item)
+        _append_bucket_item(items_by_assignment_status, bulk_assignment_status(item), item)
+        _append_bucket_item(items_by_item_status, bulk_item_status(item), item)
     return {
         "counts": _recompute_summary_counts(normalized),
         "line_codes": tuple(sorted({item.get("line_code", "") for item in normalized if item.get("line_code", "")})),
         "items_by_line_code": {line_code: tuple(group) for line_code, group in items_by_line_code.items()},
         "items_by_source": {source: tuple(group) for source, group in items_by_source.items()},
         "items_by_line_code_source": {key: tuple(group) for key, group in items_by_line_code_source.items()},
+        "items_by_assignment_status": {key: tuple(group) for key, group in items_by_assignment_status.items()},
+        "items_by_item_status": {key: tuple(group) for key, group in items_by_item_status.items()},
     }
 
 
@@ -640,6 +667,8 @@ def sync_bulk_session_metadata(app, items=None):
     app._bulk_items_by_line_code = dict(metadata["items_by_line_code"])
     app._bulk_items_by_source = dict(metadata["items_by_source"])
     app._bulk_items_by_line_code_source = dict(metadata["items_by_line_code_source"])
+    app._bulk_items_by_assignment_status = dict(metadata["items_by_assignment_status"])
+    app._bulk_items_by_item_status = dict(metadata["items_by_item_status"])
     return metadata
 
 
@@ -649,26 +678,65 @@ def filtered_candidate_items(app, filter_state):
         return list(filtered_items)
     line_code = filter_state.get("lc", "ALL")
     source = filter_state.get("source", "ALL")
-    line_code_buckets = getattr(app, "_bulk_items_by_line_code", None) or {}
-    source_buckets = getattr(app, "_bulk_items_by_source", None) or {}
-    combined_buckets = getattr(app, "_bulk_items_by_line_code_source", None) or {}
-    if line_code != "ALL" and source != "ALL":
-        return list(combined_buckets.get((line_code, source), ()))
+    assignment_status = filter_state.get("status", "ALL")
+    item_status = filter_state.get("item_status", "ALL")
+    line_code_buckets = getattr(app, "_bulk_items_by_line_code", None)
+    source_buckets = getattr(app, "_bulk_items_by_source", None)
+    assignment_buckets = getattr(app, "_bulk_items_by_assignment_status", None)
+    item_status_buckets = getattr(app, "_bulk_items_by_item_status", None)
+    if line_code != "ALL" and not isinstance(line_code_buckets, dict):
+        return list(filtered_items)
+    if source != "ALL" and not isinstance(source_buckets, dict):
+        return list(filtered_items)
+    if assignment_status != "ALL" and not isinstance(assignment_buckets, dict):
+        return list(filtered_items)
+    if item_status != "ALL" and not isinstance(item_status_buckets, dict):
+        return list(filtered_items)
+    line_code_buckets = line_code_buckets or {}
+    source_buckets = source_buckets or {}
+    assignment_buckets = assignment_buckets or {}
+    item_status_buckets = item_status_buckets or {}
+    candidate_groups = []
     if line_code != "ALL":
-        return list(line_code_buckets.get(line_code, ()))
+        candidate_groups.append(tuple(line_code_buckets.get(line_code, ())))
     if source != "ALL":
-        return list(source_buckets.get(source, ()))
+        candidate_groups.append(tuple(source_buckets.get(source, ())))
+    if assignment_status != "ALL":
+        candidate_groups.append(tuple(assignment_buckets.get(assignment_status, ())))
+    if item_status != "ALL":
+        candidate_groups.append(tuple(item_status_buckets.get(item_status, ())))
+    if candidate_groups:
+        if len(candidate_groups) == 1:
+            return list(candidate_groups[0])
+        ordered_groups = sorted(candidate_groups, key=len)
+        base_group = ordered_groups[0]
+        membership_sets = [{bulk_row_id(item) for item in group} for group in ordered_groups[1:]]
+        return [
+            item for item in base_group
+            if all(bulk_row_id(item) in membership for membership in membership_sets)
+        ]
     return list(filtered_items)
 
 
-def uses_only_stable_bucket_filters(filter_state):
+def uses_only_bucket_filters(filter_state):
     return (
-        filter_state.get("status", "ALL") == "ALL"
-        and filter_state.get("item_status", "ALL") == "ALL"
-        and filter_state.get("performance", "ALL") == "ALL"
+        filter_state.get("performance", "ALL") == "ALL"
         and filter_state.get("sales_health", "ALL") == "ALL"
         and filter_state.get("attention", "ALL") == "ALL"
     )
+
+
+def can_fully_resolve_bucket_filters(app, filter_state):
+    bucket_requirements = (
+        ("lc", "_bulk_items_by_line_code"),
+        ("source", "_bulk_items_by_source"),
+        ("status", "_bulk_items_by_assignment_status"),
+        ("item_status", "_bulk_items_by_item_status"),
+    )
+    for key, attr_name in bucket_requirements:
+        if filter_state.get(key, "ALL") != "ALL" and not isinstance(getattr(app, attr_name, None), dict):
+            return False
+    return True
 
 
 def update_bulk_summary(app, counts=None):
@@ -696,10 +764,52 @@ def update_bulk_summary(app, counts=None):
         label.config(text="  ·  ".join(parts))
 
 
-def adjust_bulk_summary_for_item_change(app, before_item, after_item):
-    cached = getattr(app, "_bulk_summary_counts", None)
-    if not cached or cached.get("total") != len(app.filtered_items):
+def _replace_bucket_membership(bucket_map, old_key, new_key, item):
+    if not isinstance(bucket_map, dict) or item is None:
         return False
+    changed = False
+    if old_key is not None:
+        old_group = [existing for existing in bucket_map.get(old_key, ()) if existing is not item]
+        if old_group:
+            bucket_map[old_key] = tuple(old_group)
+        elif old_key in bucket_map:
+            bucket_map.pop(old_key, None)
+        changed = True
+    if new_key is not None:
+        new_group = list(bucket_map.get(new_key, ()))
+        if not any(existing is item for existing in new_group):
+            new_group.append(item)
+            bucket_map[new_key] = tuple(new_group)
+            changed = True
+    return changed
+
+
+def adjust_bulk_filter_buckets_for_item_change(app, before_item, after_item, item=None):
+    changed = False
+    assignment_buckets = getattr(app, "_bulk_items_by_assignment_status", None)
+    if isinstance(assignment_buckets, dict):
+        changed = _replace_bucket_membership(
+            assignment_buckets,
+            bulk_assignment_status(before_item),
+            bulk_assignment_status(after_item),
+            item,
+        ) or changed
+    item_status_buckets = getattr(app, "_bulk_items_by_item_status", None)
+    if isinstance(item_status_buckets, dict):
+        changed = _replace_bucket_membership(
+            item_status_buckets,
+            bulk_item_status(before_item),
+            bulk_item_status(after_item),
+            item,
+        ) or changed
+    return changed
+
+
+def adjust_bulk_summary_for_item_change(app, before_item, after_item, *, item=None):
+    cached = getattr(app, "_bulk_summary_counts", None)
+    adjusted = adjust_bulk_filter_buckets_for_item_change(app, before_item, after_item, item=item)
+    if not cached or cached.get("total") != len(app.filtered_items):
+        return adjusted
     counts = dict(cached)
     _accumulate_summary_counts(counts, before_item, sign=-1)
     _accumulate_summary_counts(counts, after_item, sign=1)
@@ -895,7 +1005,9 @@ def apply_bulk_filter(app):
     if not counts or counts.get("total") != len(app.filtered_items):
         counts = _recompute_summary_counts(app.filtered_items)
     candidate_items = filtered_candidate_items(app, filter_state)
-    if bulk_filter_is_default(filter_state) or uses_only_stable_bucket_filters(filter_state):
+    if bulk_filter_is_default(filter_state) or (
+        uses_only_bucket_filters(filter_state) and can_fully_resolve_bucket_filters(app, filter_state)
+    ):
         visible_items = candidate_items
     else:
         visible_items = [item for item in candidate_items if item_matches_bulk_filter(item, filter_state)]

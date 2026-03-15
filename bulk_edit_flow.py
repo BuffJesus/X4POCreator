@@ -122,4 +122,5 @@ def apply_editor_value(app, row_id, col_name, raw, editable_cols, get_rule_key, 
         app,
         before_summary_item,
         {"vendor": item.get("vendor", ""), "status": item.get("status", "")},
+        item=item,
     )
