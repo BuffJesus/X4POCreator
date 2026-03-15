@@ -673,6 +673,114 @@ class BulkSheetViewTests(unittest.TestCase):
         )
         self.assertNotIn(("cleared",), calls)
 
+    def test_run_post_edit_refresh_ignores_stale_scheduled_generation(self):
+        calls = []
+        view = BulkSheetView.__new__(BulkSheetView)
+        view.row_ids = [4, 8]
+        view.columns = ("vendor", "pack_size")
+        view.editable_cols = {"vendor", "pack_size"}
+        view._selection_serial = 1
+        view._edit_refresh_after_id = "new-after"
+        view._scheduled_edit_generation = 2
+        view._pending_edit = {
+            "row": 1,
+            "col": 1,
+            "row_id": "8",
+            "col_name": "pack_size",
+            "editable": True,
+            "target_row_ids": ("8",),
+            "committed_value": "12",
+            "selection_serial": 1,
+            "generation": 2,
+        }
+        view.app = SimpleNamespace(
+            _bulk_apply_editor_value=lambda row_id, col_name, value: calls.append((row_id, col_name, value)),
+            _refresh_bulk_view_after_edit=lambda row_ids: calls.append(("refresh", tuple(row_ids))) or True,
+            _update_bulk_summary=lambda: calls.append(("summary",)),
+            _update_bulk_sheet_status=lambda: calls.append(("status",)),
+        )
+        view.clear_selection = lambda: calls.append(("cleared",))
+        view.sheet = SimpleNamespace(get_cell_data=lambda row, col: "12")
+
+        result = view._run_post_edit_refresh(1)
+
+        self.assertFalse(result)
+        self.assertEqual(calls, [])
+        self.assertEqual(view._pending_edit["row_id"], "8")
+        self.assertEqual(view._scheduled_edit_generation, 2)
+
+    def test_queued_stale_callback_does_not_commit_newer_pending_edit(self):
+        calls = []
+        scheduled = []
+        view = BulkSheetView.__new__(BulkSheetView)
+        view.row_ids = [4, 8]
+        view.columns = ("vendor", "pack_size")
+        view.editable_cols = {"vendor", "pack_size"}
+        view._selection_snapshot = {"cells": (), "rows": (), "columns": (), "current": (0, 0)}
+        view.col_index = {"vendor": 0, "pack_size": 1}
+        view._selection_serial = 1
+        view._edit_refresh_after_id = None
+        view._pending_edit = None
+        view._pending_edit_generation = 0
+        view._scheduled_edit_generation = None
+        view.selected_target_row_ids = lambda col_name: ("4", "8")
+        view.app = SimpleNamespace(
+            _bulk_apply_editor_value=lambda row_id, col_name, value: calls.append((row_id, col_name, value)),
+            _refresh_bulk_view_after_edit=lambda row_ids, changed_cols=None: calls.append(("refresh", tuple(row_ids))) or True,
+            _update_bulk_summary=lambda: calls.append(("summary",)),
+            _update_bulk_sheet_status=lambda: calls.append(("status",)),
+        )
+        view.clear_selection = lambda: calls.append(("cleared",))
+
+        def after(delay, callback):
+            after_id = f"after-{len(scheduled) + 1}"
+            scheduled.append((after_id, callback))
+            calls.append(("after", delay, after_id))
+            return after_id
+
+        view.sheet = SimpleNamespace(
+            get_cell_data=lambda row, col: "value",
+            after=after,
+            after_cancel=lambda after_id: calls.append(("cancel", after_id)),
+        )
+
+        view._handle_edit({"row": 0, "column": 0, "value": "OLDV"})
+        view._pending_edit = {
+            "row": 1,
+            "col": 1,
+            "row_id": "8",
+            "col_name": "pack_size",
+            "editable": True,
+            "target_row_ids": ("4", "8"),
+            "committed_value": "12",
+            "selection_serial": 1,
+            "generation": 2,
+        }
+        view._scheduled_edit_generation = 2
+        view._edit_refresh_after_id = "after-2"
+
+        scheduled[0][1]()
+
+        self.assertEqual(calls, [("after", 1, "after-1")])
+        self.assertEqual(view._pending_edit["row_id"], "8")
+        self.assertEqual(view._pending_edit["col_name"], "pack_size")
+
+        view._run_post_edit_refresh(2)
+
+        self.assertEqual(
+            calls,
+            [
+                ("after", 1, "after-1"),
+                ("4", "pack_size", "12"),
+                ("8", "pack_size", "12"),
+                ("refresh", ("4", "8")),
+                ("cleared",),
+                ("summary",),
+                ("status",),
+            ],
+        )
+        self.assertIsNone(view._pending_edit)
+
     def test_select_all_visible_selects_all_rows_and_updates_status(self):
         calls = []
         view = BulkSheetView.__new__(BulkSheetView)

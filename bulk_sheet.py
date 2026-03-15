@@ -30,6 +30,8 @@ class BulkSheetView:
         self._resize_after_id = None
         self._edit_refresh_after_id = None
         self._pending_edit = None
+        self._pending_edit_generation = 0
+        self._scheduled_edit_generation = None
         self._selection_serial = 0
         self.context_menu = tk.Menu(parent, tearoff=0)
 
@@ -177,6 +179,7 @@ class BulkSheetView:
         col_name = self.columns[col]
         write_debug("bulk_sheet.handle_edit.target", row=row, row_id=row_id, col=col, col_name=col_name)
         if col_name not in self.editable_cols:
+            generation = self._next_pending_edit_generation()
             self._pending_edit = {
                 "row": row,
                 "col": col,
@@ -186,14 +189,16 @@ class BulkSheetView:
                 "target_row_ids": (),
                 "committed_value": event_data.get("value", ""),
                 "selection_serial": getattr(self, "_selection_serial", 0),
+                "generation": generation,
             }
             write_debug("bulk_sheet.handle_edit.readonly", row_id=row_id, col_name=col_name)
-            self._queue_post_edit_refresh()
+            self._queue_post_edit_refresh(generation)
             return
         target_row_ids = list(self._snapshot_target_row_ids(col_name))
         if row_id not in target_row_ids:
             target_row_ids = [row_id]
         write_debug("bulk_sheet.handle_edit.queued", col_name=col_name, row_id=row_id, target_row_ids=",".join(target_row_ids))
+        generation = self._next_pending_edit_generation()
         self._pending_edit = {
             "row": row,
             "col": col,
@@ -203,12 +208,33 @@ class BulkSheetView:
             "target_row_ids": tuple(target_row_ids),
             "committed_value": event_data.get("value", ""),
             "selection_serial": getattr(self, "_selection_serial", 0),
+            "generation": generation,
         }
-        self._queue_post_edit_refresh()
+        self._queue_post_edit_refresh(generation)
 
-    def _run_post_edit_refresh(self):
-        self._edit_refresh_after_id = None
+    def _next_pending_edit_generation(self):
+        generation = getattr(self, "_pending_edit_generation", 0) + 1
+        self._pending_edit_generation = generation
+        return generation
+
+    def _run_post_edit_refresh(self, expected_generation=None):
         pending = self._pending_edit
+        pending_generation = pending.get("generation") if pending else None
+        active_generation = getattr(self, "_scheduled_edit_generation", None)
+        if expected_generation is not None and (
+            pending is None
+            or pending_generation != expected_generation
+            or active_generation != expected_generation
+        ):
+            write_debug(
+                "bulk_sheet.post_edit.skip_stale",
+                expected_generation=expected_generation,
+                pending_generation=pending_generation,
+                active_generation=active_generation,
+            )
+            return False
+        self._edit_refresh_after_id = None
+        self._scheduled_edit_generation = None
         self._pending_edit = None
         before_state = None
         if pending and pending.get("editable") and hasattr(self.app, "_capture_bulk_history_state"):
@@ -291,6 +317,7 @@ class BulkSheetView:
         self.app._update_bulk_sheet_status()
         if pending and pending.get("editable") and hasattr(self.app, "_finalize_bulk_history_action"):
             self.app._finalize_bulk_history_action(f"sheet_edit:{pending.get('col_name', '')}", before_state)
+        return bool(pending)
 
     def _drain_pending_edit(self):
         pending = getattr(self, "_pending_edit", None)
@@ -303,30 +330,34 @@ class BulkSheetView:
             except Exception:
                 pass
             self._edit_refresh_after_id = None
+        generation = pending.get("generation")
+        self._scheduled_edit_generation = generation
         write_debug(
             "bulk_sheet.post_edit.drain",
             row_id=pending.get("row_id"),
             col_name=pending.get("col_name"),
+            generation=generation,
         )
-        self._run_post_edit_refresh()
+        self._run_post_edit_refresh(generation)
         return True
 
     def flush_pending_edit(self):
         return self._drain_pending_edit()
 
-    def _queue_post_edit_refresh(self):
+    def _queue_post_edit_refresh(self, generation):
         if self._edit_refresh_after_id is not None:
             try:
                 self.sheet.after_cancel(self._edit_refresh_after_id)
             except Exception:
                 pass
             self._edit_refresh_after_id = None
+        self._scheduled_edit_generation = generation
         try:
-            write_debug("bulk_sheet.post_edit.schedule", delay_ms=1)
-            self._edit_refresh_after_id = self.sheet.after(1, self._run_post_edit_refresh)
+            write_debug("bulk_sheet.post_edit.schedule", delay_ms=1, generation=generation)
+            self._edit_refresh_after_id = self.sheet.after(1, lambda: self._run_post_edit_refresh(generation))
         except Exception:
-            write_debug("bulk_sheet.post_edit.schedule_fallback")
-            self._run_post_edit_refresh()
+            write_debug("bulk_sheet.post_edit.schedule_fallback", generation=generation)
+            self._run_post_edit_refresh(generation)
 
     def set_rows(self, rows, row_ids):
         self.row_ids = [str(row_id) for row_id in row_ids]
