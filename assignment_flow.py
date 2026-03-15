@@ -55,7 +55,7 @@ def prepare_assignment_session(
         key = (po_item["line_code"], po_item["item_code"])
         session.on_po_qty[key] += po_item["qty"]
 
-    session.filtered_items = []
+    filtered_items = []
     seen_keys = set()
     for item in session.sales_items:
         if item["line_code"] in excluded_line_codes:
@@ -76,7 +76,7 @@ def prepare_assignment_session(
         ):
             continue
         po_qty = session.on_po_qty.get(key, 0)
-        session.filtered_items.append({
+        filtered_items.append({
             **item,
             "qty_suspended": sq,
             "effective_qty_sold": effective_sales,
@@ -106,7 +106,7 @@ def prepare_assignment_session(
             continue
         po_qty = session.on_po_qty.get(key, 0)
         first = susp_list[0]
-        session.filtered_items.append({
+        filtered_items.append({
             "line_code": key[0],
             "item_code": key[1],
             "description": first.get("description", ""),
@@ -125,11 +125,11 @@ def prepare_assignment_session(
             "reorder_cycle_weeks": get_cycle_weeks(),
         })
 
-    if not session.filtered_items:
+    if not filtered_items:
         return False
 
-    session.filtered_items.sort(key=lambda x: (x["line_code"], x["item_code"]))
-    ui_bulk.sync_bulk_cache_state(session, filtered_items_changed=True)
+    filtered_items.sort(key=lambda x: (x["line_code"], x["item_code"]))
+    ui_bulk.replace_filtered_items(session, filtered_items)
 
     session.recent_orders = storage.get_recent_orders(order_history_path, lookback_days)
 

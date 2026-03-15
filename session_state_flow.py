@@ -31,11 +31,10 @@ def ignore_items_by_keys(app, ignore_keys):
         return 0
     app.ignored_item_keys.update(normalized)
     app._save_ignored_item_keys()
-    app.filtered_items = [
+    ui_bulk.replace_filtered_items(app, [
         item for item in app.filtered_items
         if app._ignore_key(item.get("line_code", ""), item.get("item_code", "")) not in normalized
-    ]
-    ui_bulk.sync_bulk_cache_state(app, filtered_items_changed=True)
+    ])
     app.assigned_items = [
         item for item in app.assigned_items
         if app._ignore_key(item.get("line_code", ""), item.get("item_code", "")) not in normalized
@@ -113,8 +112,7 @@ def finalize_bulk_history_action(app, label, before_state, max_bulk_history, *, 
 
 
 def restore_bulk_history_state(app, state):
-    app.filtered_items = copy.deepcopy(state.get("filtered_items", []))
-    ui_bulk.sync_bulk_cache_state(app, filtered_items_changed=True)
+    ui_bulk.replace_filtered_items(app, copy.deepcopy(state.get("filtered_items", [])))
     app.inventory_lookup = copy.deepcopy(state.get("inventory_lookup", {}))
     app.qoh_adjustments = copy.deepcopy(state.get("qoh_adjustments", {}))
     app.order_rules = copy.deepcopy(state.get("order_rules", {}))

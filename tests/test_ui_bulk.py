@@ -72,6 +72,44 @@ class UIBulkTests(unittest.TestCase):
         self.assertEqual(fake_app._bulk_row_index_generation, 1)
         self.assertEqual(list(fake_app._bulk_row_render_cache.keys()), [ui_bulk.bulk_row_id(keep_item)])
 
+    def test_replace_filtered_items_updates_plain_object_and_syncs_caches(self):
+        keep_item = {"line_code": "AER-", "item_code": "KEEP"}
+        drop_item = {"line_code": "AER-", "item_code": "DROP"}
+        fake_app = SimpleNamespace(
+            filtered_items=[drop_item],
+            _bulk_row_index_generation=0,
+            _bulk_row_index_cache={"generation": 0, "by_row_id": {}, "by_key": {}},
+            _bulk_row_render_cache={
+                ui_bulk.bulk_row_id(keep_item): (("sig",), ("row",)),
+                ui_bulk.bulk_row_id(drop_item): (("sig",), ("row",)),
+            },
+        )
+
+        result = ui_bulk.replace_filtered_items(fake_app, [keep_item])
+
+        self.assertEqual(result, [keep_item])
+        self.assertEqual(fake_app.filtered_items, [keep_item])
+        self.assertIsNone(fake_app._bulk_row_index_cache)
+        self.assertEqual(fake_app._bulk_row_index_generation, 1)
+        self.assertEqual(list(fake_app._bulk_row_render_cache.keys()), [ui_bulk.bulk_row_id(keep_item)])
+
+    def test_sort_filtered_items_replaces_list_and_invalidates_index(self):
+        item_a = {"line_code": "AER-", "item_code": "A"}
+        item_b = {"line_code": "AER-", "item_code": "B"}
+        fake_app = SimpleNamespace(
+            filtered_items=[item_b, item_a],
+            _bulk_row_index_generation=0,
+            _bulk_row_index_cache={"generation": 0, "by_row_id": {}, "by_key": {}},
+            _bulk_row_render_cache={},
+        )
+
+        result = ui_bulk.sort_filtered_items(fake_app, key=lambda item: item["item_code"])
+
+        self.assertEqual(result, [item_a, item_b])
+        self.assertEqual(fake_app.filtered_items, [item_a, item_b])
+        self.assertIsNone(fake_app._bulk_row_index_cache)
+        self.assertEqual(fake_app._bulk_row_index_generation, 1)
+
     def test_update_bulk_summary_uses_cached_counts_when_available(self):
         label = SimpleNamespace(config=lambda **kwargs: setattr(label, "text", kwargs.get("text", "")))
         fake_app = SimpleNamespace(

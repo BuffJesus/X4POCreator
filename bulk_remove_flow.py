@@ -6,14 +6,15 @@ def remove_filtered_rows(app, remove_indices, deepcopy, *, history_label="remove
     if not unique_indices:
         return []
     before_state = app._capture_bulk_history_state() if hasattr(app, "_capture_bulk_history_state") else None
+    filtered_items = list(getattr(app, "filtered_items", ()) or ())
     removed_payload = []
     for idx in unique_indices:
-        if 0 <= idx < len(app.filtered_items):
-            removed_payload.append((idx, deepcopy(app.filtered_items[idx])))
-            app.filtered_items.pop(idx)
+        if 0 <= idx < len(filtered_items):
+            removed_payload.append((idx, deepcopy(filtered_items[idx])))
+            filtered_items.pop(idx)
     if not removed_payload:
         return []
-    ui_bulk.sync_bulk_cache_state(app, filtered_items_changed=True)
+    ui_bulk.replace_filtered_items(app, filtered_items)
     app.last_removed_bulk_items = removed_payload
     if hasattr(app, "_finalize_bulk_history_action"):
         app._finalize_bulk_history_action(history_label, before_state)

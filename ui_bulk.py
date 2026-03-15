@@ -448,6 +448,23 @@ def sync_bulk_cache_state(app, *, filtered_items_changed=False, retain_items=Non
     return prune_bulk_row_render_cache(app, retain_items=retain_items)
 
 
+def replace_filtered_items(app, items):
+    normalized = list(items or [])
+    descriptor = getattr(type(app), "filtered_items", None)
+    if isinstance(descriptor, property) and descriptor.fset is not None:
+        descriptor.fset(app, normalized)
+        return normalized
+    setattr(app, "filtered_items", normalized)
+    sync_bulk_cache_state(app, filtered_items_changed=True, retain_items=normalized)
+    return normalized
+
+
+def sort_filtered_items(app, *, key=None, reverse=False):
+    normalized = list(getattr(app, "filtered_items", ()) or ())
+    normalized.sort(key=key, reverse=reverse)
+    return replace_filtered_items(app, normalized)
+
+
 def bulk_row_render_signature(app, item):
     key = (item["line_code"], item["item_code"])
     inventory_lookup = getattr(app, "inventory_lookup", {}) or {}
@@ -819,8 +836,7 @@ def sort_bulk_tree(app, col):
         except Exception:
             return (1, str(value).lower())
 
-    app.filtered_items.sort(key=_sort_key, reverse=reverse)
-    sync_bulk_cache_state(app, filtered_items_changed=True)
+    sort_filtered_items(app, key=_sort_key, reverse=reverse)
     apply_bulk_filter(app)
 
 
