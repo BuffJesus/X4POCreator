@@ -11,6 +11,67 @@ import ui_bulk
 
 
 class UIBulkTests(unittest.TestCase):
+    def test_resolve_bulk_row_id_uses_cached_index_for_stable_row_id(self):
+        item_a = {"line_code": "AER-", "item_code": "A"}
+        item_b = {"line_code": "AER-", "item_code": "B"}
+        row_id_b = ui_bulk.bulk_row_id(item_b)
+        fake_app = SimpleNamespace(
+            filtered_items=[item_a, item_b],
+        )
+
+        first = ui_bulk.resolve_bulk_row_id(fake_app, row_id_b)
+        second = ui_bulk.resolve_bulk_row_id(fake_app, row_id_b)
+
+        self.assertEqual(first, (1, item_b))
+        self.assertEqual(second, (1, item_b))
+        self.assertEqual(fake_app._bulk_row_index_cache["by_key"][("AER-", "B")], (1, item_b))
+
+    def test_invalidate_bulk_row_index_rebuilds_resolved_positions_after_sort(self):
+        item_a = {"line_code": "AER-", "item_code": "A"}
+        item_b = {"line_code": "AER-", "item_code": "B"}
+        row_id_a = ui_bulk.bulk_row_id(item_a)
+        fake_app = SimpleNamespace(
+            filtered_items=[item_b, item_a],
+        )
+
+        self.assertEqual(ui_bulk.resolve_bulk_row_id(fake_app, row_id_a), (1, item_a))
+        fake_app.filtered_items.sort(key=lambda item: item["item_code"])
+        ui_bulk.invalidate_bulk_row_index(fake_app)
+
+        self.assertEqual(ui_bulk.resolve_bulk_row_id(fake_app, row_id_a), (0, item_a))
+
+    def test_find_filtered_item_uses_cached_row_index(self):
+        item_a = {"line_code": "AER-", "item_code": "A"}
+        item_b = {"line_code": "AMS-", "item_code": "B"}
+        fake_app = SimpleNamespace(filtered_items=[item_a, item_b])
+
+        first = ui_bulk.find_filtered_item(fake_app, ("AMS-", "B"))
+        second = ui_bulk.find_filtered_item(fake_app, ("AMS-", "B"))
+
+        self.assertIs(first, item_b)
+        self.assertIs(second, item_b)
+        self.assertEqual(fake_app._bulk_row_index_cache["by_key"][("AMS-", "B")], (1, item_b))
+
+    def test_sync_bulk_cache_state_invalidates_index_and_prunes_render_cache(self):
+        keep_item = {"line_code": "AER-", "item_code": "KEEP"}
+        drop_item = {"line_code": "AER-", "item_code": "DROP"}
+        fake_app = SimpleNamespace(
+            filtered_items=[keep_item],
+            _bulk_row_index_generation=0,
+            _bulk_row_index_cache={"generation": 0, "by_row_id": {}, "by_key": {}},
+            _bulk_row_render_cache={
+                ui_bulk.bulk_row_id(keep_item): (("sig",), ("row",)),
+                ui_bulk.bulk_row_id(drop_item): (("sig",), ("row",)),
+            },
+        )
+
+        removed = ui_bulk.sync_bulk_cache_state(fake_app, filtered_items_changed=True)
+
+        self.assertEqual(removed, 1)
+        self.assertIsNone(fake_app._bulk_row_index_cache)
+        self.assertEqual(fake_app._bulk_row_index_generation, 1)
+        self.assertEqual(list(fake_app._bulk_row_render_cache.keys()), [ui_bulk.bulk_row_id(keep_item)])
+
     def test_update_bulk_summary_uses_cached_counts_when_available(self):
         label = SimpleNamespace(config=lambda **kwargs: setattr(label, "text", kwargs.get("text", "")))
         fake_app = SimpleNamespace(

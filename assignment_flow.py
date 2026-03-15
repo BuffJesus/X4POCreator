@@ -3,6 +3,7 @@ from collections import defaultdict
 import performance_flow
 import shipping_flow
 import storage
+import ui_bulk
 from item_workflow import apply_recent_order_context
 from rules import enrich_item, get_rule_pack_size
 
@@ -128,6 +129,7 @@ def prepare_assignment_session(
         return False
 
     session.filtered_items.sort(key=lambda x: (x["line_code"], x["item_code"]))
+    ui_bulk.sync_bulk_cache_state(session, filtered_items_changed=True)
 
     session.recent_orders = storage.get_recent_orders(order_history_path, lookback_days)
 

@@ -36,6 +36,33 @@ class BulkRemoveFlowTests(unittest.TestCase):
         self.assertEqual(app.last_removed_bulk_items, removed)
         self.assertEqual(events, [("remove:selected_rows", {"before": True})])
 
+    def test_remove_filtered_rows_invalidates_bulk_row_index(self):
+        item_a = {"line_code": "AER-", "item_code": "A"}
+        item_b = {"line_code": "AER-", "item_code": "B"}
+        app = SimpleNamespace(
+            filtered_items=[item_a, item_b],
+            last_removed_bulk_items=[],
+            _capture_bulk_history_state=lambda: {"before": True},
+            _finalize_bulk_history_action=lambda label, before: None,
+            _bulk_row_index_generation=0,
+            _bulk_row_index_cache={"generation": 0, "by_row_id": {}, "by_key": {}},
+            _bulk_row_render_cache={
+                "[\"AER-\",\"A\"]": (("sig",), ("row",)),
+                "[\"AER-\",\"B\"]": (("sig",), ("row",)),
+            },
+        )
+
+        bulk_remove_flow.remove_filtered_rows(
+            app,
+            [1],
+            lambda value: dict(value),
+            history_label="remove:selected_rows",
+        )
+
+        self.assertIsNone(app._bulk_row_index_cache)
+        self.assertEqual(app._bulk_row_index_generation, 1)
+        self.assertEqual(list(app._bulk_row_render_cache.keys()), ["[\"AER-\",\"A\"]"])
+
     def test_remove_filtered_rows_skips_history_when_nothing_removed(self):
         events = []
         app = SimpleNamespace(

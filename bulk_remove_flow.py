@@ -1,3 +1,6 @@
+import ui_bulk
+
+
 def remove_filtered_rows(app, remove_indices, deepcopy, *, history_label="remove:bulk"):
     unique_indices = sorted({int(idx) for idx in remove_indices if idx is not None}, reverse=True)
     if not unique_indices:
@@ -10,6 +13,7 @@ def remove_filtered_rows(app, remove_indices, deepcopy, *, history_label="remove
             app.filtered_items.pop(idx)
     if not removed_payload:
         return []
+    ui_bulk.sync_bulk_cache_state(app, filtered_items_changed=True)
     app.last_removed_bulk_items = removed_payload
     if hasattr(app, "_finalize_bulk_history_action"):
         app._finalize_bulk_history_action(history_label, before_state)

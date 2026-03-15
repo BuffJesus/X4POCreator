@@ -63,6 +63,19 @@ class POBuilderTests(unittest.TestCase):
         self.assertFalse(po_builder.is_newer_version("v1.2.3", "1.2.3"))
         self.assertFalse(po_builder.is_newer_version("dev", "1.2.3"))
 
+    def test_find_filtered_item_uses_cached_bulk_index(self):
+        fake_app = self._make_calc_app()
+        item_a = {"line_code": "AER-", "item_code": "A"}
+        item_b = {"line_code": "AMS-", "item_code": "B"}
+        fake_app.filtered_items = [item_a, item_b]
+
+        first = po_builder.POBuilderApp._find_filtered_item(fake_app, ("AMS-", "B"))
+        second = po_builder.POBuilderApp._find_filtered_item(fake_app, ("AMS-", "B"))
+
+        self.assertIs(first, item_b)
+        self.assertIs(second, item_b)
+        self.assertEqual(fake_app._bulk_row_index_cache["by_key"][("AMS-", "B")], (1, item_b))
+
     def test_set_update_check_enabled_persists_setting(self):
         saved = {}
         fake_app = SimpleNamespace(

@@ -1071,7 +1071,7 @@ class POBuilderApp:
         return reorder_flow.suggest_min_max(self, key, MIN_ANNUAL_SALES_FOR_SUGGESTIONS)
 
     def _find_filtered_item(self, key):
-        return item_workflow.find_filtered_item(self.filtered_items, key)
+        return ui_bulk.find_filtered_item(self, key)
 
     @staticmethod
     def _normalize_vendor_code(value):

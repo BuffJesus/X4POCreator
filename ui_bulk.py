@@ -11,31 +11,63 @@ def bulk_row_id(item):
     return json.dumps(key, separators=(",", ":"))
 
 
+def invalidate_bulk_row_index(app):
+    app._bulk_row_index_cache = None
+    app._bulk_row_index_generation = getattr(app, "_bulk_row_index_generation", 0) + 1
+
+
+def _build_bulk_row_index(app):
+    filtered_items = list(getattr(app, "filtered_items", ()) or ())
+    by_row_id = {}
+    by_key = {}
+    for idx, item in enumerate(filtered_items):
+        row_key = bulk_row_id(item)
+        key = (item.get("line_code"), item.get("item_code"))
+        by_row_id[row_key] = (idx, item)
+        by_key[key] = (idx, item)
+    cache = {
+        "generation": getattr(app, "_bulk_row_index_generation", 0),
+        "by_row_id": by_row_id,
+        "by_key": by_key,
+    }
+    app._bulk_row_index_cache = cache
+    return cache
+
+
+def bulk_row_index(app):
+    cache = getattr(app, "_bulk_row_index_cache", None)
+    generation = getattr(app, "_bulk_row_index_generation", 0)
+    if cache and cache.get("generation") == generation:
+        return cache
+    return _build_bulk_row_index(app)
+
+
+def find_filtered_item(app, key):
+    if key is None:
+        return None
+    key = (key[0], key[1])
+    resolved = bulk_row_index(app).get("by_key", {}).get(key)
+    if resolved is None:
+        return None
+    _idx, item = resolved
+    return item
+
+
 def resolve_bulk_row_id(app, row_id):
     if row_id is None:
         return None, None
     row_id = str(row_id)
-    filtered_items = list(getattr(app, "filtered_items", ()) or ())
+    filtered_items = getattr(app, "filtered_items", ()) or ()
+    cache = bulk_row_index(app)
     try:
         key = json.loads(row_id)
     except Exception:
         key = None
     if isinstance(key, list) and len(key) == 2:
         key = (key[0], key[1])
-        find_item = getattr(app, "_find_filtered_item", None)
-        item = find_item(key) if callable(find_item) else None
-        if item is None:
-            for candidate in filtered_items:
-                if (candidate.get("line_code"), candidate.get("item_code")) == key:
-                    item = candidate
-                    break
-        if item is not None:
-            for idx, candidate in enumerate(filtered_items):
-                if candidate is item:
-                    return idx, candidate
-            for idx, candidate in enumerate(filtered_items):
-                if (candidate.get("line_code"), candidate.get("item_code")) == key:
-                    return idx, candidate
+        resolved = cache.get("by_key", {}).get(key)
+        if resolved is not None:
+            return resolved
     try:
         idx = int(row_id)
     except (TypeError, ValueError):
@@ -368,7 +400,7 @@ def build_bulk_tab(app, editable_cols):
 
 
 def populate_bulk_tree(app):
-    prune_bulk_row_render_cache(app)
+    sync_bulk_cache_state(app, filtered_items_changed=True)
     lc_set = set()
     counts = {"total": len(app.filtered_items), "assigned": 0, "review": 0, "warning": 0}
     for item in app.filtered_items:
@@ -408,6 +440,12 @@ def prune_bulk_row_render_cache(app, retain_items=None):
     for row_id in removed:
         cache.pop(row_id, None)
     return len(removed)
+
+
+def sync_bulk_cache_state(app, *, filtered_items_changed=False, retain_items=None):
+    if filtered_items_changed:
+        invalidate_bulk_row_index(app)
+    return prune_bulk_row_render_cache(app, retain_items=retain_items)
 
 
 def bulk_row_render_signature(app, item):
@@ -745,7 +783,7 @@ def _try_targeted_filtered_refresh(app, row_ids, *, filter_state):
 
 def apply_bulk_filter(app):
     flush_pending_bulk_sheet_edit(app)
-    prune_bulk_row_render_cache(app)
+    sync_bulk_cache_state(app)
     filter_state = bulk_filter_state(app)
 
     counts = getattr(app, "_bulk_summary_counts", None)
@@ -782,6 +820,7 @@ def sort_bulk_tree(app, col):
             return (1, str(value).lower())
 
     app.filtered_items.sort(key=_sort_key, reverse=reverse)
+    sync_bulk_cache_state(app, filtered_items_changed=True)
     apply_bulk_filter(app)
 
 
