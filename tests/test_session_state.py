@@ -30,6 +30,26 @@ class SessionStateTests(unittest.TestCase):
         self.assertEqual(result, [{"item_code": "GH781-4"}])
         self.assertIs(fake_app.session.filtered_items, result)
 
+    def test_filtered_items_property_syncs_bulk_caches_on_assignment(self):
+        keep_item = {"line_code": "AER-", "item_code": "GH781-4"}
+        drop_item = {"line_code": "AMS-", "item_code": "DROP"}
+        fake_app = SimpleNamespace(
+            session=AppSessionState(),
+            _bulk_row_index_generation=0,
+            _bulk_row_index_cache={"generation": 0, "by_row_id": {}, "by_key": {}},
+            _bulk_row_render_cache={
+                po_builder.ui_bulk.bulk_row_id(keep_item): (("sig",), ("row",)),
+                po_builder.ui_bulk.bulk_row_id(drop_item): (("sig",), ("row",)),
+            },
+        )
+
+        po_builder.POBuilderApp.filtered_items.fset(fake_app, [keep_item])
+
+        self.assertEqual(fake_app.session.filtered_items, [keep_item])
+        self.assertIsNone(fake_app._bulk_row_index_cache)
+        self.assertEqual(fake_app._bulk_row_index_generation, 1)
+        self.assertEqual(list(fake_app._bulk_row_render_cache.keys()), [po_builder.ui_bulk.bulk_row_id(keep_item)])
+
     def test_po_builder_mapping_properties_proxy_to_session_state(self):
         fake_app = SimpleNamespace(session=AppSessionState())
 
