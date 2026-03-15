@@ -369,20 +369,23 @@ def build_bulk_tab(app, editable_cols):
 
 def populate_bulk_tree(app):
     lc_set = set()
-    row_ids = []
-    rows = []
     counts = {"total": len(app.filtered_items), "assigned": 0, "review": 0, "warning": 0}
-    for i, item in enumerate(app.filtered_items):
+    for item in app.filtered_items:
         lc_set.add(item["line_code"])
-        row_ids.append(str(i))
-        rows.append(list(bulk_row_values(app, item)))
         _accumulate_summary_counts(counts, item)
+    row_ids, rows = build_bulk_sheet_rows(app, app.filtered_items, row_id_factory=lambda _item, idx: str(idx))
 
     app.combo_bulk_lc["values"] = ["ALL"] + sorted(lc_set)
     app.combo_bulk_vendor["values"] = app.vendor_codes_used
     update_bulk_summary(app, counts=counts)
     if app.bulk_sheet:
         app.bulk_sheet.set_rows(rows, row_ids)
+
+
+def item_source(item):
+    has_sales = item.get("qty_sold", 0) > 0
+    has_susp = item.get("qty_suspended", 0) > 0
+    return "Both" if (has_sales and has_susp) else ("Susp" if has_susp else "Sales")
 
 
 def bulk_row_values(app, item):
@@ -398,9 +401,7 @@ def bulk_row_values(app, item):
     cur_max = inventory.get("max")
     sug_min, sug_max = app._suggest_min_max(key)
     pack_size = item.get("pack_size")
-    has_sales = item.get("qty_sold", 0) > 0
-    has_susp = item.get("qty_suspended", 0) > 0
-    source = "Both" if (has_sales and has_susp) else ("Susp" if has_susp else "Sales")
+    source = item_source(item)
     status = item.get("status", "").upper()[:6]
     raw_need = item.get("raw_need", item.get("order_qty", 0))
     suggested_qty = item.get("suggested_qty", raw_need)
@@ -429,6 +430,15 @@ def bulk_row_values(app, item):
         supplier,
         why,
     )
+
+
+def build_bulk_sheet_rows(app, items, *, row_id_factory=bulk_row_id):
+    row_ids = []
+    rows = []
+    for idx, item in enumerate(items):
+        row_ids.append(row_id_factory(item, idx) if row_id_factory is not bulk_row_id else bulk_row_id(item))
+        rows.append(list(bulk_row_values(app, item)))
+    return row_ids, rows
 
 
 def _blank_summary_counts(total=0):
@@ -521,10 +531,7 @@ def item_matches_bulk_filter(item, filter_state):
     if filter_state["status"] == "Unassigned" and item.get("vendor"):
         return False
     if filter_state["source"] != "ALL":
-        has_sales = item.get("qty_sold", 0) > 0
-        has_susp = item.get("qty_suspended", 0) > 0
-        item_source = "Both" if (has_sales and has_susp) else ("Susp" if has_susp else "Sales")
-        if item_source != filter_state["source"]:
+        if item_source(item) != filter_state["source"]:
             return False
     if filter_state["item_status"] != "ALL":
         item_status = item.get("status", "ok")
@@ -673,18 +680,13 @@ def apply_bulk_filter(app):
     flush_pending_bulk_sheet_edit(app)
     filter_state = bulk_filter_state(app)
 
-    rows = []
-    row_ids = []
     counts = getattr(app, "_bulk_summary_counts", None)
     if not counts or counts.get("total") != len(app.filtered_items):
         counts = _recompute_summary_counts(app.filtered_items)
-    for item in app.filtered_items:
-        if not item_matches_bulk_filter(item, filter_state):
-            continue
-        row_ids.append(bulk_row_id(item))
-        rows.append(list(bulk_row_values(app, item)))
+    visible_items = [item for item in app.filtered_items if item_matches_bulk_filter(item, filter_state)]
     update_bulk_summary(app, counts=counts)
     if app.bulk_sheet:
+        row_ids, rows = build_bulk_sheet_rows(app, visible_items)
         app.bulk_sheet.set_rows(rows, row_ids)
 
 
@@ -705,8 +707,7 @@ def sort_bulk_tree(app, col):
     app._bulk_sort_reverse = reverse
 
     def _sort_key(item):
-        row = bulk_row_values(app, item)
-        value = row[app.bulk_tree_columns.index(col)]
+        value = bulk_sort_value(app, item, col)
         try:
             return (0, float(value))
         except Exception:
@@ -714,3 +715,49 @@ def sort_bulk_tree(app, col):
 
     app.filtered_items.sort(key=_sort_key, reverse=reverse)
     apply_bulk_filter(app)
+
+
+def bulk_sort_value(app, item, col):
+    key = (item["line_code"], item["item_code"])
+    inventory = app.inventory_lookup.get(key, {})
+    if col == "vendor":
+        return item.get("vendor", "")
+    if col == "line_code":
+        return item.get("line_code", "")
+    if col == "item_code":
+        return item.get("item_code", "")
+    if col == "description":
+        return item.get("description", "")
+    if col == "source":
+        return item_source(item)
+    if col == "status":
+        return item.get("status", "").upper()[:6]
+    if col == "raw_need":
+        return item.get("raw_need", item.get("order_qty", 0))
+    if col == "suggested_qty":
+        return item.get("suggested_qty", item.get("raw_need", item.get("order_qty", 0)))
+    if col == "final_qty":
+        return item.get("final_qty", item.get("order_qty", 0))
+    if col == "buy_rule":
+        rule_key = f"{item['line_code']}:{item['item_code']}"
+        rule = app.order_rules.get(rule_key)
+        return get_buy_rule_summary(item, rule)
+    if col == "qoh":
+        return inventory.get("qoh", "")
+    if col == "cur_min":
+        return inventory.get("min", "")
+    if col == "cur_max":
+        return inventory.get("max", "")
+    if col == "sug_min":
+        sug_min, _sug_max = app._suggest_min_max(key)
+        return "" if sug_min is None else sug_min
+    if col == "sug_max":
+        _sug_min, sug_max = app._suggest_min_max(key)
+        return "" if sug_max is None else sug_max
+    if col == "pack_size":
+        return item.get("pack_size", "")
+    if col == "supplier":
+        return inventory.get("supplier", "")
+    if col == "why":
+        return item.get("why", "")
+    return ""
