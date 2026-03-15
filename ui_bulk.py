@@ -7,8 +7,15 @@ from rules import get_buy_rule_summary
 
 
 def bulk_row_id(item):
-    key = [item.get("line_code", ""), item.get("item_code", "")]
-    return json.dumps(key, separators=(",", ":"))
+    key = (item.get("line_code", ""), item.get("item_code", ""))
+    cached_key = item.get("_bulk_row_id_key")
+    cached_row_id = item.get("_bulk_row_id")
+    if cached_key == key and cached_row_id:
+        return cached_row_id
+    row_id = json.dumps([key[0], key[1]], separators=(",", ":"))
+    item["_bulk_row_id_key"] = key
+    item["_bulk_row_id"] = row_id
+    return row_id
 
 
 def invalidate_bulk_row_index(app):

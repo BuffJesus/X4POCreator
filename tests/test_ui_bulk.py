@@ -11,6 +11,29 @@ import ui_bulk
 
 
 class UIBulkTests(unittest.TestCase):
+    def test_bulk_row_id_caches_serialized_value_on_item(self):
+        item = {"line_code": "AER-", "item_code": "GH781-4"}
+
+        first = ui_bulk.bulk_row_id(item)
+        second = ui_bulk.bulk_row_id(item)
+
+        self.assertEqual(first, "[\"AER-\",\"GH781-4\"]")
+        self.assertEqual(second, first)
+        self.assertEqual(item["_bulk_row_id_key"], ("AER-", "GH781-4"))
+        self.assertEqual(item["_bulk_row_id"], first)
+
+    def test_bulk_row_id_rebuilds_cache_when_key_fields_change(self):
+        item = {"line_code": "AER-", "item_code": "GH781-4"}
+
+        first = ui_bulk.bulk_row_id(item)
+        item["item_code"] = "GH900-1"
+        second = ui_bulk.bulk_row_id(item)
+
+        self.assertEqual(first, "[\"AER-\",\"GH781-4\"]")
+        self.assertEqual(second, "[\"AER-\",\"GH900-1\"]")
+        self.assertEqual(item["_bulk_row_id_key"], ("AER-", "GH900-1"))
+        self.assertEqual(item["_bulk_row_id"], second)
+
     def test_resolve_bulk_row_id_uses_cached_index_for_stable_row_id(self):
         item_a = {"line_code": "AER-", "item_code": "A"}
         item_b = {"line_code": "AER-", "item_code": "B"}
