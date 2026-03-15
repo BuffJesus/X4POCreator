@@ -510,6 +510,66 @@ class UIBulkTests(unittest.TestCase):
         self.assertEqual(value, 3)
         self.assertEqual(calls, [("AER-", "GH781-4")])
 
+    def test_cached_bulk_row_values_reuses_render_for_unchanged_item(self):
+        calls = []
+        fake_app = SimpleNamespace(
+            inventory_lookup={("AER-", "GH781-4"): {"mo12_sales": 52}},
+            order_rules={},
+            var_reorder_cycle=SimpleNamespace(get=lambda: "Biweekly"),
+            _suggest_min_max=lambda key: calls.append(key) or (2, 5),
+        )
+        item = {
+            "line_code": "AER-",
+            "item_code": "GH781-4",
+            "description": "Bearing",
+            "vendor": "MOTION",
+            "qty_sold": 1,
+            "qty_suspended": 0,
+            "status": "ok",
+            "raw_need": 2,
+            "suggested_qty": 2,
+            "final_qty": 2,
+            "why": "",
+        }
+
+        first = ui_bulk.cached_bulk_row_values(fake_app, item)
+        second = ui_bulk.cached_bulk_row_values(fake_app, item)
+
+        self.assertEqual(first, second)
+        self.assertEqual(calls, [("AER-", "GH781-4")])
+
+    def test_cached_bulk_row_values_invalidates_when_cycle_changes(self):
+        calls = []
+        cycle_state = {"value": "Biweekly"}
+        fake_app = SimpleNamespace(
+            inventory_lookup={("AER-", "GH781-4"): {"mo12_sales": 52}},
+            order_rules={},
+            var_reorder_cycle=SimpleNamespace(get=lambda: cycle_state["value"]),
+            _suggest_min_max=lambda key: calls.append((key, cycle_state["value"])) or (2, 5),
+        )
+        item = {
+            "line_code": "AER-",
+            "item_code": "GH781-4",
+            "description": "Bearing",
+            "vendor": "MOTION",
+            "qty_sold": 1,
+            "qty_suspended": 0,
+            "status": "ok",
+            "raw_need": 2,
+            "suggested_qty": 2,
+            "final_qty": 2,
+            "why": "",
+        }
+
+        ui_bulk.cached_bulk_row_values(fake_app, item)
+        cycle_state["value"] = "Weekly"
+        ui_bulk.cached_bulk_row_values(fake_app, item)
+
+        self.assertEqual(
+            calls,
+            [(("AER-", "GH781-4"), "Biweekly"), (("AER-", "GH781-4"), "Weekly")],
+        )
+
     def test_bulk_row_values_use_zero_qty_for_missing_recency_manual_review_item(self):
         fake_app = SimpleNamespace(
             inventory_lookup={("AER-", "STALE"): {}},

@@ -388,6 +388,46 @@ def item_source(item):
     return "Both" if (has_sales and has_susp) else ("Susp" if has_susp else "Sales")
 
 
+def _bulk_row_render_cache(app):
+    cache = getattr(app, "_bulk_row_render_cache", None)
+    if cache is None:
+        cache = {}
+        app._bulk_row_render_cache = cache
+    return cache
+
+
+def bulk_row_render_signature(app, item):
+    key = (item["line_code"], item["item_code"])
+    inventory_lookup = getattr(app, "inventory_lookup", {}) or {}
+    inventory = inventory_lookup.get(key, {}) or {}
+    rule_key = f"{item['line_code']}:{item['item_code']}"
+    order_rules = getattr(app, "order_rules", {}) or {}
+    rule = order_rules.get(rule_key) or {}
+    cycle_var = getattr(app, "var_reorder_cycle", None)
+    cycle = cycle_var.get() if cycle_var and hasattr(cycle_var, "get") else ""
+    return (
+        item.get("vendor", ""),
+        item.get("line_code", ""),
+        item.get("item_code", ""),
+        item.get("description", ""),
+        item_source(item),
+        item.get("status", ""),
+        item.get("raw_need", item.get("order_qty", 0)),
+        item.get("suggested_qty", item.get("raw_need", item.get("order_qty", 0))),
+        item.get("final_qty", item.get("order_qty", 0)),
+        item.get("pack_size"),
+        item.get("why", ""),
+        item.get("order_policy", ""),
+        inventory.get("supplier", ""),
+        inventory.get("qoh", ""),
+        inventory.get("min", ""),
+        inventory.get("max", ""),
+        inventory.get("mo12_sales", ""),
+        cycle,
+        json.dumps(rule, sort_keys=True, separators=(",", ":")),
+    )
+
+
 def bulk_row_values(app, item):
     key = (item["line_code"], item["item_code"])
     inventory = app.inventory_lookup.get(key, {})
@@ -432,12 +472,25 @@ def bulk_row_values(app, item):
     )
 
 
+def cached_bulk_row_values(app, item):
+    row_id = bulk_row_id(item)
+    signature = bulk_row_render_signature(app, item)
+    cache = _bulk_row_render_cache(app)
+    cached = cache.get(row_id)
+    if cached and cached[0] == signature:
+        return cached[1]
+    renderer = getattr(app, "_bulk_row_values", None)
+    values = renderer(item) if callable(renderer) else bulk_row_values(app, item)
+    cache[row_id] = (signature, values)
+    return values
+
+
 def build_bulk_sheet_rows(app, items, *, row_id_factory=bulk_row_id):
     row_ids = []
     rows = []
     for idx, item in enumerate(items):
         row_ids.append(row_id_factory(item, idx) if row_id_factory is not bulk_row_id else bulk_row_id(item))
-        rows.append(list(bulk_row_values(app, item)))
+        rows.append(list(cached_bulk_row_values(app, item)))
     return row_ids, rows
 
 
@@ -644,7 +697,7 @@ def refresh_bulk_view_after_edit(app, row_ids, changed_cols=None):
         if effective_row_id not in getattr(app.bulk_sheet, "row_lookup", {}):
             effective_row_id = bulk_row_id(item)
         if effective_row_id in getattr(app.bulk_sheet, "row_lookup", {}):
-            app.bulk_sheet.refresh_row(effective_row_id, app._bulk_row_values(item))
+            app.bulk_sheet.refresh_row(effective_row_id, cached_bulk_row_values(app, item))
     return True
 
 
@@ -670,7 +723,7 @@ def _try_targeted_filtered_refresh(app, row_ids, *, filter_state):
         if was_visible != matches_now:
             return False
         if matches_now:
-            pending_refreshes.append((effective_row_id, app._bulk_row_values(item)))
+            pending_refreshes.append((effective_row_id, cached_bulk_row_values(app, item)))
     for effective_row_id, values in pending_refreshes:
         bulk_sheet.refresh_row(effective_row_id, values)
     return True
