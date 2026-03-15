@@ -611,9 +611,24 @@ def _recompute_summary_counts(items):
 
 def build_bulk_session_metadata(items):
     normalized = list(items or [])
+    items_by_line_code = {}
+    items_by_source = {}
+    items_by_line_code_source = {}
+    for item in normalized:
+        line_code = item.get("line_code", "")
+        source = item_source(item)
+        if not line_code:
+            line_code = ""
+        if line_code:
+            items_by_line_code.setdefault(line_code, []).append(item)
+        items_by_source.setdefault(source, []).append(item)
+        items_by_line_code_source.setdefault((line_code, source), []).append(item)
     return {
         "counts": _recompute_summary_counts(normalized),
         "line_codes": tuple(sorted({item.get("line_code", "") for item in normalized if item.get("line_code", "")})),
+        "items_by_line_code": {line_code: tuple(group) for line_code, group in items_by_line_code.items()},
+        "items_by_source": {source: tuple(group) for source, group in items_by_source.items()},
+        "items_by_line_code_source": {key: tuple(group) for key, group in items_by_line_code_source.items()},
     }
 
 
@@ -622,7 +637,38 @@ def sync_bulk_session_metadata(app, items=None):
     metadata = build_bulk_session_metadata(normalized)
     app._bulk_summary_counts = dict(metadata["counts"])
     app._bulk_line_code_values = list(metadata["line_codes"])
+    app._bulk_items_by_line_code = dict(metadata["items_by_line_code"])
+    app._bulk_items_by_source = dict(metadata["items_by_source"])
+    app._bulk_items_by_line_code_source = dict(metadata["items_by_line_code_source"])
     return metadata
+
+
+def filtered_candidate_items(app, filter_state):
+    filtered_items = getattr(app, "filtered_items", ()) or ()
+    if bulk_filter_is_default(filter_state):
+        return list(filtered_items)
+    line_code = filter_state.get("lc", "ALL")
+    source = filter_state.get("source", "ALL")
+    line_code_buckets = getattr(app, "_bulk_items_by_line_code", None) or {}
+    source_buckets = getattr(app, "_bulk_items_by_source", None) or {}
+    combined_buckets = getattr(app, "_bulk_items_by_line_code_source", None) or {}
+    if line_code != "ALL" and source != "ALL":
+        return list(combined_buckets.get((line_code, source), ()))
+    if line_code != "ALL":
+        return list(line_code_buckets.get(line_code, ()))
+    if source != "ALL":
+        return list(source_buckets.get(source, ()))
+    return list(filtered_items)
+
+
+def uses_only_stable_bucket_filters(filter_state):
+    return (
+        filter_state.get("status", "ALL") == "ALL"
+        and filter_state.get("item_status", "ALL") == "ALL"
+        and filter_state.get("performance", "ALL") == "ALL"
+        and filter_state.get("sales_health", "ALL") == "ALL"
+        and filter_state.get("attention", "ALL") == "ALL"
+    )
 
 
 def update_bulk_summary(app, counts=None):
@@ -848,7 +894,11 @@ def apply_bulk_filter(app):
     counts = getattr(app, "_bulk_summary_counts", None)
     if not counts or counts.get("total") != len(app.filtered_items):
         counts = _recompute_summary_counts(app.filtered_items)
-    visible_items = [item for item in app.filtered_items if item_matches_bulk_filter(item, filter_state)]
+    candidate_items = filtered_candidate_items(app, filter_state)
+    if bulk_filter_is_default(filter_state) or uses_only_stable_bucket_filters(filter_state):
+        visible_items = candidate_items
+    else:
+        visible_items = [item for item in candidate_items if item_matches_bulk_filter(item, filter_state)]
     update_bulk_summary(app, counts=counts)
     if app.bulk_sheet:
         row_ids, rows = build_bulk_sheet_rows(app, visible_items)
