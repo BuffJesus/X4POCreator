@@ -66,6 +66,9 @@ def resolve_bulk_row_id(app, row_id):
     row_id = str(row_id)
     filtered_items = getattr(app, "filtered_items", ()) or ()
     cache = bulk_row_index(app)
+    direct = cache.get("by_row_id", {}).get(row_id)
+    if direct is not None:
+        return direct
     try:
         key = json.loads(row_id)
     except Exception:
@@ -416,8 +419,8 @@ def populate_bulk_tree(app):
         line_codes = list(metadata["line_codes"])
     row_ids, rows = build_bulk_sheet_rows(app, app.filtered_items, row_id_factory=lambda _item, idx: str(idx))
 
-    app.combo_bulk_lc["values"] = ["ALL"] + list(line_codes)
-    app.combo_bulk_vendor["values"] = app.vendor_codes_used
+    set_combobox_values_if_changed(getattr(app, "combo_bulk_lc", None), ["ALL"] + list(line_codes))
+    set_combobox_values_if_changed(getattr(app, "combo_bulk_vendor", None), app.vendor_codes_used)
     update_bulk_summary(app, counts=counts)
     if app.bulk_sheet:
         app.bulk_sheet.set_rows(rows, row_ids)
@@ -570,6 +573,20 @@ def build_bulk_sheet_rows(app, items, *, row_id_factory=bulk_row_id):
         row_ids.append(row_id_factory(item, idx) if row_id_factory is not bulk_row_id else bulk_row_id(item))
         rows.append(list(cached_bulk_row_values(app, item)))
     return row_ids, rows
+
+
+def set_combobox_values_if_changed(combo, values):
+    if combo is None:
+        return False
+    normalized = tuple(values or ())
+    try:
+        current = tuple(combo["values"])
+    except Exception:
+        current = tuple(getattr(combo, "values", ()) or ())
+    if current == normalized:
+        return False
+    combo["values"] = normalized
+    return True
 
 
 def _blank_summary_counts(total=0):

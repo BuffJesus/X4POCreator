@@ -2,6 +2,7 @@ import sys
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -11,6 +12,31 @@ import ui_bulk
 
 
 class UIBulkTests(unittest.TestCase):
+    def test_set_combobox_values_if_changed_skips_redundant_assignment(self):
+        writes = []
+
+        class Combo:
+            def __init__(self):
+                self.values = ("ALL", "AER-")
+
+            def __getitem__(self, key):
+                if key != "values":
+                    raise KeyError(key)
+                return self.values
+
+            def __setitem__(self, key, value):
+                if key != "values":
+                    raise KeyError(key)
+                writes.append(tuple(value))
+                self.values = tuple(value)
+
+        combo = Combo()
+
+        changed = ui_bulk.set_combobox_values_if_changed(combo, ["ALL", "AER-"])
+
+        self.assertFalse(changed)
+        self.assertEqual(writes, [])
+
     def test_bulk_row_id_caches_serialized_value_on_item(self):
         item = {"line_code": "AER-", "item_code": "GH781-4"}
 
@@ -49,6 +75,19 @@ class UIBulkTests(unittest.TestCase):
         self.assertEqual(second, (1, item_b))
         self.assertEqual(fake_app._bulk_row_index_cache["by_key"][("AER-", "B")], (1, item_b))
 
+    def test_resolve_bulk_row_id_uses_direct_row_id_index_without_json_parse(self):
+        item_a = {"line_code": "AER-", "item_code": "A"}
+        item_b = {"line_code": "AER-", "item_code": "B"}
+        row_id_b = ui_bulk.bulk_row_id(item_b)
+        fake_app = SimpleNamespace(filtered_items=[item_a, item_b])
+
+        ui_bulk.bulk_row_index(fake_app)
+
+        with patch("ui_bulk.json.loads", side_effect=AssertionError("json.loads should not be called")):
+            result = ui_bulk.resolve_bulk_row_id(fake_app, row_id_b)
+
+        self.assertEqual(result, (1, item_b))
+
     def test_invalidate_bulk_row_index_rebuilds_resolved_positions_after_sort(self):
         item_a = {"line_code": "AER-", "item_code": "A"}
         item_b = {"line_code": "AER-", "item_code": "B"}
@@ -62,6 +101,22 @@ class UIBulkTests(unittest.TestCase):
         ui_bulk.invalidate_bulk_row_index(fake_app)
 
         self.assertEqual(ui_bulk.resolve_bulk_row_id(fake_app, row_id_a), (0, item_a))
+
+    def test_resolve_bulk_row_id_after_sort_uses_direct_row_id_index_without_json_parse(self):
+        item_a = {"line_code": "AER-", "item_code": "A"}
+        item_b = {"line_code": "AER-", "item_code": "B"}
+        row_id_a = ui_bulk.bulk_row_id(item_a)
+        fake_app = SimpleNamespace(filtered_items=[item_b, item_a])
+
+        ui_bulk.bulk_row_index(fake_app)
+        fake_app.filtered_items.sort(key=lambda item: item["item_code"])
+        ui_bulk.invalidate_bulk_row_index(fake_app)
+        ui_bulk.bulk_row_index(fake_app)
+
+        with patch("ui_bulk.json.loads", side_effect=AssertionError("json.loads should not be called")):
+            result = ui_bulk.resolve_bulk_row_id(fake_app, row_id_a)
+
+        self.assertEqual(result, (0, item_a))
 
     def test_find_filtered_item_uses_cached_row_index(self):
         item_a = {"line_code": "AER-", "item_code": "A"}
@@ -495,6 +550,48 @@ class UIBulkTests(unittest.TestCase):
         self.assertEqual(fake_app._bulk_summary_counts, {"total": 2, "assigned": 1, "review": 0, "warning": 1})
         self.assertIn("1 assigned", label.text)
         self.assertEqual(len(captured[1][1]), 1)
+
+    def test_populate_bulk_tree_skips_combobox_updates_when_values_are_unchanged(self):
+        captured = []
+        label = SimpleNamespace(config=lambda **kwargs: setattr(label, "text", kwargs.get("text", "")))
+
+        class Combo:
+            def __init__(self, values):
+                self.values = tuple(values)
+                self.write_count = 0
+
+            def __getitem__(self, key):
+                if key != "values":
+                    raise KeyError(key)
+                return self.values
+
+            def __setitem__(self, key, value):
+                if key != "values":
+                    raise KeyError(key)
+                self.write_count += 1
+                self.values = tuple(value)
+
+        fake_app = SimpleNamespace(
+            filtered_items=[
+                {"line_code": "AER-", "item_code": "A", "description": "Item A", "vendor": "MOTION", "qty_sold": 1, "qty_suspended": 0, "status": "ok"},
+            ],
+            _bulk_summary_counts={"total": 1, "assigned": 1, "review": 0, "warning": 0},
+            _bulk_line_code_values=["AER-"],
+            combo_bulk_lc=Combo(("ALL", "AER-")),
+            combo_bulk_vendor=Combo(("MOTION",)),
+            vendor_codes_used=["MOTION"],
+            bulk_sheet=SimpleNamespace(set_rows=lambda rows, row_ids: captured.append((rows, row_ids))),
+            _suggest_min_max=lambda key: (None, None),
+            inventory_lookup={},
+            order_rules={},
+            lbl_bulk_summary=label,
+        )
+
+        ui_bulk.populate_bulk_tree(fake_app)
+
+        self.assertEqual(fake_app.combo_bulk_lc.write_count, 0)
+        self.assertEqual(fake_app.combo_bulk_vendor.write_count, 0)
+        self.assertEqual(captured[0][1], ["0"])
 
     def test_refresh_bulk_view_after_edit_resolves_stable_row_id_after_item_reordering(self):
         events = []
