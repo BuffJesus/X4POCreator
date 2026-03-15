@@ -368,6 +368,7 @@ def build_bulk_tab(app, editable_cols):
 
 
 def populate_bulk_tree(app):
+    prune_bulk_row_render_cache(app)
     lc_set = set()
     counts = {"total": len(app.filtered_items), "assigned": 0, "review": 0, "warning": 0}
     for item in app.filtered_items:
@@ -394,6 +395,19 @@ def _bulk_row_render_cache(app):
         cache = {}
         app._bulk_row_render_cache = cache
     return cache
+
+
+def prune_bulk_row_render_cache(app, retain_items=None):
+    cache = getattr(app, "_bulk_row_render_cache", None)
+    if not cache:
+        return 0
+    if retain_items is None:
+        retain_items = getattr(app, "filtered_items", ()) or ()
+    retain_row_ids = {bulk_row_id(item) for item in retain_items}
+    removed = [row_id for row_id in tuple(cache.keys()) if row_id not in retain_row_ids]
+    for row_id in removed:
+        cache.pop(row_id, None)
+    return len(removed)
 
 
 def bulk_row_render_signature(app, item):
@@ -731,6 +745,7 @@ def _try_targeted_filtered_refresh(app, row_ids, *, filter_state):
 
 def apply_bulk_filter(app):
     flush_pending_bulk_sheet_edit(app)
+    prune_bulk_row_render_cache(app)
     filter_state = bulk_filter_state(app)
 
     counts = getattr(app, "_bulk_summary_counts", None)

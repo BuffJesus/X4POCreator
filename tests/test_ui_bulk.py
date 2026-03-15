@@ -570,6 +570,50 @@ class UIBulkTests(unittest.TestCase):
             [(("AER-", "GH781-4"), "Biweekly"), (("AER-", "GH781-4"), "Weekly")],
         )
 
+    def test_prune_bulk_row_render_cache_removes_entries_not_in_filtered_items(self):
+        keep_item = {"line_code": "AER-", "item_code": "KEEP"}
+        drop_item = {"line_code": "AER-", "item_code": "DROP"}
+        fake_app = SimpleNamespace(
+            filtered_items=[keep_item],
+            _bulk_row_render_cache={
+                ui_bulk.bulk_row_id(keep_item): (("sig",), ("row",)),
+                ui_bulk.bulk_row_id(drop_item): (("sig",), ("row",)),
+            },
+        )
+
+        removed = ui_bulk.prune_bulk_row_render_cache(fake_app)
+
+        self.assertEqual(removed, 1)
+        self.assertEqual(list(fake_app._bulk_row_render_cache.keys()), [ui_bulk.bulk_row_id(keep_item)])
+
+    def test_apply_bulk_filter_prunes_stale_render_cache_entries(self):
+        label = SimpleNamespace(config=lambda **kwargs: setattr(label, "text", kwargs.get("text", "")))
+        keep_item = {"line_code": "AER-", "item_code": "KEEP", "description": "", "vendor": "", "qty_sold": 0, "qty_suspended": 0, "status": "ok"}
+        drop_item = {"line_code": "AER-", "item_code": "DROP"}
+        fake_app = SimpleNamespace(
+            bulk_sheet=None,
+            filtered_items=[keep_item],
+            _bulk_summary_counts={"total": 1, "assigned": 0, "review": 0, "warning": 0},
+            _bulk_row_render_cache={
+                ui_bulk.bulk_row_id(keep_item): (("sig",), ("row",)),
+                ui_bulk.bulk_row_id(drop_item): (("sig",), ("row",)),
+            },
+            inventory_lookup={},
+            order_rules={},
+            var_bulk_lc_filter=SimpleNamespace(get=lambda: "ALL"),
+            var_bulk_status_filter=SimpleNamespace(get=lambda: "ALL"),
+            var_bulk_source_filter=SimpleNamespace(get=lambda: "ALL"),
+            var_bulk_item_status=SimpleNamespace(get=lambda: "ALL"),
+            var_bulk_performance_filter=SimpleNamespace(get=lambda: "ALL"),
+            var_bulk_sales_health_filter=SimpleNamespace(get=lambda: "ALL"),
+            var_bulk_attention_filter=SimpleNamespace(get=lambda: "ALL"),
+            lbl_bulk_summary=label,
+        )
+
+        ui_bulk.apply_bulk_filter(fake_app)
+
+        self.assertEqual(list(fake_app._bulk_row_render_cache.keys()), [ui_bulk.bulk_row_id(keep_item)])
+
     def test_bulk_row_values_use_zero_qty_for_missing_recency_manual_review_item(self):
         fake_app = SimpleNamespace(
             inventory_lookup={("AER-", "STALE"): {}},
