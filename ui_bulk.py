@@ -23,6 +23,16 @@ def invalidate_bulk_row_index(app):
     app._bulk_row_index_generation = getattr(app, "_bulk_row_index_generation", 0) + 1
 
 
+def invalidate_bulk_filter_result_cache(app):
+    app._bulk_filter_result_cache = None
+    app._bulk_filter_result_generation = getattr(app, "_bulk_filter_result_generation", 0) + 1
+
+
+def invalidate_bulk_visible_rows_cache(app):
+    app._bulk_visible_rows_cache = None
+    app._bulk_visible_rows_generation = getattr(app, "_bulk_visible_rows_generation", 0) + 1
+
+
 def _build_bulk_row_index(app):
     filtered_items = list(getattr(app, "filtered_items", ()) or ())
     by_row_id = {}
@@ -456,6 +466,8 @@ def prune_bulk_row_render_cache(app, retain_items=None):
 def sync_bulk_cache_state(app, *, filtered_items_changed=False, retain_items=None):
     if filtered_items_changed:
         invalidate_bulk_row_index(app)
+        invalidate_bulk_filter_result_cache(app)
+        invalidate_bulk_visible_rows_cache(app)
     return prune_bulk_row_render_cache(app, retain_items=retain_items)
 
 
@@ -811,6 +823,55 @@ def can_fully_resolve_bucket_filters(app, filter_state):
     return True
 
 
+def cached_bulk_filter_result(app, filter_state):
+    cache = getattr(app, "_bulk_filter_result_cache", None)
+    generation = getattr(app, "_bulk_filter_result_generation", 0)
+    if not isinstance(cache, dict):
+        return None
+    if cache.get("generation") != generation:
+        return None
+    if cache.get("filter_state") != tuple(sorted(filter_state.items())):
+        return None
+    return list(cache.get("visible_items", ()))
+
+
+def store_bulk_filter_result(app, filter_state, visible_items):
+    app._bulk_filter_result_cache = {
+        "generation": getattr(app, "_bulk_filter_result_generation", 0),
+        "filter_state": tuple(sorted(filter_state.items())),
+        "visible_items": tuple(visible_items),
+    }
+    return visible_items
+
+
+def _bulk_visible_rows_cache_key(app, filter_state):
+    cycle_var = getattr(app, "var_reorder_cycle", None)
+    cycle = cycle_var.get() if cycle_var and hasattr(cycle_var, "get") else ""
+    return (tuple(sorted(filter_state.items())), cycle)
+
+
+def cached_bulk_visible_rows(app, filter_state):
+    cache = getattr(app, "_bulk_visible_rows_cache", None)
+    generation = getattr(app, "_bulk_visible_rows_generation", 0)
+    if not isinstance(cache, dict):
+        return None
+    if cache.get("generation") != generation:
+        return None
+    if cache.get("key") != _bulk_visible_rows_cache_key(app, filter_state):
+        return None
+    return list(cache.get("row_ids", ())), [list(row) for row in cache.get("rows", ())]
+
+
+def store_bulk_visible_rows(app, filter_state, row_ids, rows):
+    app._bulk_visible_rows_cache = {
+        "generation": getattr(app, "_bulk_visible_rows_generation", 0),
+        "key": _bulk_visible_rows_cache_key(app, filter_state),
+        "row_ids": tuple(row_ids),
+        "rows": tuple(tuple(row) for row in rows),
+    }
+    return row_ids, rows
+
+
 def update_bulk_summary(app, counts=None):
     if counts is None:
         cached = getattr(app, "_bulk_summary_counts", None)
@@ -903,6 +964,8 @@ def adjust_bulk_filter_buckets_for_item_change(app, before_item, after_item, ite
 
 def adjust_bulk_summary_for_item_change(app, before_item, after_item, *, item=None):
     cached = getattr(app, "_bulk_summary_counts", None)
+    invalidate_bulk_filter_result_cache(app)
+    invalidate_bulk_visible_rows_cache(app)
     adjusted = adjust_bulk_filter_buckets_for_item_change(app, before_item, after_item, item=item)
     if not cached or cached.get("total") != len(app.filtered_items):
         return adjusted
@@ -1100,16 +1163,24 @@ def apply_bulk_filter(app):
     counts = getattr(app, "_bulk_summary_counts", None)
     if not counts or counts.get("total") != len(app.filtered_items):
         counts = _recompute_summary_counts(app.filtered_items)
-    candidate_items = filtered_candidate_items(app, filter_state)
-    if bulk_filter_is_default(filter_state) or (
-        uses_only_bucket_filters(filter_state) and can_fully_resolve_bucket_filters(app, filter_state)
-    ):
-        visible_items = candidate_items
-    else:
-        visible_items = [item for item in candidate_items if item_matches_bulk_filter(item, filter_state)]
+    visible_items = cached_bulk_filter_result(app, filter_state)
+    if visible_items is None:
+        candidate_items = filtered_candidate_items(app, filter_state)
+        if bulk_filter_is_default(filter_state) or (
+            uses_only_bucket_filters(filter_state) and can_fully_resolve_bucket_filters(app, filter_state)
+        ):
+            visible_items = candidate_items
+        else:
+            visible_items = [item for item in candidate_items if item_matches_bulk_filter(item, filter_state)]
+        store_bulk_filter_result(app, filter_state, visible_items)
     update_bulk_summary(app, counts=counts)
     if app.bulk_sheet:
-        row_ids, rows = build_bulk_sheet_rows(app, visible_items)
+        cached_rows = cached_bulk_visible_rows(app, filter_state)
+        if cached_rows is None:
+            row_ids, rows = build_bulk_sheet_rows(app, visible_items)
+            store_bulk_visible_rows(app, filter_state, row_ids, rows)
+        else:
+            row_ids, rows = cached_rows
         app.bulk_sheet.set_rows(rows, row_ids)
 
 

@@ -137,6 +137,10 @@ class UIBulkTests(unittest.TestCase):
             filtered_items=[keep_item],
             _bulk_row_index_generation=0,
             _bulk_row_index_cache={"generation": 0, "by_row_id": {}, "by_key": {}},
+            _bulk_filter_result_generation=0,
+            _bulk_filter_result_cache={"generation": 0, "filter_state": (), "visible_items": ()},
+            _bulk_visible_rows_generation=0,
+            _bulk_visible_rows_cache={"generation": 0, "key": (), "row_ids": (), "rows": ()},
             _bulk_row_render_cache={
                 ui_bulk.bulk_row_id(keep_item): (("sig",), ("row",)),
                 ui_bulk.bulk_row_id(drop_item): (("sig",), ("row",)),
@@ -148,6 +152,10 @@ class UIBulkTests(unittest.TestCase):
         self.assertEqual(removed, 1)
         self.assertIsNone(fake_app._bulk_row_index_cache)
         self.assertEqual(fake_app._bulk_row_index_generation, 1)
+        self.assertIsNone(fake_app._bulk_filter_result_cache)
+        self.assertEqual(fake_app._bulk_filter_result_generation, 1)
+        self.assertIsNone(fake_app._bulk_visible_rows_cache)
+        self.assertEqual(fake_app._bulk_visible_rows_generation, 1)
         self.assertEqual(list(fake_app._bulk_row_render_cache.keys()), [ui_bulk.bulk_row_id(keep_item)])
 
     def test_replace_filtered_items_updates_plain_object_and_syncs_caches(self):
@@ -264,6 +272,29 @@ class UIBulkTests(unittest.TestCase):
         self.assertEqual(fake_app._bulk_items_by_performance, {"Legacy": (item,)})
         self.assertEqual(fake_app._bulk_items_by_sales_health, {"Dormant": (item,)})
         self.assertEqual(fake_app._bulk_items_by_attention, {"Missed Reorder": (item,)})
+
+    def test_adjust_bulk_summary_for_item_change_invalidates_filter_result_cache(self):
+        item = {"vendor": "", "status": "ok"}
+        fake_app = SimpleNamespace(
+            filtered_items=[item],
+            _bulk_summary_counts={"total": 1, "assigned": 0, "review": 0, "warning": 0},
+            _bulk_filter_result_generation=0,
+            _bulk_filter_result_cache={"generation": 0, "filter_state": (("status", "ALL"),), "visible_items": (item,)},
+            _bulk_visible_rows_generation=0,
+            _bulk_visible_rows_cache={"generation": 0, "key": (), "row_ids": ("0",), "rows": (("row",),)},
+        )
+
+        ui_bulk.adjust_bulk_summary_for_item_change(
+            fake_app,
+            {"vendor": "", "status": "ok"},
+            {"vendor": "MOTION", "status": "ok"},
+            item=item,
+        )
+
+        self.assertIsNone(fake_app._bulk_filter_result_cache)
+        self.assertEqual(fake_app._bulk_filter_result_generation, 1)
+        self.assertIsNone(fake_app._bulk_visible_rows_cache)
+        self.assertEqual(fake_app._bulk_visible_rows_generation, 1)
 
     def test_flush_pending_bulk_sheet_edit_calls_sheet_hook(self):
         events = []
@@ -1018,6 +1049,210 @@ class UIBulkTests(unittest.TestCase):
         self.assertEqual(fake_app._bulk_summary_counts, {"total": 2, "assigned": 1, "review": 0, "warning": 1})
         self.assertIn("1 assigned", label.text)
         self.assertEqual(len(captured[1][1]), 1)
+
+    def test_apply_bulk_filter_reuses_cached_visible_result_when_filter_state_is_unchanged(self):
+        calls = []
+        captured = []
+        label = SimpleNamespace(config=lambda **kwargs: setattr(label, "text", kwargs.get("text", "")))
+        item_sales = {"line_code": "AER-", "item_code": "A", "description": "Item A", "vendor": "", "qty_sold": 1, "qty_suspended": 0, "status": "ok"}
+        item_susp = {"line_code": "MOT-", "item_code": "B", "description": "Item B", "vendor": "", "qty_sold": 0, "qty_suspended": 1, "status": "ok"}
+        fake_app = SimpleNamespace(
+            filtered_items=[item_sales, item_susp],
+            _bulk_summary_counts={"total": 2, "assigned": 0, "review": 0, "warning": 0},
+            _bulk_items_by_source={"Sales": (item_sales,), "Susp": (item_susp,)},
+            bulk_sheet=SimpleNamespace(
+                flush_pending_edit=lambda: captured.append(("flush",)),
+                set_rows=lambda rows, row_ids: captured.append((rows, row_ids)),
+            ),
+            var_bulk_lc_filter=SimpleNamespace(get=lambda: "ALL"),
+            var_bulk_status_filter=SimpleNamespace(get=lambda: "ALL"),
+            var_bulk_source_filter=SimpleNamespace(get=lambda: "Sales"),
+            var_bulk_item_status=SimpleNamespace(get=lambda: "ALL"),
+            var_bulk_performance_filter=SimpleNamespace(get=lambda: "ALL"),
+            var_bulk_sales_health_filter=SimpleNamespace(get=lambda: "ALL"),
+            var_bulk_attention_filter=SimpleNamespace(get=lambda: "ALL"),
+            _suggest_min_max=lambda key: (None, None),
+            inventory_lookup={},
+            order_rules={},
+            combo_bulk_lc=type("Combo", (), {"__getitem__": lambda self, key: (), "__setitem__": lambda self, key, value: None})(),
+            combo_bulk_vendor=type("Combo", (), {"__getitem__": lambda self, key: (), "__setitem__": lambda self, key, value: None})(),
+            vendor_codes_used=[],
+            lbl_bulk_summary=label,
+        )
+
+        original = ui_bulk.filtered_candidate_items
+
+        def tracking_candidates(app, filter_state):
+            calls.append(dict(filter_state))
+            return original(app, filter_state)
+
+        with patch("ui_bulk.filtered_candidate_items", side_effect=tracking_candidates):
+            ui_bulk.apply_bulk_filter(fake_app)
+            ui_bulk.apply_bulk_filter(fake_app)
+
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(captured[1][1], [ui_bulk.bulk_row_id(item_sales)])
+        self.assertEqual(captured[3][1], [ui_bulk.bulk_row_id(item_sales)])
+
+    def test_apply_bulk_filter_reuses_cached_visible_row_payload_when_state_is_unchanged(self):
+        build_calls = []
+        captured = []
+        label = SimpleNamespace(config=lambda **kwargs: setattr(label, "text", kwargs.get("text", "")))
+        item_sales = {"line_code": "AER-", "item_code": "A", "description": "Item A", "vendor": "", "qty_sold": 1, "qty_suspended": 0, "status": "ok"}
+        fake_app = SimpleNamespace(
+            filtered_items=[item_sales],
+            _bulk_summary_counts={"total": 1, "assigned": 0, "review": 0, "warning": 0},
+            bulk_sheet=SimpleNamespace(
+                flush_pending_edit=lambda: captured.append(("flush",)),
+                set_rows=lambda rows, row_ids: captured.append((rows, row_ids)),
+            ),
+            var_bulk_lc_filter=SimpleNamespace(get=lambda: "ALL"),
+            var_bulk_status_filter=SimpleNamespace(get=lambda: "ALL"),
+            var_bulk_source_filter=SimpleNamespace(get=lambda: "ALL"),
+            var_bulk_item_status=SimpleNamespace(get=lambda: "ALL"),
+            var_bulk_performance_filter=SimpleNamespace(get=lambda: "ALL"),
+            var_bulk_sales_health_filter=SimpleNamespace(get=lambda: "ALL"),
+            var_bulk_attention_filter=SimpleNamespace(get=lambda: "ALL"),
+            var_reorder_cycle=SimpleNamespace(get=lambda: "Biweekly"),
+            _suggest_min_max=lambda key: (None, None),
+            inventory_lookup={},
+            order_rules={},
+            combo_bulk_lc=type("Combo", (), {"__getitem__": lambda self, key: (), "__setitem__": lambda self, key, value: None})(),
+            combo_bulk_vendor=type("Combo", (), {"__getitem__": lambda self, key: (), "__setitem__": lambda self, key, value: None})(),
+            vendor_codes_used=[],
+            lbl_bulk_summary=label,
+        )
+
+        original = ui_bulk.build_bulk_sheet_rows
+
+        def tracking_build(app, items, **kwargs):
+            build_calls.append(tuple(items))
+            return original(app, items, **kwargs)
+
+        with patch("ui_bulk.build_bulk_sheet_rows", side_effect=tracking_build):
+            ui_bulk.apply_bulk_filter(fake_app)
+            ui_bulk.apply_bulk_filter(fake_app)
+
+        self.assertEqual(len(build_calls), 1)
+        self.assertEqual(captured[1][1], [ui_bulk.bulk_row_id(item_sales)])
+        self.assertEqual(captured[3][1], [ui_bulk.bulk_row_id(item_sales)])
+
+    def test_apply_bulk_filter_recomputes_visible_result_after_item_change_invalidation(self):
+        calls = []
+        captured = []
+        label = SimpleNamespace(config=lambda **kwargs: setattr(label, "text", kwargs.get("text", "")))
+        item_top = {"line_code": "AER-", "item_code": "A", "description": "Item A", "vendor": "", "qty_sold": 1, "qty_suspended": 0, "status": "ok", "performance_profile": "top_performer"}
+        item_steady = {"line_code": "MOT-", "item_code": "B", "description": "Item B", "vendor": "", "qty_sold": 1, "qty_suspended": 0, "status": "ok", "performance_profile": "steady"}
+        fake_app = SimpleNamespace(
+            filtered_items=[item_top, item_steady],
+            _bulk_summary_counts={"total": 2, "assigned": 0, "review": 0, "warning": 0},
+            _bulk_items_by_performance={"Top": (item_top,), "Steady": (item_steady,)},
+            bulk_sheet=SimpleNamespace(
+                flush_pending_edit=lambda: captured.append(("flush",)),
+                set_rows=lambda rows, row_ids: captured.append((rows, row_ids)),
+            ),
+            var_bulk_lc_filter=SimpleNamespace(get=lambda: "ALL"),
+            var_bulk_status_filter=SimpleNamespace(get=lambda: "ALL"),
+            var_bulk_source_filter=SimpleNamespace(get=lambda: "ALL"),
+            var_bulk_item_status=SimpleNamespace(get=lambda: "ALL"),
+            var_bulk_performance_filter=SimpleNamespace(get=lambda: "Top"),
+            var_bulk_sales_health_filter=SimpleNamespace(get=lambda: "ALL"),
+            var_bulk_attention_filter=SimpleNamespace(get=lambda: "ALL"),
+            _suggest_min_max=lambda key: (None, None),
+            inventory_lookup={},
+            order_rules={},
+            combo_bulk_lc=type("Combo", (), {"__getitem__": lambda self, key: (), "__setitem__": lambda self, key, value: None})(),
+            combo_bulk_vendor=type("Combo", (), {"__getitem__": lambda self, key: (), "__setitem__": lambda self, key, value: None})(),
+            vendor_codes_used=[],
+            lbl_bulk_summary=label,
+        )
+
+        original = ui_bulk.filtered_candidate_items
+
+        def tracking_candidates(app, filter_state):
+            calls.append(dict(filter_state))
+            return original(app, filter_state)
+
+        with patch("ui_bulk.filtered_candidate_items", side_effect=tracking_candidates):
+            ui_bulk.apply_bulk_filter(fake_app)
+            ui_bulk.adjust_bulk_summary_for_item_change(
+                fake_app,
+                ui_bulk.bulk_filter_bucket_snapshot(item_top),
+                {
+                    "vendor": "",
+                    "status": "ok",
+                    "data_flags": (),
+                    "performance_profile": "steady",
+                    "sales_health_signal": "",
+                    "reorder_attention_signal": "",
+                },
+                item=item_top,
+            )
+            item_top["performance_profile"] = "steady"
+            ui_bulk.apply_bulk_filter(fake_app)
+
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(captured[1][1], [ui_bulk.bulk_row_id(item_top)])
+        self.assertEqual(captured[3][1], [])
+
+    def test_apply_bulk_filter_rebuilds_visible_row_payload_after_item_change_invalidation(self):
+        build_calls = []
+        captured = []
+        label = SimpleNamespace(config=lambda **kwargs: setattr(label, "text", kwargs.get("text", "")))
+        item_top = {"line_code": "AER-", "item_code": "A", "description": "Item A", "vendor": "", "qty_sold": 1, "qty_suspended": 0, "status": "ok", "performance_profile": "top_performer"}
+        fake_app = SimpleNamespace(
+            filtered_items=[item_top],
+            _bulk_summary_counts={"total": 1, "assigned": 0, "review": 0, "warning": 0},
+            _bulk_items_by_performance={"Top": (item_top,)},
+            bulk_sheet=SimpleNamespace(
+                flush_pending_edit=lambda: captured.append(("flush",)),
+                set_rows=lambda rows, row_ids: captured.append((rows, row_ids)),
+            ),
+            var_bulk_lc_filter=SimpleNamespace(get=lambda: "ALL"),
+            var_bulk_status_filter=SimpleNamespace(get=lambda: "ALL"),
+            var_bulk_source_filter=SimpleNamespace(get=lambda: "ALL"),
+            var_bulk_item_status=SimpleNamespace(get=lambda: "ALL"),
+            var_bulk_performance_filter=SimpleNamespace(get=lambda: "Top"),
+            var_bulk_sales_health_filter=SimpleNamespace(get=lambda: "ALL"),
+            var_bulk_attention_filter=SimpleNamespace(get=lambda: "ALL"),
+            var_reorder_cycle=SimpleNamespace(get=lambda: "Biweekly"),
+            _suggest_min_max=lambda key: (None, None),
+            inventory_lookup={},
+            order_rules={},
+            combo_bulk_lc=type("Combo", (), {"__getitem__": lambda self, key: (), "__setitem__": lambda self, key, value: None})(),
+            combo_bulk_vendor=type("Combo", (), {"__getitem__": lambda self, key: (), "__setitem__": lambda self, key, value: None})(),
+            vendor_codes_used=[],
+            lbl_bulk_summary=label,
+        )
+
+        original = ui_bulk.build_bulk_sheet_rows
+
+        def tracking_build(app, items, **kwargs):
+            build_calls.append(tuple(items))
+            return original(app, items, **kwargs)
+
+        with patch("ui_bulk.build_bulk_sheet_rows", side_effect=tracking_build):
+            ui_bulk.apply_bulk_filter(fake_app)
+            ui_bulk.adjust_bulk_summary_for_item_change(
+                fake_app,
+                ui_bulk.bulk_filter_bucket_snapshot(item_top),
+                {
+                    "vendor": "",
+                    "status": "ok",
+                    "data_flags": (),
+                    "performance_profile": "steady",
+                    "sales_health_signal": "",
+                    "reorder_attention_signal": "",
+                },
+                item=item_top,
+            )
+            item_top["performance_profile"] = "steady"
+            fake_app._bulk_items_by_performance = {"Steady": (item_top,)}
+            ui_bulk.apply_bulk_filter(fake_app)
+
+        self.assertEqual(len(build_calls), 2)
+        self.assertEqual(captured[1][1], [ui_bulk.bulk_row_id(item_top)])
+        self.assertEqual(captured[3][1], [])
 
     def test_populate_bulk_tree_skips_combobox_updates_when_values_are_unchanged(self):
         captured = []
