@@ -51,6 +51,7 @@ def ignore_items_by_keys(app, ignore_keys):
 
 
 def capture_bulk_history_state(app):
+    last_removed_bulk_items = list(getattr(app, "last_removed_bulk_items", ()) or ())
     return {
         "filtered_items": copy.deepcopy(app.filtered_items),
         "inventory_lookup": copy.deepcopy(app.inventory_lookup),
@@ -59,7 +60,7 @@ def capture_bulk_history_state(app):
         "vendor_codes_used": list(app.vendor_codes_used),
         "_loaded_order_rules": copy.deepcopy(app._loaded_order_rules),
         "_loaded_vendor_codes": list(app._loaded_vendor_codes),
-        "last_removed_bulk_items": copy.deepcopy(app.last_removed_bulk_items),
+        "last_removed_bulk_items": last_removed_bulk_items,
     }
 
 
@@ -119,7 +120,7 @@ def restore_bulk_history_state(app, state):
     app.vendor_codes_used = list(state.get("vendor_codes_used", []))
     app._loaded_order_rules = copy.deepcopy(state.get("_loaded_order_rules", {}))
     app._loaded_vendor_codes = list(state.get("_loaded_vendor_codes", []))
-    app.last_removed_bulk_items = copy.deepcopy(state.get("last_removed_bulk_items", []))
+    app.last_removed_bulk_items = list(state.get("last_removed_bulk_items", []))
     app._refresh_vendor_inputs()
     if app.bulk_sheet:
         app.bulk_sheet.clear_selection()

@@ -107,6 +107,28 @@ class SessionStateFlowTests(unittest.TestCase):
         self.assertEqual(fake_app.last_removed_bulk_items, [{"item_code": "OLD"}])
         self.assertEqual(events, ["vendors", "clear", "bulk", "summary", "status"])
 
+    def test_capture_bulk_history_state_does_not_deepcopy_last_removed_bulk_items(self):
+        class NoDeepcopy:
+            def __deepcopy__(self, memo):
+                raise AssertionError("last_removed_bulk_items should not be deep-copied")
+
+        removed_item = {"item_code": "OLD", "payload": NoDeepcopy()}
+        fake_app = SimpleNamespace(
+            filtered_items=[{"item_code": "ABC123"}],
+            inventory_lookup={},
+            qoh_adjustments={},
+            order_rules={},
+            vendor_codes_used=[],
+            _loaded_order_rules={},
+            _loaded_vendor_codes=[],
+            last_removed_bulk_items=[(3, removed_item)],
+        )
+
+        state = session_state_flow.capture_bulk_history_state(fake_app)
+
+        self.assertEqual(state["last_removed_bulk_items"], [(3, removed_item)])
+        self.assertIsNot(state["last_removed_bulk_items"], fake_app.last_removed_bulk_items)
+
     def test_ignore_items_by_keys_removes_items_and_refreshes_review_when_present(self):
         events = []
         fake_app = SimpleNamespace(
