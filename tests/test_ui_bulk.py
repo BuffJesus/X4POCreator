@@ -1296,6 +1296,109 @@ class UIBulkTests(unittest.TestCase):
         self.assertEqual(fake_app.combo_bulk_vendor.write_count, 0)
         self.assertEqual(captured[0][1], ["0"])
 
+    def test_populate_bulk_tree_reuses_cached_visible_row_payload_when_state_is_unchanged(self):
+        captured = []
+        build_calls = []
+        label = SimpleNamespace(config=lambda **kwargs: setattr(label, "text", kwargs.get("text", "")))
+
+        class Combo:
+            def __init__(self):
+                self.values = ()
+
+            def __getitem__(self, key):
+                if key != "values":
+                    raise KeyError(key)
+                return self.values
+
+            def __setitem__(self, key, value):
+                if key != "values":
+                    raise KeyError(key)
+                self.values = tuple(value)
+
+        fake_app = SimpleNamespace(
+            filtered_items=[
+                {"line_code": "AER-", "item_code": "A", "description": "Item A", "vendor": "MOTION", "qty_sold": 1, "qty_suspended": 0, "status": "ok"},
+            ],
+            _bulk_summary_counts={"total": 1, "assigned": 1, "review": 0, "warning": 0},
+            _bulk_line_code_values=["AER-"],
+            combo_bulk_lc=Combo(),
+            combo_bulk_vendor=Combo(),
+            vendor_codes_used=["MOTION"],
+            bulk_sheet=SimpleNamespace(set_rows=lambda rows, row_ids: captured.append((rows, row_ids))),
+            var_reorder_cycle=SimpleNamespace(get=lambda: "Biweekly"),
+            _suggest_min_max=lambda key: (None, None),
+            inventory_lookup={},
+            order_rules={},
+            lbl_bulk_summary=label,
+        )
+
+        original = ui_bulk.build_bulk_sheet_rows
+
+        def tracking_build(app, items, **kwargs):
+            build_calls.append(tuple(items))
+            return original(app, items, **kwargs)
+
+        with patch("ui_bulk.build_bulk_sheet_rows", side_effect=tracking_build):
+            ui_bulk.populate_bulk_tree(fake_app)
+            ui_bulk.populate_bulk_tree(fake_app)
+
+        self.assertEqual(len(build_calls), 1)
+        self.assertEqual(captured[0][1], ["0"])
+        self.assertEqual(captured[1][1], ["0"])
+
+    def test_populate_bulk_tree_rebuilds_visible_row_payload_after_sort_invalidation(self):
+        captured = []
+        build_calls = []
+        label = SimpleNamespace(config=lambda **kwargs: setattr(label, "text", kwargs.get("text", "")))
+
+        class Combo:
+            def __init__(self):
+                self.values = ()
+
+            def __getitem__(self, key):
+                if key != "values":
+                    raise KeyError(key)
+                return self.values
+
+            def __setitem__(self, key, value):
+                if key != "values":
+                    raise KeyError(key)
+                self.values = tuple(value)
+
+        item_b = {"line_code": "AER-", "item_code": "B", "description": "Item B", "vendor": "", "qty_sold": 0, "qty_suspended": 0, "status": "ok"}
+        item_a = {"line_code": "AER-", "item_code": "A", "description": "Item A", "vendor": "", "qty_sold": 0, "qty_suspended": 0, "status": "ok"}
+        fake_app = SimpleNamespace(
+            filtered_items=[item_b, item_a],
+            _bulk_summary_counts={"total": 2, "assigned": 0, "review": 0, "warning": 0},
+            _bulk_line_code_values=["AER-"],
+            combo_bulk_lc=Combo(),
+            combo_bulk_vendor=Combo(),
+            vendor_codes_used=[],
+            bulk_sheet=SimpleNamespace(set_rows=lambda rows, row_ids: captured.append((rows, row_ids))),
+            var_reorder_cycle=SimpleNamespace(get=lambda: "Biweekly"),
+            _suggest_min_max=lambda key: (None, None),
+            inventory_lookup={},
+            order_rules={},
+            lbl_bulk_summary=label,
+        )
+
+        original = ui_bulk.build_bulk_sheet_rows
+
+        def tracking_build(app, items, **kwargs):
+            build_calls.append(tuple(item["item_code"] for item in items))
+            return original(app, items, **kwargs)
+
+        with patch("ui_bulk.build_bulk_sheet_rows", side_effect=tracking_build):
+            ui_bulk.populate_bulk_tree(fake_app)
+            ui_bulk.sort_filtered_items(fake_app, key=lambda item: item["item_code"])
+            ui_bulk.populate_bulk_tree(fake_app)
+
+        self.assertEqual(len(build_calls), 2)
+        self.assertEqual(build_calls[0], ("B", "A"))
+        self.assertEqual(build_calls[1], ("A", "B"))
+        self.assertEqual(captured[0][1], ["0", "1"])
+        self.assertEqual(captured[1][1], ["0", "1"])
+
     def test_refresh_bulk_view_after_edit_resolves_stable_row_id_after_item_reordering(self):
         events = []
         original = {"line_code": "AER-", "item_code": "GH781-4", "vendor": "MOTION", "description": ""}

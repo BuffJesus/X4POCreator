@@ -420,14 +420,20 @@ def build_bulk_tab(app, editable_cols):
 
 
 def populate_bulk_tree(app):
-    sync_bulk_cache_state(app, filtered_items_changed=True)
+    sync_bulk_cache_state(app)
     metadata = getattr(app, "_bulk_line_code_values", None), getattr(app, "_bulk_summary_counts", None)
     line_codes, counts = metadata
     if not counts or counts.get("total") != len(app.filtered_items) or line_codes is None:
         metadata = sync_bulk_session_metadata(app)
         counts = metadata["counts"]
         line_codes = list(metadata["line_codes"])
-    row_ids, rows = build_bulk_sheet_rows(app, app.filtered_items, row_id_factory=lambda _item, idx: str(idx))
+    visible_scope = ("populate", len(app.filtered_items))
+    cached_rows = cached_bulk_visible_rows(app, visible_scope)
+    if cached_rows is None:
+        row_ids, rows = build_bulk_sheet_rows(app, app.filtered_items, row_id_factory=lambda _item, idx: str(idx))
+        store_bulk_visible_rows(app, visible_scope, row_ids, rows)
+    else:
+        row_ids, rows = cached_rows
 
     set_combobox_values_if_changed(getattr(app, "combo_bulk_lc", None), ["ALL"] + list(line_codes))
     set_combobox_values_if_changed(getattr(app, "combo_bulk_vendor", None), app.vendor_codes_used)
@@ -844,28 +850,28 @@ def store_bulk_filter_result(app, filter_state, visible_items):
     return visible_items
 
 
-def _bulk_visible_rows_cache_key(app, filter_state):
+def _bulk_visible_rows_cache_key(app, scope):
     cycle_var = getattr(app, "var_reorder_cycle", None)
     cycle = cycle_var.get() if cycle_var and hasattr(cycle_var, "get") else ""
-    return (tuple(sorted(filter_state.items())), cycle)
+    return (scope, cycle)
 
 
-def cached_bulk_visible_rows(app, filter_state):
+def cached_bulk_visible_rows(app, scope):
     cache = getattr(app, "_bulk_visible_rows_cache", None)
     generation = getattr(app, "_bulk_visible_rows_generation", 0)
     if not isinstance(cache, dict):
         return None
     if cache.get("generation") != generation:
         return None
-    if cache.get("key") != _bulk_visible_rows_cache_key(app, filter_state):
+    if cache.get("key") != _bulk_visible_rows_cache_key(app, scope):
         return None
     return list(cache.get("row_ids", ())), [list(row) for row in cache.get("rows", ())]
 
 
-def store_bulk_visible_rows(app, filter_state, row_ids, rows):
+def store_bulk_visible_rows(app, scope, row_ids, rows):
     app._bulk_visible_rows_cache = {
         "generation": getattr(app, "_bulk_visible_rows_generation", 0),
-        "key": _bulk_visible_rows_cache_key(app, filter_state),
+        "key": _bulk_visible_rows_cache_key(app, scope),
         "row_ids": tuple(row_ids),
         "rows": tuple(tuple(row) for row in rows),
     }
@@ -1175,10 +1181,10 @@ def apply_bulk_filter(app):
         store_bulk_filter_result(app, filter_state, visible_items)
     update_bulk_summary(app, counts=counts)
     if app.bulk_sheet:
-        cached_rows = cached_bulk_visible_rows(app, filter_state)
+        cached_rows = cached_bulk_visible_rows(app, tuple(sorted(filter_state.items())))
         if cached_rows is None:
             row_ids, rows = build_bulk_sheet_rows(app, visible_items)
-            store_bulk_visible_rows(app, filter_state, row_ids, rows)
+            store_bulk_visible_rows(app, tuple(sorted(filter_state.items())), row_ids, rows)
         else:
             row_ids, rows = cached_rows
         app.bulk_sheet.set_rows(rows, row_ids)
