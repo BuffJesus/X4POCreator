@@ -469,6 +469,17 @@ def prune_bulk_row_render_cache(app, retain_items=None):
     return len(removed)
 
 
+def invalidate_bulk_row_render_entries(app, row_ids):
+    cache = getattr(app, "_bulk_row_render_cache", None)
+    if not cache:
+        return 0
+    removed = 0
+    for row_id in tuple(str(row_id) for row_id in (row_ids or ()) if row_id is not None):
+        if cache.pop(row_id, None) is not None:
+            removed += 1
+    return removed
+
+
 def sync_bulk_cache_state(app, *, filtered_items_changed=False, retain_items=None):
     if filtered_items_changed:
         invalidate_bulk_row_index(app)

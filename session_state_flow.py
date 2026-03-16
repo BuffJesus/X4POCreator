@@ -175,13 +175,23 @@ def finalize_bulk_history_action(app, label, before_state, max_bulk_history, *, 
 
 def restore_bulk_history_state(app, state):
     if "filtered_items_rows" in state:
-        filtered_items = list(getattr(app, "filtered_items", ()) or ())
-        for row_id, item in state.get("filtered_items_rows", []):
-            idx, _existing = ui_bulk.resolve_bulk_row_id(app, row_id)
-            if idx is None or not (0 <= idx < len(filtered_items)):
+        touched_row_ids = []
+        for row_id, restored_item in state.get("filtered_items_rows", []):
+            _idx, current_item = ui_bulk.resolve_bulk_row_id(app, row_id)
+            if current_item is None:
                 continue
-            filtered_items[idx] = _sanitize_bulk_history_item(item)
-        ui_bulk.replace_filtered_items(app, filtered_items)
+            before_summary_item = ui_bulk.bulk_filter_bucket_snapshot(current_item)
+            sanitized_item = _sanitize_bulk_history_item(restored_item)
+            current_item.clear()
+            current_item.update(sanitized_item)
+            ui_bulk.adjust_bulk_summary_for_item_change(
+                app,
+                before_summary_item,
+                ui_bulk.bulk_filter_bucket_snapshot(current_item),
+                item=current_item,
+            )
+            touched_row_ids.append(str(row_id))
+        ui_bulk.invalidate_bulk_row_render_entries(app, touched_row_ids)
     else:
         ui_bulk.replace_filtered_items(app, _copy_bulk_history_items(state.get("filtered_items", [])))
     if "inventory_lookup" in state:
