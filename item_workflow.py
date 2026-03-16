@@ -1,5 +1,5 @@
 import reorder_flow
-from rules import enrich_item, infer_default_order_policy
+from rules import enrich_item, evaluate_item_status, infer_default_order_policy
 
 
 def find_filtered_item(filtered_items, key):
@@ -95,6 +95,43 @@ def recalculate_item(item, inventory_lookup, order_rules, suggest_min_max, get_r
     enrich_item(item, inventory_lookup.get(key, {}), item.get("pack_size"), rule)
     if suggestion_context_app is not None:
         reorder_flow.append_suggestion_comparison_reason(item)
+        apply_suggestion_gap_review_state(item)
+    return item
+
+
+def apply_suggestion_gap_review_state(item):
+    compare_code = str(item.get("detailed_suggestion_compare", "") or "").strip().lower()
+    existing_reason_codes = [
+        code for code in list(item.get("reason_codes", []) or [])
+        if not str(code).startswith("suggestion_gap")
+    ]
+    gap_codes = []
+    if compare_code and compare_code not in ("no_detailed", "aligned"):
+        gap_codes.append("suggestion_gap")
+        gap_codes.append(f"suggestion_gap_{compare_code}")
+
+    if compare_code == "detailed_only":
+        item["review_required"] = True
+        base_why = str(item.get("core_why", item.get("why", "")) or "").strip()
+        detail = "Review: active suggestion is blank, but detailed sales suggests stocking"
+        if base_why and detail not in base_why:
+            merged = f"{base_why} | {detail}"
+            item["core_why"] = merged
+            item["why"] = merged
+
+    merged_reason_codes = []
+    for code in existing_reason_codes + gap_codes:
+        if code and code not in merged_reason_codes:
+            merged_reason_codes.append(code)
+    item["reason_codes"] = merged_reason_codes
+
+    status, flags = evaluate_item_status(item)
+    merged_flags = []
+    for code in flags + merged_reason_codes:
+        if code and code not in merged_flags:
+            merged_flags.append(code)
+    item["status"] = status
+    item["data_flags"] = merged_flags
     return item
 
 

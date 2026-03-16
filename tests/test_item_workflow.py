@@ -105,6 +105,10 @@ class ItemWorkflowTests(unittest.TestCase):
         self.assertEqual(item["detailed_suggested_max"], 6)
         self.assertEqual(item["detailed_suggestion_compare"], "detailed_only")
         self.assertIn("Detailed sales-only suggestion: 3 / 6", item["why"])
+        self.assertTrue(item["review_required"])
+        self.assertEqual(item["status"], "review")
+        self.assertIn("suggestion_gap_detailed_only", item["data_flags"])
+        self.assertIn("Review: active suggestion is blank, but detailed sales suggests stocking", item["why"])
 
     def test_sync_review_item_to_filtered_from_session_uses_session_state(self):
         filtered = {
@@ -186,6 +190,8 @@ class ItemWorkflowTests(unittest.TestCase):
         self.assertEqual(review["detailed_suggested_min"], 3)
         self.assertEqual(review["detailed_suggested_max"], 6)
         self.assertEqual(review["detailed_suggestion_compare"], "detailed_only")
+        self.assertEqual(review["status"], "review")
+        self.assertIn("suggestion_gap_detailed_only", review["data_flags"])
 
 
 if __name__ == "__main__":

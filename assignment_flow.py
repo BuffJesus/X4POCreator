@@ -1,5 +1,6 @@
 from collections import defaultdict
 
+import item_workflow
 import performance_flow
 import reorder_flow
 import shipping_flow
@@ -149,6 +150,7 @@ def prepare_assignment_session(
             item["pack_size"] = rule_pack
         enrich_item(item, inv, item.get("pack_size"), rule)
         reorder_flow.append_suggestion_comparison_reason(item)
+        item_workflow.apply_suggestion_gap_review_state(item)
     performance_flow.annotate_items(
         session.filtered_items,
         inventory_lookup=session.inventory_lookup,
