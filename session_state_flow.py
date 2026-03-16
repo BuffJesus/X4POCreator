@@ -236,7 +236,7 @@ def restore_bulk_history_state(app, state, *, capture_spec=None):
             refreshed = bool(app._refresh_bulk_view_after_edit(touched_row_ids, changed_cols=changed_columns))
         except TypeError:
             refreshed = bool(app._refresh_bulk_view_after_edit(touched_row_ids))
-    if not refreshed:
+    if not refreshed and getattr(app, "bulk_sheet", None):
         app._apply_bulk_filter()
     app._update_bulk_summary()
     app._update_bulk_cell_status()
