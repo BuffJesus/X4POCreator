@@ -27,6 +27,13 @@ def is_critical_shipping_hold(item):
     return shipping_flow.is_critical_shipping_hold(item)
 
 
+def has_suggestion_gap(item):
+    compare_code = str(item.get("detailed_suggestion_compare", "") or "").strip().lower()
+    if compare_code:
+        return compare_code not in ("no_detailed", "aligned")
+    return bool(item.get("detailed_suggestion_gap"))
+
+
 def is_review_exception(item):
     if release_filter_bucket(item) != "Release Now":
         return True
@@ -43,6 +50,8 @@ def is_review_exception(item):
     if str(item.get("reorder_attention_signal", "") or "").strip().lower() == "review_lumpy_demand":
         return True
     if bool(item.get("receipt_vendor_ambiguous")):
+        return True
+    if has_suggestion_gap(item):
         return True
     return False
 
@@ -709,6 +718,7 @@ def update_review_summary(app):
     low_recency_counts = {}
     ambiguous_receipt_vendor_count = 0
     lumpy_demand_count = 0
+    suggestion_gap_count = 0
     for item in app.assigned_items:
         bucket = item.get("recency_review_bucket")
         if bucket:
@@ -717,6 +727,8 @@ def update_review_summary(app):
             ambiguous_receipt_vendor_count += 1
         if str(item.get("reorder_attention_signal", "") or "").strip().lower() == "review_lumpy_demand":
             lumpy_demand_count += 1
+        if has_suggestion_gap(item):
+            suggestion_gap_count += 1
     exportable_count = immediate_count + planned_count
     hold_summary = f" | Exportable now: {exportable_count} | Immediate: {immediate_count} | Exceptions: {exception_count}"
     if planned_count:
@@ -729,6 +741,8 @@ def update_review_summary(app):
         hold_summary += f" | Receipt vendor ambiguity: {ambiguous_receipt_vendor_count}"
     if lumpy_demand_count:
         hold_summary += f" | Lumpy demand: {lumpy_demand_count}"
+    if suggestion_gap_count:
+        hold_summary += f" | Suggestion gaps: {suggestion_gap_count}"
     if low_recency_counts:
         parts = []
         for bucket in (

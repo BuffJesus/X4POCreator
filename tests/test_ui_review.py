@@ -186,6 +186,7 @@ class UIReviewTests(unittest.TestCase):
                     "recency_review_bucket": "new_or_sparse",
                     "receipt_vendor_ambiguous": True,
                     "reorder_attention_signal": "review_lumpy_demand",
+                    "detailed_suggestion_compare": "detailed_only",
                 },
                 {"vendor": "MOTION", "release_decision": "hold_for_threshold", "recency_review_bucket": "stale_or_likely_dead", "status": "review"},
                 {"vendor": "SOURCE", "release_decision": ""},
@@ -204,6 +205,7 @@ class UIReviewTests(unittest.TestCase):
         self.assertIn("Critical held: 1", text)
         self.assertIn("Receipt vendor ambiguity: 1", text)
         self.assertIn("Lumpy demand: 1", text)
+        self.assertIn("Suggestion gaps: 1", text)
         self.assertIn("Low-confidence recency: 3", text)
         self.assertIn("1 stale / likely dead", text)
         self.assertIn("1 new / sparse", text)
@@ -217,6 +219,7 @@ class UIReviewTests(unittest.TestCase):
         self.assertTrue(ui_review.is_review_exception({"vendor_value_coverage": "partial"}))
         self.assertTrue(ui_review.is_review_exception({"reorder_attention_signal": "review_lumpy_demand"}))
         self.assertTrue(ui_review.is_review_exception({"receipt_vendor_ambiguous": True}))
+        self.assertTrue(ui_review.is_review_exception({"detailed_suggestion_compare": "detailed_only"}))
         self.assertFalse(ui_review.is_review_exception({"release_decision": "release_now", "status": "ok"}))
 
     def test_is_critical_shipping_hold_detects_review_sensitive_held_items(self):

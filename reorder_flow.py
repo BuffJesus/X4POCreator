@@ -118,6 +118,7 @@ def apply_suggestion_context(app, item, key, active_pair=None, min_annual_sales_
     compare_code = compare_suggestion_pairs((active_min, active_max), (detailed_min, detailed_max))
     item["detailed_suggestion_compare"] = compare_code
     item["detailed_suggestion_compare_label"] = suggestion_compare_label(compare_code)
+    item["detailed_suggestion_gap"] = compare_code not in ("", "no_detailed", "aligned")
     return active_min, active_max
 
 
