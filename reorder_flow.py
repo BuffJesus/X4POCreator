@@ -35,6 +35,21 @@ def receipt_history_for_key(app, key):
     return dict((getattr(app, "receipt_history_lookup", {}) or {}).get(key, {}) or {})
 
 
+def receipt_vendor_evidence(app, key):
+    history = receipt_history_for_key(app, key)
+    candidates = receipt_vendor_candidates(app, key)
+    return {
+        "primary_vendor": str(history.get("primary_vendor", "") or "").strip().upper(),
+        "most_recent_vendor": str(history.get("most_recent_vendor", "") or "").strip().upper(),
+        "vendor_confidence": str(history.get("vendor_confidence", "") or "").strip().lower(),
+        "vendor_confidence_reason": str(history.get("vendor_confidence_reason", "") or "").strip(),
+        "vendor_ambiguous": bool(history.get("vendor_ambiguous")),
+        "primary_vendor_qty_share": float(history.get("primary_vendor_qty_share", 0.0) or 0.0),
+        "primary_vendor_receipt_share": float(history.get("primary_vendor_receipt_share", 0.0) or 0.0),
+        "vendor_candidates": candidates,
+    }
+
+
 def receipt_vendor_candidates(app, key):
     history = receipt_history_for_key(app, key)
     candidates = []
@@ -47,11 +62,12 @@ def receipt_vendor_candidates(app, key):
         candidates.insert(0, primary_vendor)
     return candidates
 
+
 def default_vendor_for_key(app, key):
-    candidates = receipt_vendor_candidates(app, key)
-    if len(candidates) == 1:
-        return candidates[0]
-    if candidates:
+    evidence = receipt_vendor_evidence(app, key)
+    if evidence["primary_vendor"] and evidence["vendor_confidence"] == "high":
+        return evidence["primary_vendor"]
+    if evidence["vendor_candidates"]:
         return ""
     inv = app.inventory_lookup.get(key, {})
     supplier = (inv.get("supplier", "") or "").strip().upper()

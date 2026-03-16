@@ -30,15 +30,32 @@ def receipt_vendor_suggestions(app, key):
     return reorder_flow.receipt_vendor_candidates(app, key)
 
 
+def receipt_vendor_hint(app, key):
+    evidence = reorder_flow.receipt_vendor_evidence(app, key)
+    vendors = evidence["vendor_candidates"]
+    if not vendors:
+        return ""
+    if evidence["vendor_confidence"] == "high" and evidence["primary_vendor"]:
+        if evidence.get("vendor_confidence_reason") == "dominant_recent_vendor":
+            return (
+                f"Receipt vendor history strongly favors {evidence['primary_vendor']} "
+                f"({evidence['primary_vendor_qty_share']:.0%} of received qty)."
+            )
+        return f"Receipt vendor history consistently points to {evidence['primary_vendor']}."
+    if evidence["primary_vendor"]:
+        return f"Receipt vendor history is mixed; top vendor {evidence['primary_vendor']}. Other candidates: {', '.join(vendors[1:3])}" if len(vendors) > 1 else ""
+    return f"Receipt vendor history: {', '.join(vendors[:3])}"
+
+
 def suggested_vendor_for_item(app, item, inventory):
     current_vendor = str(item.get("vendor", "") or "").strip().upper()
     if current_vendor:
         return current_vendor, "current assignment"
     key = (item.get("line_code", ""), item.get("item_code", ""))
-    receipt_vendors = receipt_vendor_suggestions(app, key)
-    if len(receipt_vendors) == 1:
-        return receipt_vendors[0], "receipt history"
-    if receipt_vendors:
+    receipt_evidence = reorder_flow.receipt_vendor_evidence(app, key)
+    if receipt_evidence["primary_vendor"] and receipt_evidence["vendor_confidence"] == "high":
+        return receipt_evidence["primary_vendor"], "receipt history"
+    if receipt_evidence["vendor_candidates"]:
         return "", ""
     supplier = str(inventory.get("supplier", "") or "").strip().upper()
     if supplier:
@@ -319,9 +336,9 @@ def populate_assign_item(app):
         app.var_vendor_input.set(suggested_vendor)
         app.lbl_vendor_suggestion.config(text=f"Auto-filled vendor from {suggestion_source}: {suggested_vendor}")
     else:
-        receipt_vendors = receipt_vendor_suggestions(app, key)
-        if receipt_vendors:
-            app.lbl_vendor_suggestion.config(text=f"Receipt vendor history: {', '.join(receipt_vendors[:3])}")
+        receipt_hint = receipt_vendor_hint(app, key)
+        if receipt_hint:
+            app.lbl_vendor_suggestion.config(text=receipt_hint)
         else:
             history_vendors = vendor_history_suggestions(app, key)
             if history_vendors:

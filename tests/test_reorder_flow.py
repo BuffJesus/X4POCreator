@@ -29,7 +29,24 @@ class ReorderFlowTests(unittest.TestCase):
     def test_default_vendor_for_key_prefers_unique_receipt_vendor_over_supplier(self):
         fake_app = SimpleNamespace(
             inventory_lookup={("AER-", "GH781-4"): {"supplier": " source "}},
-            receipt_history_lookup={("AER-", "GH781-4"): {"vendor_candidates": ["MOTION"], "primary_vendor": "MOTION"}},
+            receipt_history_lookup={("AER-", "GH781-4"): {"vendor_candidates": ["MOTION"], "primary_vendor": "MOTION", "vendor_confidence": "high"}},
+        )
+
+        result = reorder_flow.default_vendor_for_key(fake_app, ("AER-", "GH781-4"))
+
+        self.assertEqual(result, "MOTION")
+
+    def test_default_vendor_for_key_uses_high_confidence_dominant_receipt_vendor(self):
+        fake_app = SimpleNamespace(
+            inventory_lookup={("AER-", "GH781-4"): {"supplier": " source "}},
+            receipt_history_lookup={("AER-", "GH781-4"): {
+                "vendor_candidates": ["MOTION", "SOURCE"],
+                "primary_vendor": "MOTION",
+                "vendor_confidence": "high",
+                "vendor_confidence_reason": "dominant_recent_vendor",
+                "primary_vendor_qty_share": 0.83,
+                "primary_vendor_receipt_share": 0.67,
+            }},
         )
 
         result = reorder_flow.default_vendor_for_key(fake_app, ("AER-", "GH781-4"))
@@ -39,7 +56,7 @@ class ReorderFlowTests(unittest.TestCase):
     def test_default_vendor_for_key_returns_blank_when_receipt_history_is_mixed(self):
         fake_app = SimpleNamespace(
             inventory_lookup={("AER-", "GH781-4"): {"supplier": " source "}},
-            receipt_history_lookup={("AER-", "GH781-4"): {"vendor_candidates": ["MOTION", "GREGDIST"], "primary_vendor": "MOTION"}},
+            receipt_history_lookup={("AER-", "GH781-4"): {"vendor_candidates": ["MOTION", "GREGDIST"], "primary_vendor": "MOTION", "vendor_confidence": "medium"}},
         )
 
         result = reorder_flow.default_vendor_for_key(fake_app, ("AER-", "GH781-4"))

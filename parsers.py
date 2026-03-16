@@ -332,12 +332,19 @@ def build_receipt_history_lookup(receipt_rows, *, parse_date=None):
             "last_receipt_date": "",
             "primary_vendor": "",
             "vendor_candidates": [],
+            "most_recent_vendor": "",
+            "vendor_confidence": "none",
+            "vendor_confidence_reason": "",
+            "vendor_ambiguous": False,
+            "primary_vendor_qty_share": 0.0,
+            "primary_vendor_receipt_share": 0.0,
             "vendors": {},
         })
         if receipt_dt is not None:
             iso_date = receipt_dt.date().isoformat()
             if iso_date > entry["last_receipt_date"]:
                 entry["last_receipt_date"] = iso_date
+                entry["most_recent_vendor"] = vendor
         vendor_entry = entry["vendors"].setdefault(vendor, {
             "qty_received": 0,
             "receipt_count": 0,
@@ -362,6 +369,34 @@ def build_receipt_history_lookup(receipt_rows, *, parse_date=None):
         )
         entry["vendor_candidates"] = [vendor for vendor, _info in ranked_vendors if vendor]
         entry["primary_vendor"] = entry["vendor_candidates"][0] if entry["vendor_candidates"] else ""
+        total_qty = sum(max(0, info.get("qty_received", 0) or 0) for _vendor, info in ranked_vendors)
+        total_receipts = sum(max(0, info.get("receipt_count", 0) or 0) for _vendor, info in ranked_vendors)
+        if ranked_vendors:
+            primary_info = ranked_vendors[0][1]
+            qty_share = (float(primary_info.get("qty_received", 0) or 0) / float(total_qty)) if total_qty > 0 else 0.0
+            receipt_share = (
+                float(primary_info.get("receipt_count", 0) or 0) / float(total_receipts)
+            ) if total_receipts > 0 else 0.0
+            entry["primary_vendor_qty_share"] = qty_share
+            entry["primary_vendor_receipt_share"] = receipt_share
+            vendor_count = len(entry["vendor_candidates"])
+            if vendor_count <= 1:
+                entry["vendor_confidence"] = "high"
+                entry["vendor_confidence_reason"] = "single_vendor_history"
+            elif (
+                qty_share >= 0.80
+                and receipt_share >= 0.60
+                and entry.get("most_recent_vendor", "") == entry["primary_vendor"]
+            ):
+                entry["vendor_confidence"] = "high"
+                entry["vendor_confidence_reason"] = "dominant_recent_vendor"
+            elif qty_share >= 0.60 or receipt_share >= 0.60:
+                entry["vendor_confidence"] = "medium"
+                entry["vendor_confidence_reason"] = "dominant_but_mixed_vendor"
+            else:
+                entry["vendor_confidence"] = "low"
+                entry["vendor_confidence_reason"] = "mixed_vendor_history"
+            entry["vendor_ambiguous"] = vendor_count > 1 and entry["vendor_confidence"] != "high"
     return history
 
 

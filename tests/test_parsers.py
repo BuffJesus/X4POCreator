@@ -162,6 +162,21 @@ class ParserSmokeTests(unittest.TestCase):
         self.assertEqual(history[("AER-", "GH781-4")]["primary_vendor"], "MOTION")
         self.assertEqual(history[("AER-", "GH781-4")]["vendor_candidates"], ["MOTION", "SOURCE"])
         self.assertEqual(history[("AER-", "GH781-4")]["last_receipt_date"], "2026-03-05")
+        self.assertEqual(history[("AER-", "GH781-4")]["vendor_confidence"], "medium")
+        self.assertEqual(history[("AER-", "GH781-4")]["vendor_confidence_reason"], "dominant_but_mixed_vendor")
+
+    def test_build_receipt_history_lookup_marks_mixed_vendor_history_low_confidence(self):
+        receipt_rows = [
+            {"line_code": "AER-", "item_code": "GH781-4", "qty_received": 4, "vendor": "MOTION", "receipt_date": "01-Mar-2026"},
+            {"line_code": "AER-", "item_code": "GH781-4", "qty_received": 3, "vendor": "SOURCE", "receipt_date": "03-Mar-2026"},
+            {"line_code": "AER-", "item_code": "GH781-4", "qty_received": 3, "vendor": "GREGDIST", "receipt_date": "05-Mar-2026"},
+        ]
+
+        history = parsers.build_receipt_history_lookup(receipt_rows)[("AER-", "GH781-4")]
+
+        self.assertEqual(history["vendor_confidence"], "low")
+        self.assertEqual(history["vendor_confidence_reason"], "mixed_vendor_history")
+        self.assertTrue(history["vendor_ambiguous"])
 
     def test_build_pack_size_fallbacks_detects_conflicts(self):
         lookup = {

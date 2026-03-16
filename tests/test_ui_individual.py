@@ -40,7 +40,7 @@ class UIIndividualTests(unittest.TestCase):
     def test_suggested_vendor_for_item_prefers_current_then_receipt_then_supplier_then_unique_history(self):
         app = SimpleNamespace(
             receipt_history_lookup={
-                ("AER-", "GH781-4"): {"vendor_candidates": ["source"], "primary_vendor": "source"}
+                ("AER-", "GH781-4"): {"vendor_candidates": ["source"], "primary_vendor": "source", "vendor_confidence": "high"}
             },
             recent_orders={
                 ("AER-", "GH781-4"): [{"vendor": "motion", "qty": 2, "date": "2026-03-10"}]
@@ -80,7 +80,7 @@ class UIIndividualTests(unittest.TestCase):
     def test_suggested_vendor_for_item_does_not_autofill_supplier_when_receipt_history_is_mixed(self):
         app = SimpleNamespace(
             receipt_history_lookup={
-                ("AER-", "GH781-4"): {"vendor_candidates": ["source", "motion"], "primary_vendor": "source"}
+                ("AER-", "GH781-4"): {"vendor_candidates": ["source", "motion"], "primary_vendor": "source", "vendor_confidence": "medium"}
             },
             recent_orders={},
         )
@@ -127,7 +127,7 @@ class UIIndividualTests(unittest.TestCase):
             btn_dismiss_dup=SimpleNamespace(pack=lambda *args, **kwargs: None, pack_forget=lambda: None),
             lbl_recent_warning=SimpleNamespace(config=lambda **kwargs: None),
             lbl_vendor_suggestion=SimpleNamespace(config=lambda **kwargs: setattr(app, "_vendor_hint", kwargs.get("text", ""))),
-            receipt_history_lookup={("AER-", "GH781-4"): {"vendor_candidates": ["gregdist"], "primary_vendor": "gregdist"}},
+            receipt_history_lookup={("AER-", "GH781-4"): {"vendor_candidates": ["gregdist"], "primary_vendor": "gregdist", "vendor_confidence": "high"}},
             recent_orders={("AER-", "GH781-4"): [{"vendor": "motion", "qty": 2, "date": "2026-03-10"}]},
             vendor_codes_used=["MOTION", "SOURCE"],
             combo_vendor={"values": ()},
@@ -146,6 +146,65 @@ class UIIndividualTests(unittest.TestCase):
         self.assertEqual(app.var_vendor_input.get(), "GREGDIST")
         self.assertIn("receipt history", app._vendor_hint)
         self.assertEqual(app._combo_values[:3], ["GREGDIST", "MOTION", "SOURCE"])
+        self.assertTrue(app._focused)
+
+    def test_populate_assign_item_autofills_dominant_high_confidence_receipt_vendor(self):
+        app = SimpleNamespace(
+            assign_index=0,
+            individual_items=[{
+                "line_code": "AER-",
+                "item_code": "GH781-4",
+                "description": "HOSE",
+                "qty_sold": 0,
+                "qty_suspended": 0,
+                "qty_received": 0,
+                "order_qty": 1,
+                "pack_size": 1,
+                "vendor": "",
+            }],
+            lbl_assign_progress=SimpleNamespace(config=lambda **kwargs: None),
+            assign_progress={},
+            assign_detail_vars={label: DummyVar() for label in (
+                "Line Code:", "Item Code:", "Description:", "Source:", "Qty Sold:", "Qty Suspended:",
+                "Qty Received:", "Order Qty:", "Pack Size:", "QOH:", "On PO:", "Min:", "Max:",
+                "Sug Min:", "Sug Max:", "YTD Sales:", "12 Mo Sales:", "Supplier:", "Last Receipt:", "Last Sale:"
+            )},
+            inventory_lookup={("AER-", "GH781-4"): {"supplier": "source", "qoh": 2, "min": 1, "max": 4}},
+            on_po_qty={("AER-", "GH781-4"): 0},
+            _suggest_min_max=lambda key: (1, 4),
+            open_po_lookup={},
+            suspended_lookup={},
+            suspended_set=set(),
+            duplicate_ic_lookup={},
+            lbl_po_warning=SimpleNamespace(config=lambda **kwargs: None),
+            lbl_susp_warning=SimpleNamespace(config=lambda **kwargs: None),
+            lbl_dup_warning=SimpleNamespace(config=lambda **kwargs: None),
+            btn_dismiss_dup=SimpleNamespace(pack=lambda *args, **kwargs: None, pack_forget=lambda: None),
+            lbl_recent_warning=SimpleNamespace(config=lambda **kwargs: None),
+            lbl_vendor_suggestion=SimpleNamespace(config=lambda **kwargs: setattr(app, "_vendor_hint", kwargs.get("text", ""))),
+            receipt_history_lookup={("AER-", "GH781-4"): {
+                "vendor_candidates": ["motion", "source"],
+                "primary_vendor": "motion",
+                "vendor_confidence": "high",
+                "vendor_confidence_reason": "dominant_recent_vendor",
+                "primary_vendor_qty_share": 0.83,
+                "primary_vendor_receipt_share": 0.67,
+            }},
+            recent_orders={},
+            vendor_codes_used=["MOTION", "SOURCE"],
+            combo_vendor={"values": ()},
+            var_vendor_input=DummyVar(),
+        )
+        app.combo_vendor = type("Combo", (), {
+            "__setitem__": lambda self, key, value: setattr(app, "_combo_values", value),
+            "focus_set": lambda self: setattr(app, "_focused", True),
+        })()
+
+        ui_individual.populate_assign_item(app)
+
+        self.assertEqual(app.var_vendor_input.get(), "MOTION")
+        self.assertIn("receipt history", app._vendor_hint)
+        self.assertEqual(app._combo_values[:2], ["MOTION", "SOURCE"])
         self.assertTrue(app._focused)
 
     def test_populate_assign_item_leaves_blank_when_receipt_history_is_mixed(self):
@@ -182,7 +241,7 @@ class UIIndividualTests(unittest.TestCase):
             btn_dismiss_dup=SimpleNamespace(pack=lambda *args, **kwargs: None, pack_forget=lambda: None),
             lbl_recent_warning=SimpleNamespace(config=lambda **kwargs: None),
             lbl_vendor_suggestion=SimpleNamespace(config=lambda **kwargs: setattr(app, "_vendor_hint", kwargs.get("text", ""))),
-            receipt_history_lookup={("AER-", "GH781-4"): {"vendor_candidates": ["motion", "source"], "primary_vendor": "motion"}},
+            receipt_history_lookup={("AER-", "GH781-4"): {"vendor_candidates": ["motion", "source"], "primary_vendor": "motion", "vendor_confidence": "medium"}},
             recent_orders={("AER-", "GH781-4"): [
                 {"vendor": "motion", "qty": 2, "date": "2026-03-10"},
                 {"vendor": "source", "qty": 2, "date": "2026-03-11"},
@@ -199,7 +258,7 @@ class UIIndividualTests(unittest.TestCase):
         ui_individual.populate_assign_item(app)
 
         self.assertEqual(app.var_vendor_input.get(), "")
-        self.assertIn("Receipt vendor history", app._vendor_hint)
+        self.assertIn("Receipt vendor history is mixed", app._vendor_hint)
         self.assertEqual(app._combo_values[:2], ["MOTION", "SOURCE"])
 
 

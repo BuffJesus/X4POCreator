@@ -252,7 +252,7 @@ class POBuilderTests(unittest.TestCase):
     def test_default_vendor_for_key_uses_unique_receipt_vendor_before_supplier(self):
         fake_app = SimpleNamespace(
             inventory_lookup={("AER-", "GH781-4"): {"supplier": "motion "}},
-            receipt_history_lookup={("AER-", "GH781-4"): {"vendor_candidates": ["SOURCE"], "primary_vendor": "SOURCE"}},
+            receipt_history_lookup={("AER-", "GH781-4"): {"vendor_candidates": ["SOURCE"], "primary_vendor": "SOURCE", "vendor_confidence": "high"}},
         )
 
         result = po_builder.POBuilderApp._default_vendor_for_key(fake_app, ("AER-", "GH781-4"))
