@@ -187,13 +187,34 @@ def _prune_unchanged_bulk_history_state(before_state, after_state):
         normalized_before,
         normalized_after,
     )
+    normalized_before, normalized_after = _compact_bulk_history_mapping_entry_patches(
+        normalized_before,
+        normalized_after,
+        "inventory_lookup_entries",
+        "inventory_lookup_entry_patches",
+    )
+    normalized_before, normalized_after = _compact_bulk_history_mapping_entry_patches(
+        normalized_before,
+        normalized_after,
+        "qoh_adjustments_entries",
+        "qoh_adjustments_entry_patches",
+    )
+    normalized_before, normalized_after = _compact_bulk_history_mapping_entry_patches(
+        normalized_before,
+        normalized_after,
+        "order_rules_entries",
+        "order_rules_entry_patches",
+    )
     optional_keys = (
         "inventory_lookup",
         "inventory_lookup_entries",
+        "inventory_lookup_entry_patches",
         "qoh_adjustments",
         "qoh_adjustments_entries",
+        "qoh_adjustments_entry_patches",
         "order_rules",
         "order_rules_entries",
+        "order_rules_entry_patches",
         "vendor_codes_used",
         "vendor_codes_used_entries",
         "filtered_items_row_patches",
@@ -275,16 +296,25 @@ def restore_bulk_history_state(app, state, *, capture_spec=None):
         ui_bulk.replace_filtered_items(app, _copy_bulk_history_items(state.get("filtered_items", [])))
     if "inventory_lookup" in state:
         app.inventory_lookup = copy.deepcopy(state.get("inventory_lookup", {}))
-    elif "inventory_lookup_entries" in state:
-        _restore_bulk_history_mapping_entries_in_place(app.inventory_lookup, state.get("inventory_lookup_entries", []))
+    else:
+        if "inventory_lookup_entries" in state:
+            _restore_bulk_history_mapping_entries_in_place(app.inventory_lookup, state.get("inventory_lookup_entries", []))
+        if "inventory_lookup_entry_patches" in state:
+            _restore_bulk_history_mapping_patches_in_place(app.inventory_lookup, state.get("inventory_lookup_entry_patches", []))
     if "qoh_adjustments" in state:
         app.qoh_adjustments = copy.deepcopy(state.get("qoh_adjustments", {}))
-    elif "qoh_adjustments_entries" in state:
-        _restore_bulk_history_mapping_entries_in_place(app.qoh_adjustments, state.get("qoh_adjustments_entries", []))
+    else:
+        if "qoh_adjustments_entries" in state:
+            _restore_bulk_history_mapping_entries_in_place(app.qoh_adjustments, state.get("qoh_adjustments_entries", []))
+        if "qoh_adjustments_entry_patches" in state:
+            _restore_bulk_history_mapping_patches_in_place(app.qoh_adjustments, state.get("qoh_adjustments_entry_patches", []))
     if "order_rules" in state:
         app.order_rules = copy.deepcopy(state.get("order_rules", {}))
-    elif "order_rules_entries" in state:
-        _restore_bulk_history_mapping_entries_in_place(app.order_rules, state.get("order_rules_entries", []))
+    else:
+        if "order_rules_entries" in state:
+            _restore_bulk_history_mapping_entries_in_place(app.order_rules, state.get("order_rules_entries", []))
+        if "order_rules_entry_patches" in state:
+            _restore_bulk_history_mapping_patches_in_place(app.order_rules, state.get("order_rules_entry_patches", []))
     if "vendor_codes_used" in state:
         restored_vendor_codes = list(state.get("vendor_codes_used", []))
         vendor_codes_changed = list(getattr(app, "vendor_codes_used", [])) != restored_vendor_codes
@@ -410,6 +440,44 @@ def _prune_unchanged_bulk_history_entries(before_state, after_state, key):
     return before_state, after_state
 
 
+def _compact_bulk_history_mapping_entry_patches(before_state, after_state, entry_key, patch_key):
+    if entry_key not in before_state or entry_key not in after_state:
+        return before_state, after_state
+    before_entries = list(before_state.get(entry_key, ()))
+    after_entries = list(after_state.get(entry_key, ()))
+    if not before_entries or not after_entries:
+        return before_state, after_state
+    before_by_id = {entry[0]: entry for entry in before_entries}
+    after_by_id = {entry[0]: entry for entry in after_entries}
+    if tuple(before_by_id.keys()) != tuple(after_by_id.keys()):
+        return before_state, after_state
+    remaining_before_entries = []
+    remaining_after_entries = []
+    before_patch_entries = []
+    after_patch_entries = []
+    for entry_id, before_present, before_value in before_entries:
+        _after_id, after_present, after_value = after_by_id[entry_id]
+        if before_present and after_present and isinstance(before_value, dict) and isinstance(after_value, dict):
+            before_patch, after_patch = _build_bulk_history_item_patch_pair(before_value, after_value)
+            before_patch_entries.append((entry_id, before_patch))
+            after_patch_entries.append((entry_id, after_patch))
+        else:
+            remaining_before_entries.append((entry_id, before_present, before_value))
+            remaining_after_entries.append(after_by_id[entry_id])
+    if before_patch_entries:
+        before_state[patch_key] = before_patch_entries
+        after_state[patch_key] = after_patch_entries
+    if remaining_before_entries:
+        before_state[entry_key] = remaining_before_entries
+    else:
+        before_state.pop(entry_key, None)
+    if remaining_after_entries:
+        after_state[entry_key] = remaining_after_entries
+    else:
+        after_state.pop(entry_key, None)
+    return before_state, after_state
+
+
 def _compact_bulk_history_row_patches(before_state, after_state):
     if "filtered_items_rows" not in before_state or "filtered_items_rows" not in after_state:
         return before_state, after_state
@@ -477,6 +545,19 @@ def _restore_bulk_history_mapping_entries_in_place(current_mapping, entries):
             current_mapping[key] = copy.deepcopy(value)
         else:
             current_mapping.pop(key, None)
+    return current_mapping
+
+
+def _restore_bulk_history_mapping_patches_in_place(current_mapping, entry_patches):
+    for key, patch_entries in entry_patches:
+        if key not in current_mapping or not isinstance(current_mapping.get(key), dict):
+            continue
+        current_value = current_mapping[key]
+        for field_name, present, value in patch_entries:
+            if present:
+                current_value[field_name] = copy.deepcopy(value)
+            else:
+                current_value.pop(field_name, None)
     return current_mapping
 
 
