@@ -40,6 +40,8 @@ def is_review_exception(item):
         return True
     if str(item.get("reorder_attention_signal", "") or "").strip().lower() == "review_missed_reorder":
         return True
+    if bool(item.get("receipt_vendor_ambiguous")):
+        return True
     return False
 
 
@@ -703,10 +705,13 @@ def update_review_summary(app):
     immediate_count = sum(1 for item in app.assigned_items if release_filter_bucket(item) == "Release Now")
     exception_count = sum(1 for item in app.assigned_items if is_review_exception(item))
     low_recency_counts = {}
+    ambiguous_receipt_vendor_count = 0
     for item in app.assigned_items:
         bucket = item.get("recency_review_bucket")
         if bucket:
             low_recency_counts[bucket] = low_recency_counts.get(bucket, 0) + 1
+        if item.get("receipt_vendor_ambiguous"):
+            ambiguous_receipt_vendor_count += 1
     exportable_count = immediate_count + planned_count
     hold_summary = f" | Exportable now: {exportable_count} | Immediate: {immediate_count} | Exceptions: {exception_count}"
     if planned_count:
@@ -715,6 +720,8 @@ def update_review_summary(app):
         hold_summary += f" | Held by shipping policy: {held_count}"
     if critical_held_count:
         hold_summary += f" | Critical held: {critical_held_count}"
+    if ambiguous_receipt_vendor_count:
+        hold_summary += f" | Receipt vendor ambiguity: {ambiguous_receipt_vendor_count}"
     if low_recency_counts:
         parts = []
         for bucket in (

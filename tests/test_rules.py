@@ -1077,6 +1077,28 @@ class RulesTests(unittest.TestCase):
         self.assertIn("Protected by recent local PO history", item["why"])
         self.assertIn("Recent local PO history: 1 order(s), 2 total, latest 2026-03-10", item["why"])
 
+    def test_enrich_item_includes_receipt_vendor_evidence_in_why(self):
+        item = {
+            "description": "HOSE",
+            "qty_sold": 2,
+            "qty_suspended": 0,
+            "qty_received": 5,
+            "qty_on_po": 0,
+            "pack_size": 1,
+            "demand_signal": 2,
+            "receipt_primary_vendor": "MOTION",
+            "receipt_vendor_confidence": "medium",
+            "receipt_vendor_ambiguous": True,
+            "receipt_vendor_candidates": ["MOTION", "SOURCE"],
+        }
+
+        enrich_item(item, {"qoh": 0, "max": 2, "last_sale": "05-Mar-2026", "last_receipt": "01-Mar-2026"}, 1, None)
+
+        self.assertIn("Receipt vendor evidence: MOTION (medium confidence)", item["why"])
+        self.assertIn("Receipt vendor history is mixed: MOTION, SOURCE", item["why"])
+        self.assertIn("receipt_vendor_medium", item["reason_codes"])
+        self.assertIn("receipt_vendor_ambiguous", item["reason_codes"])
+
 
 if __name__ == "__main__":
     unittest.main()

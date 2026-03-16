@@ -949,6 +949,11 @@ def enrich_item(item, inv, pack_qty, rule):
         reason_codes.append("acceptable_overstock_configured")
         if overstock_exceeded_for_auto_order:
             reason_codes.append("acceptable_overstock_exceeded")
+    receipt_vendor_confidence = item.get("receipt_vendor_confidence", "")
+    if receipt_vendor_confidence and receipt_vendor_confidence != "none":
+        reason_codes.append(f"receipt_vendor_{receipt_vendor_confidence}")
+    if item.get("receipt_vendor_ambiguous"):
+        reason_codes.append("receipt_vendor_ambiguous")
 
     detail_parts = [f"Stock after open POs: {inventory_position:g}", f"Target stock: {target_stock:g}"]
     if item.get("package_profile"):
@@ -1003,6 +1008,16 @@ def enrich_item(item, inv, pack_qty, rule):
     loaded_receipts = item.get("qty_received", 0) or 0
     if loaded_receipts > 0:
         detail_parts.append(f"Loaded receipts in selected window: {loaded_receipts:g}")
+    receipt_primary_vendor = item.get("receipt_primary_vendor", "")
+    if receipt_primary_vendor:
+        receipt_vendor_detail = f"Receipt vendor evidence: {receipt_primary_vendor}"
+        if receipt_vendor_confidence and receipt_vendor_confidence != "none":
+            receipt_vendor_detail += f" ({receipt_vendor_confidence} confidence)"
+        detail_parts.append(receipt_vendor_detail)
+    if item.get("receipt_vendor_ambiguous"):
+        receipt_candidates = list(item.get("receipt_vendor_candidates", []) or [])
+        if receipt_candidates:
+            detail_parts.append(f"Receipt vendor history is mixed: {', '.join(receipt_candidates[:3])}")
     if acceptable_overstock > 0:
         overstock_basis = item.get("acceptable_overstock_basis")
         basis_label = {
