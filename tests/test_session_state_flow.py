@@ -326,6 +326,73 @@ class SessionStateFlowTests(unittest.TestCase):
         self.assertEqual(fake_app.order_rules, {"AER-:A": {"pack_size": 4}})
         self.assertEqual(events, ["vendors", "bulk", "summary", "status"])
 
+    def test_restore_bulk_history_state_uses_incremental_refresh_for_row_scoped_restore_when_available(self):
+        events = []
+        item = {"line_code": "MOT-", "item_code": "B", "vendor": "SOURCE"}
+        fake_app = SimpleNamespace(
+            filtered_items=[item],
+            inventory_lookup={},
+            qoh_adjustments={},
+            order_rules={},
+            vendor_codes_used=[],
+            _loaded_order_rules={},
+            _loaded_vendor_codes=[],
+            last_removed_bulk_items=[],
+            bulk_sheet=SimpleNamespace(clear_selection=lambda: events.append("clear")),
+            _refresh_bulk_view_after_edit=lambda row_ids, changed_cols=None: events.append(("refresh", tuple(row_ids), tuple(changed_cols or ()))) or True,
+            _refresh_vendor_inputs=lambda: events.append("vendors"),
+            _apply_bulk_filter=lambda: events.append("bulk"),
+            _update_bulk_summary=lambda: events.append("summary"),
+            _update_bulk_cell_status=lambda: events.append("status"),
+        )
+        capture_spec = session_state_flow.bulk_history_capture_spec_for_columns(("vendor",), row_ids=(ui_bulk.bulk_row_id(item),))
+
+        session_state_flow.restore_bulk_history_state(
+            fake_app,
+            {
+                "filtered_items_rows": [
+                    (ui_bulk.bulk_row_id(item), {"line_code": "MOT-", "item_code": "B", "vendor": "MOTION"})
+                ],
+            },
+            capture_spec=capture_spec,
+        )
+
+        self.assertEqual(item["vendor"], "MOTION")
+        self.assertEqual(events, ["vendors", "clear", ("refresh", (ui_bulk.bulk_row_id(item),), ("vendor",)), "summary", "status"])
+
+    def test_restore_bulk_history_state_falls_back_to_apply_filter_when_incremental_refresh_declines(self):
+        events = []
+        item = {"line_code": "MOT-", "item_code": "B", "vendor": "SOURCE"}
+        fake_app = SimpleNamespace(
+            filtered_items=[item],
+            inventory_lookup={},
+            qoh_adjustments={},
+            order_rules={},
+            vendor_codes_used=[],
+            _loaded_order_rules={},
+            _loaded_vendor_codes=[],
+            last_removed_bulk_items=[],
+            bulk_sheet=None,
+            _refresh_bulk_view_after_edit=lambda row_ids, changed_cols=None: events.append(("refresh", tuple(row_ids), tuple(changed_cols or ()))) or False,
+            _refresh_vendor_inputs=lambda: events.append("vendors"),
+            _apply_bulk_filter=lambda: events.append("bulk"),
+            _update_bulk_summary=lambda: events.append("summary"),
+            _update_bulk_cell_status=lambda: events.append("status"),
+        )
+        capture_spec = session_state_flow.bulk_history_capture_spec_for_columns(("vendor",), row_ids=(ui_bulk.bulk_row_id(item),))
+
+        session_state_flow.restore_bulk_history_state(
+            fake_app,
+            {
+                "filtered_items_rows": [
+                    (ui_bulk.bulk_row_id(item), {"line_code": "MOT-", "item_code": "B", "vendor": "MOTION"})
+                ],
+            },
+            capture_spec=capture_spec,
+        )
+
+        self.assertEqual(events, ["vendors", ("refresh", (ui_bulk.bulk_row_id(item),), ("vendor",)), "bulk", "summary", "status"])
+
     def test_capture_bulk_history_state_does_not_deepcopy_last_removed_bulk_items(self):
         class NoDeepcopy:
             def __deepcopy__(self, memo):

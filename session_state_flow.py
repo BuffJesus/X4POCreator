@@ -9,7 +9,16 @@ ITEM_RUNTIME_CACHE_KEYS = frozenset({
 })
 
 
-def bulk_history_capture_spec(*, inventory_lookup=False, qoh_adjustments=False, order_rules=False, vendor_codes_used=False, last_removed_bulk_items=True, filtered_items_row_ids=()):
+def bulk_history_capture_spec(
+    *,
+    inventory_lookup=False,
+    qoh_adjustments=False,
+    order_rules=False,
+    vendor_codes_used=False,
+    last_removed_bulk_items=True,
+    filtered_items_row_ids=(),
+    changed_columns=(),
+):
     return {
         "inventory_lookup": bool(inventory_lookup),
         "qoh_adjustments": bool(qoh_adjustments),
@@ -17,6 +26,7 @@ def bulk_history_capture_spec(*, inventory_lookup=False, qoh_adjustments=False, 
         "vendor_codes_used": bool(vendor_codes_used),
         "last_removed_bulk_items": bool(last_removed_bulk_items),
         "filtered_items_row_ids": tuple(str(row_id) for row_id in (filtered_items_row_ids or ())),
+        "changed_columns": tuple(str(col_name) for col_name in (changed_columns or ()) if str(col_name)),
     }
 
 
@@ -29,6 +39,7 @@ def bulk_history_capture_spec_for_columns(col_names, *, row_ids=(), include_vend
         vendor_codes_used=bool(include_vendor_codes or "vendor" in normalized),
         last_removed_bulk_items=include_last_removed,
         filtered_items_row_ids=row_ids,
+        changed_columns=tuple(sorted(normalized)),
     )
 
 
@@ -173,9 +184,10 @@ def finalize_bulk_history_action(app, label, before_state, max_bulk_history, *, 
     return True
 
 
-def restore_bulk_history_state(app, state):
+def restore_bulk_history_state(app, state, *, capture_spec=None):
+    row_scoped_restore = "filtered_items_rows" in state
+    touched_row_ids = []
     if "filtered_items_rows" in state:
-        touched_row_ids = []
         for row_id, restored_item in state.get("filtered_items_rows", []):
             _idx, current_item = ui_bulk.resolve_bulk_row_id(app, row_id)
             if current_item is None:
@@ -213,7 +225,15 @@ def restore_bulk_history_state(app, state):
     app._refresh_vendor_inputs()
     if app.bulk_sheet:
         app.bulk_sheet.clear_selection()
-    app._apply_bulk_filter()
+    refreshed = False
+    changed_columns = tuple((capture_spec or {}).get("changed_columns", ()))
+    if row_scoped_restore and touched_row_ids and hasattr(app, "_refresh_bulk_view_after_edit"):
+        try:
+            refreshed = bool(app._refresh_bulk_view_after_edit(touched_row_ids, changed_cols=changed_columns))
+        except TypeError:
+            refreshed = bool(app._refresh_bulk_view_after_edit(touched_row_ids))
+    if not refreshed:
+        app._apply_bulk_filter()
     app._update_bulk_summary()
     app._update_bulk_cell_status()
 

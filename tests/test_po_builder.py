@@ -391,6 +391,25 @@ class POBuilderTests(unittest.TestCase):
         self.assertEqual(capture_specs, [capture_spec])
         self.assertEqual(fake_app.bulk_redo_stack[0]["_capture_spec"], capture_spec)
 
+    def test_bulk_undo_passes_capture_spec_to_restore_when_supported(self):
+        capture_spec = {"changed_columns": ("vendor",)}
+        restore_specs = []
+        fake_app = SimpleNamespace(
+            bulk_undo_stack=[{
+                "label": "edit:vendor",
+                "before": {"filtered_items_rows": [("0", {"vendor": ""})]},
+                "after": {"filtered_items_rows": [("0", {"vendor": "MOTION"})]},
+                "_capture_spec": capture_spec,
+            }],
+            bulk_redo_stack=[],
+            _capture_bulk_history_state=lambda capture_spec=None: {"filtered_items_rows": [("0", {"vendor": "LIVE"})]},
+            _restore_bulk_history_state=lambda state, capture_spec=None: restore_specs.append((state, capture_spec)),
+        )
+
+        po_builder.POBuilderApp._bulk_undo(fake_app)
+
+        self.assertEqual(restore_specs, [({"filtered_items_rows": [("0", {"vendor": ""})]}, capture_spec)])
+
     def test_refresh_active_data_state_without_session_only_reloads_persistent_state(self):
         events = []
         fake_app = SimpleNamespace(

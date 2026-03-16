@@ -1242,8 +1242,8 @@ class POBuilderApp:
             capture_spec=capture_spec,
         )
 
-    def _restore_bulk_history_state(self, state):
-        session_state_flow.restore_bulk_history_state(self, state)
+    def _restore_bulk_history_state(self, state, *, capture_spec=None):
+        session_state_flow.restore_bulk_history_state(self, state, capture_spec=capture_spec)
 
     def _bulk_undo(self, event=None):
         if not self.bulk_undo_stack:
@@ -1254,7 +1254,10 @@ class POBuilderApp:
             current_state = self._capture_bulk_history_state(capture_spec=capture_spec)
         except TypeError:
             current_state = self._capture_bulk_history_state()
-        self._restore_bulk_history_state(entry["before"])
+        try:
+            self._restore_bulk_history_state(entry["before"], capture_spec=capture_spec)
+        except TypeError:
+            self._restore_bulk_history_state(entry["before"])
         self.bulk_redo_stack.append({
             "label": entry.get("label", ""),
             "before": copy.deepcopy(entry["before"]),
@@ -1273,7 +1276,10 @@ class POBuilderApp:
             current_state = self._capture_bulk_history_state(capture_spec=capture_spec)
         except TypeError:
             current_state = self._capture_bulk_history_state()
-        self._restore_bulk_history_state(entry["after"])
+        try:
+            self._restore_bulk_history_state(entry["after"], capture_spec=capture_spec)
+        except TypeError:
+            self._restore_bulk_history_state(entry["after"])
         self.bulk_undo_stack.append({
             "label": entry.get("label", ""),
             "before": current_state,

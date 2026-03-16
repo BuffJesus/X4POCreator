@@ -47,6 +47,7 @@ class BulkRemoveFlowTests(unittest.TestCase):
                         "vendor_codes_used": False,
                         "last_removed_bulk_items": True,
                         "filtered_items_row_ids": (),
+                        "changed_columns": (),
                     },
                 },
                 {
@@ -56,6 +57,7 @@ class BulkRemoveFlowTests(unittest.TestCase):
                     "vendor_codes_used": False,
                     "last_removed_bulk_items": True,
                     "filtered_items_row_ids": (),
+                    "changed_columns": (),
                 },
             )],
         )
