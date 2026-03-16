@@ -857,6 +857,8 @@ def item_details_rows(app, item, inv, key):
         ("On PO", f"{app.on_po_qty.get(key, 0):g}"),
         ("Min / Max", f"{inv.get('min', '-')} / {inv.get('max', '-')}"),
         ("Sug Min / Max", "/".join(str(x) if x else "-" for x in app._suggest_min_max(key))),
+        ("Dtl Sug Min / Max", f"{item.get('detailed_suggested_min', '-') if item.get('detailed_suggested_min') is not None else '-'} / {item.get('detailed_suggested_max', '-') if item.get('detailed_suggested_max') is not None else '-'}"),
+        ("Sug Compare", item.get("detailed_suggestion_compare_label") or "-"),
         ("Supplier", inv.get("supplier", "-")),
         ("Receipt Vendor", item.get("receipt_primary_vendor") or "-"),
         ("Receipt Confidence", item.get("receipt_vendor_confidence") or "-"),
@@ -1155,6 +1157,10 @@ def finish_bulk_final(app):
             "receipt_vendor_qty_share": item.get("receipt_vendor_qty_share"),
             "receipt_vendor_receipt_share": item.get("receipt_vendor_receipt_share"),
             "receipt_vendor_candidates": list(item.get("receipt_vendor_candidates", []) or []),
+            "detailed_suggested_min": item.get("detailed_suggested_min"),
+            "detailed_suggested_max": item.get("detailed_suggested_max"),
+            "detailed_suggestion_compare": item.get("detailed_suggestion_compare", ""),
+            "detailed_suggestion_compare_label": item.get("detailed_suggestion_compare_label", ""),
             "inventory_position": item.get("inventory_position", 0),
         }
         for item in app.filtered_items

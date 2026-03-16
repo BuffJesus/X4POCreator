@@ -110,13 +110,16 @@ class UIIndividualTests(unittest.TestCase):
                 "receipt_vendor_confidence": "high",
                 "detailed_sales_shape": "steady_repeat",
                 "detailed_sales_shape_confidence": "high",
+                "detailed_suggested_min": 3,
+                "detailed_suggested_max": 6,
+                "detailed_suggestion_compare_label": "Detailed only",
             }],
             lbl_assign_progress=SimpleNamespace(config=lambda **kwargs: None),
             assign_progress={},
             assign_detail_vars={label: DummyVar() for label in (
                 "Line Code:", "Item Code:", "Description:", "Source:", "Qty Sold:", "Qty Suspended:",
                 "Qty Received:", "Order Qty:", "Pack Size:", "QOH:", "On PO:", "Min:", "Max:",
-                "Sug Min:", "Sug Max:", "YTD Sales:", "12 Mo Sales:", "Supplier:", "Receipt Vendor:",
+                "Sug Min:", "Sug Max:", "Dtl Sug Min:", "Dtl Sug Max:", "Sug Compare:", "YTD Sales:", "12 Mo Sales:", "Supplier:", "Receipt Vendor:",
                 "Receipt Confidence:", "Demand Shape:", "Shape Confidence:", "Last Receipt:", "Last Sale:"
             )},
             inventory_lookup={("AER-", "GH781-4"): {"supplier": "gregdist", "qoh": 2, "min": 1, "max": 4}},
@@ -153,6 +156,9 @@ class UIIndividualTests(unittest.TestCase):
         self.assertEqual(app._combo_values[:3], ["GREGDIST", "MOTION", "SOURCE"])
         self.assertEqual(app.assign_detail_vars["Receipt Vendor:"].get(), "GREGDIST")
         self.assertEqual(app.assign_detail_vars["Receipt Confidence:"].get(), "high")
+        self.assertEqual(app.assign_detail_vars["Dtl Sug Min:"].get(), "3")
+        self.assertEqual(app.assign_detail_vars["Dtl Sug Max:"].get(), "6")
+        self.assertEqual(app.assign_detail_vars["Sug Compare:"].get(), "Detailed only")
         self.assertEqual(app.assign_detail_vars["Demand Shape:"].get(), "steady_repeat")
         self.assertEqual(app.assign_detail_vars["Shape Confidence:"].get(), "high")
         self.assertTrue(app._focused)
@@ -178,7 +184,7 @@ class UIIndividualTests(unittest.TestCase):
             assign_detail_vars={label: DummyVar() for label in (
                 "Line Code:", "Item Code:", "Description:", "Source:", "Qty Sold:", "Qty Suspended:",
                 "Qty Received:", "Order Qty:", "Pack Size:", "QOH:", "On PO:", "Min:", "Max:",
-                "Sug Min:", "Sug Max:", "YTD Sales:", "12 Mo Sales:", "Supplier:", "Receipt Vendor:",
+                "Sug Min:", "Sug Max:", "Dtl Sug Min:", "Dtl Sug Max:", "Sug Compare:", "YTD Sales:", "12 Mo Sales:", "Supplier:", "Receipt Vendor:",
                 "Receipt Confidence:", "Demand Shape:", "Shape Confidence:", "Last Receipt:", "Last Sale:"
             )},
             inventory_lookup={("AER-", "GH781-4"): {"supplier": "source", "qoh": 2, "min": 1, "max": 4}},
@@ -242,7 +248,7 @@ class UIIndividualTests(unittest.TestCase):
             assign_detail_vars={label: DummyVar() for label in (
                 "Line Code:", "Item Code:", "Description:", "Source:", "Qty Sold:", "Qty Suspended:",
                 "Qty Received:", "Order Qty:", "Pack Size:", "QOH:", "On PO:", "Min:", "Max:",
-                "Sug Min:", "Sug Max:", "YTD Sales:", "12 Mo Sales:", "Supplier:", "Receipt Vendor:",
+                "Sug Min:", "Sug Max:", "Dtl Sug Min:", "Dtl Sug Max:", "Sug Compare:", "YTD Sales:", "12 Mo Sales:", "Supplier:", "Receipt Vendor:",
                 "Receipt Confidence:", "Demand Shape:", "Shape Confidence:", "Last Receipt:", "Last Sale:"
             )},
             inventory_lookup={("AER-", "GH781-4"): {"qoh": 2, "min": 1, "max": 4}},

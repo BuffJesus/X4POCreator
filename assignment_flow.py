@@ -140,8 +140,7 @@ def prepare_assignment_session(
         key = (item["line_code"], item["item_code"])
         inv = session.inventory_lookup.get(key, {})
         sug_min, sug_max = suggest_min_max(key)
-        item["suggested_min"] = sug_min
-        item["suggested_max"] = sug_max
+        reorder_flow.apply_suggestion_context(session, item, key, (sug_min, sug_max))
         apply_recent_order_context(item, session.recent_orders.get(key, []))
         rule_key = get_rule_key(item["line_code"], item["item_code"])
         rule = session.order_rules.get(rule_key)
@@ -149,6 +148,7 @@ def prepare_assignment_session(
         if rule_pack is not None:
             item["pack_size"] = rule_pack
         enrich_item(item, inv, item.get("pack_size"), rule)
+        reorder_flow.append_suggestion_comparison_reason(item)
     performance_flow.annotate_items(
         session.filtered_items,
         inventory_lookup=session.inventory_lookup,

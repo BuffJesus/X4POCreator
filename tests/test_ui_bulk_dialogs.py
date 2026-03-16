@@ -421,6 +421,8 @@ class BulkDialogTests(unittest.TestCase):
         self.assertEqual(row_lookup["Sales Window"], "2025-03-01 to 2026-02-28 (365 days)")
         self.assertEqual(row_lookup["Avg Weekly Sales"], "1.00")
         self.assertEqual(row_lookup["Annualized Sales"], "52.03")
+        self.assertEqual(row_lookup["Dtl Sug Min / Max"], "- / -")
+        self.assertEqual(row_lookup["Sug Compare"], "-")
         self.assertEqual(row_lookup["Demand Shape"], "-")
         self.assertEqual(row_lookup["Shape Confidence"], "-")
         self.assertEqual(row_lookup["Days Since Last Sale"], "7")
@@ -744,6 +746,8 @@ class BulkDialogTests(unittest.TestCase):
 
         self.assertEqual(row_lookup["Demand Shape"], "-")
         self.assertEqual(row_lookup["Shape Confidence"], "-")
+        self.assertEqual(row_lookup["Dtl Sug Min / Max"], "- / -")
+        self.assertEqual(row_lookup["Sug Compare"], "-")
         self.assertEqual(row_lookup["Txn Count"], "7")
         self.assertEqual(row_lookup["Sale Days"], "5")
         self.assertEqual(row_lookup["Avg Units / Txn"], "2.50")
@@ -773,6 +777,9 @@ class BulkDialogTests(unittest.TestCase):
             "data_flags": [],
             "detailed_sales_shape": "lumpy_bulk",
             "detailed_sales_shape_confidence": "medium",
+            "detailed_suggested_min": 3,
+            "detailed_suggested_max": 6,
+            "detailed_suggestion_compare_label": "Detailed higher",
         }
         inv = {"qoh": 0, "min": 0, "max": 1}
 
@@ -781,6 +788,8 @@ class BulkDialogTests(unittest.TestCase):
 
         self.assertEqual(row_lookup["Demand Shape"], "lumpy_bulk")
         self.assertEqual(row_lookup["Shape Confidence"], "medium")
+        self.assertEqual(row_lookup["Dtl Sug Min / Max"], "3 / 6")
+        self.assertEqual(row_lookup["Sug Compare"], "Detailed higher")
 
     def test_finish_bulk_final_carries_recency_fields_into_review_items(self):
         events = []
@@ -819,6 +828,10 @@ class BulkDialogTests(unittest.TestCase):
                 "receipt_primary_vendor": "MOTION",
                 "receipt_vendor_confidence": "high",
                 "receipt_vendor_candidates": ["MOTION"],
+                "detailed_suggested_min": 3,
+                "detailed_suggested_max": 6,
+                "detailed_suggestion_compare": "detailed_only",
+                "detailed_suggestion_compare_label": "Detailed only",
                 "inventory_position": 0,
             }],
             _annotate_release_decisions=lambda: events.append("annotate"),
@@ -835,6 +848,8 @@ class BulkDialogTests(unittest.TestCase):
         self.assertEqual(assigned["recent_local_order_qty"], 2)
         self.assertEqual(assigned["receipt_primary_vendor"], "MOTION")
         self.assertEqual(assigned["receipt_vendor_confidence"], "high")
+        self.assertEqual(assigned["detailed_suggested_min"], 3)
+        self.assertEqual(assigned["detailed_suggestion_compare_label"], "Detailed only")
         self.assertEqual(assigned["final_qty"], 2)
         self.assertIn("annotate", events)
         self.assertIn("review", events)

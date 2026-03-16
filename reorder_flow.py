@@ -25,6 +25,14 @@ def base_suggest_min_max_from_annual_sales(annual_sales, cycle_weeks):
     return sug_min, sug_max
 
 
+def min_annual_sales_threshold(app, default=3):
+    value = getattr(app, "min_annual_sales_for_suggestions", default)
+    try:
+        return max(0, int(value))
+    except (TypeError, ValueError):
+        return default
+
+
 def tune_detailed_sales_fallback_suggestion(stats, sug_min, sug_max):
     shape = performance_flow.classify_detailed_sales_shape(stats).get("detailed_sales_shape", "")
     if shape in ("sparse_transactions", "lumpy_bulk"):
@@ -39,6 +47,103 @@ def tune_detailed_sales_fallback_suggestion(stats, sug_min, sug_max):
             sug_min = max(sug_min, txn_floor)
             sug_max = max(sug_max, sug_min + txn_floor)
     return sug_min, sug_max
+
+
+def detailed_sales_suggest_min_max(app, key, min_annual_sales_for_suggestions=None):
+    threshold = min_annual_sales_for_suggestions
+    if threshold is None:
+        threshold = min_annual_sales_threshold(app)
+    stats = (getattr(app, "detailed_sales_stats_lookup", {}) or {}).get(key, {})
+    annual_sales = stats.get("annualized_qty_sold", 0) or 0
+    if not annual_sales or annual_sales <= 0:
+        return None, None
+    if annual_sales < threshold:
+        return None, None
+    get_cycle = getattr(app, "_get_cycle_weeks", None)
+    weeks = get_cycle() if callable(get_cycle) else get_cycle_weeks(app)
+    sug_min, sug_max = base_suggest_min_max_from_annual_sales(annual_sales, weeks)
+    return tune_detailed_sales_fallback_suggestion(stats, sug_min, sug_max)
+
+
+def compare_suggestion_pairs(active_pair, detailed_pair):
+    active_min, active_max = active_pair
+    detailed_min, detailed_max = detailed_pair
+    if detailed_min is None and detailed_max is None:
+        return "no_detailed"
+    if active_min is None and active_max is None:
+        return "detailed_only"
+    if (active_min, active_max) == (detailed_min, detailed_max):
+        return "aligned"
+    if (
+        isinstance(active_min, (int, float))
+        and isinstance(active_max, (int, float))
+        and isinstance(detailed_min, (int, float))
+        and isinstance(detailed_max, (int, float))
+    ):
+        if detailed_min >= active_min and detailed_max >= active_max:
+            return "detailed_higher"
+        if detailed_min <= active_min and detailed_max <= active_max:
+            return "detailed_lower"
+    return "different"
+
+
+def suggestion_compare_label(compare_code):
+    return {
+        "no_detailed": "No detailed comparison",
+        "detailed_only": "Detailed only",
+        "aligned": "Aligned",
+        "detailed_higher": "Detailed higher",
+        "detailed_lower": "Detailed lower",
+        "different": "Different",
+    }.get(compare_code, compare_code or "")
+
+
+def apply_suggestion_context(app, item, key, active_pair=None, min_annual_sales_for_suggestions=None):
+    if active_pair is None:
+        active_pair = suggest_min_max(
+            app,
+            key,
+            min_annual_sales_for_suggestions or min_annual_sales_threshold(app),
+        )
+    active_min, active_max = active_pair
+    detailed_min, detailed_max = detailed_sales_suggest_min_max(
+        app,
+        key,
+        min_annual_sales_for_suggestions=min_annual_sales_for_suggestions,
+    )
+    item["suggested_min"] = active_min
+    item["suggested_max"] = active_max
+    item["detailed_suggested_min"] = detailed_min
+    item["detailed_suggested_max"] = detailed_max
+    compare_code = compare_suggestion_pairs((active_min, active_max), (detailed_min, detailed_max))
+    item["detailed_suggestion_compare"] = compare_code
+    item["detailed_suggestion_compare_label"] = suggestion_compare_label(compare_code)
+    return active_min, active_max
+
+
+def append_suggestion_comparison_reason(item):
+    detailed_min = item.get("detailed_suggested_min")
+    detailed_max = item.get("detailed_suggested_max")
+    compare_code = item.get("detailed_suggestion_compare", "")
+    if compare_code in ("", "no_detailed", "aligned"):
+        return
+    base_why = str(item.get("core_why", item.get("why", "")) or "").strip()
+    if not base_why:
+        return
+    if compare_code == "detailed_only":
+        detail = f"Detailed sales-only suggestion: {detailed_min if detailed_min is not None else '-'} / {detailed_max if detailed_max is not None else '-'}"
+    else:
+        detail = (
+            f"Detailed sales comparison: active {item.get('suggested_min', '-') if item.get('suggested_min') is not None else '-'} / "
+            f"{item.get('suggested_max', '-') if item.get('suggested_max') is not None else '-'} vs "
+            f"detailed {detailed_min if detailed_min is not None else '-'} / {detailed_max if detailed_max is not None else '-'} "
+            f"({suggestion_compare_label(compare_code).lower()})"
+        )
+    if detail in base_why:
+        return
+    merged = f"{base_why} | {detail}"
+    item["core_why"] = merged
+    item["why"] = merged
 
 
 def suggest_min_max(app, key, min_annual_sales_for_suggestions):
