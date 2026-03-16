@@ -187,6 +187,7 @@ def finalize_bulk_history_action(app, label, before_state, max_bulk_history, *, 
 def restore_bulk_history_state(app, state, *, capture_spec=None):
     row_scoped_restore = "filtered_items_rows" in state
     touched_row_ids = []
+    vendor_codes_changed = False
     if "filtered_items_rows" in state:
         for row_id, restored_item in state.get("filtered_items_rows", []):
             _idx, current_item = ui_bulk.resolve_bulk_row_id(app, row_id)
@@ -219,10 +220,13 @@ def restore_bulk_history_state(app, state, *, capture_spec=None):
     elif "order_rules_entries" in state:
         _restore_bulk_history_mapping_entries_in_place(app.order_rules, state.get("order_rules_entries", []))
     if "vendor_codes_used" in state:
-        app.vendor_codes_used = list(state.get("vendor_codes_used", []))
+        restored_vendor_codes = list(state.get("vendor_codes_used", []))
+        vendor_codes_changed = list(getattr(app, "vendor_codes_used", [])) != restored_vendor_codes
+        app.vendor_codes_used = restored_vendor_codes
     if "last_removed_bulk_items" in state:
         app.last_removed_bulk_items = list(state.get("last_removed_bulk_items", []))
-    app._refresh_vendor_inputs()
+    if vendor_codes_changed:
+        app._refresh_vendor_inputs()
     if app.bulk_sheet:
         app.bulk_sheet.clear_selection()
     refreshed = False
