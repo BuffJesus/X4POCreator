@@ -108,6 +108,8 @@ class UIIndividualTests(unittest.TestCase):
                 "vendor": "",
                 "receipt_primary_vendor": "GREGDIST",
                 "receipt_vendor_confidence": "high",
+                "detailed_sales_shape": "steady_repeat",
+                "detailed_sales_shape_confidence": "high",
             }],
             lbl_assign_progress=SimpleNamespace(config=lambda **kwargs: None),
             assign_progress={},
@@ -115,7 +117,7 @@ class UIIndividualTests(unittest.TestCase):
                 "Line Code:", "Item Code:", "Description:", "Source:", "Qty Sold:", "Qty Suspended:",
                 "Qty Received:", "Order Qty:", "Pack Size:", "QOH:", "On PO:", "Min:", "Max:",
                 "Sug Min:", "Sug Max:", "YTD Sales:", "12 Mo Sales:", "Supplier:", "Receipt Vendor:",
-                "Receipt Confidence:", "Last Receipt:", "Last Sale:"
+                "Receipt Confidence:", "Demand Shape:", "Shape Confidence:", "Last Receipt:", "Last Sale:"
             )},
             inventory_lookup={("AER-", "GH781-4"): {"supplier": "gregdist", "qoh": 2, "min": 1, "max": 4}},
             on_po_qty={("AER-", "GH781-4"): 0},
@@ -151,6 +153,8 @@ class UIIndividualTests(unittest.TestCase):
         self.assertEqual(app._combo_values[:3], ["GREGDIST", "MOTION", "SOURCE"])
         self.assertEqual(app.assign_detail_vars["Receipt Vendor:"].get(), "GREGDIST")
         self.assertEqual(app.assign_detail_vars["Receipt Confidence:"].get(), "high")
+        self.assertEqual(app.assign_detail_vars["Demand Shape:"].get(), "steady_repeat")
+        self.assertEqual(app.assign_detail_vars["Shape Confidence:"].get(), "high")
         self.assertTrue(app._focused)
 
     def test_populate_assign_item_autofills_dominant_high_confidence_receipt_vendor(self):
@@ -175,7 +179,7 @@ class UIIndividualTests(unittest.TestCase):
                 "Line Code:", "Item Code:", "Description:", "Source:", "Qty Sold:", "Qty Suspended:",
                 "Qty Received:", "Order Qty:", "Pack Size:", "QOH:", "On PO:", "Min:", "Max:",
                 "Sug Min:", "Sug Max:", "YTD Sales:", "12 Mo Sales:", "Supplier:", "Receipt Vendor:",
-                "Receipt Confidence:", "Last Receipt:", "Last Sale:"
+                "Receipt Confidence:", "Demand Shape:", "Shape Confidence:", "Last Receipt:", "Last Sale:"
             )},
             inventory_lookup={("AER-", "GH781-4"): {"supplier": "source", "qoh": 2, "min": 1, "max": 4}},
             on_po_qty={("AER-", "GH781-4"): 0},
@@ -239,7 +243,7 @@ class UIIndividualTests(unittest.TestCase):
                 "Line Code:", "Item Code:", "Description:", "Source:", "Qty Sold:", "Qty Suspended:",
                 "Qty Received:", "Order Qty:", "Pack Size:", "QOH:", "On PO:", "Min:", "Max:",
                 "Sug Min:", "Sug Max:", "YTD Sales:", "12 Mo Sales:", "Supplier:", "Receipt Vendor:",
-                "Receipt Confidence:", "Last Receipt:", "Last Sale:"
+                "Receipt Confidence:", "Demand Shape:", "Shape Confidence:", "Last Receipt:", "Last Sale:"
             )},
             inventory_lookup={("AER-", "GH781-4"): {"qoh": 2, "min": 1, "max": 4}},
             on_po_qty={("AER-", "GH781-4"): 0},

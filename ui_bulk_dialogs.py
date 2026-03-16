@@ -872,6 +872,8 @@ def item_details_rows(app, item, inv, key):
         ("Avg Weekly Sales", _format_metric(item.get("avg_weekly_sales_loaded"))),
         ("Avg Monthly Sales", _format_metric(item.get("avg_monthly_sales_loaded"))),
         ("Annualized Sales", _format_metric(item.get("annualized_sales_loaded"))),
+        ("Demand Shape", item.get("detailed_sales_shape") or "-"),
+        ("Shape Confidence", item.get("detailed_sales_shape_confidence") or "-"),
         ("Txn Count", str(item.get("transaction_count", "-") if item.get("transaction_count") is not None else "-")),
         ("Sale Days", str(item.get("sale_day_count", "-") if item.get("sale_day_count") is not None else "-")),
         ("Avg Units / Txn", _format_metric(item.get("avg_units_per_transaction"))),

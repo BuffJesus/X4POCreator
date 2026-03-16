@@ -40,6 +40,8 @@ def is_review_exception(item):
         return True
     if str(item.get("reorder_attention_signal", "") or "").strip().lower() == "review_missed_reorder":
         return True
+    if str(item.get("reorder_attention_signal", "") or "").strip().lower() == "review_lumpy_demand":
+        return True
     if bool(item.get("receipt_vendor_ambiguous")):
         return True
     return False
@@ -535,7 +537,7 @@ def build_review_tab(app):
         textvariable=app.var_review_attention_filter,
         state="readonly",
         width=14,
-        values=["ALL", "Normal", "Missed Reorder"],
+        values=["ALL", "Normal", "Missed Reorder", "Lumpy Demand"],
     )
     app.combo_review_attention.pack(side=tk.LEFT)
     app.combo_review_attention.bind("<<ComboboxSelected>>", lambda e: app._apply_review_filter())
@@ -706,12 +708,15 @@ def update_review_summary(app):
     exception_count = sum(1 for item in app.assigned_items if is_review_exception(item))
     low_recency_counts = {}
     ambiguous_receipt_vendor_count = 0
+    lumpy_demand_count = 0
     for item in app.assigned_items:
         bucket = item.get("recency_review_bucket")
         if bucket:
             low_recency_counts[bucket] = low_recency_counts.get(bucket, 0) + 1
         if item.get("receipt_vendor_ambiguous"):
             ambiguous_receipt_vendor_count += 1
+        if str(item.get("reorder_attention_signal", "") or "").strip().lower() == "review_lumpy_demand":
+            lumpy_demand_count += 1
     exportable_count = immediate_count + planned_count
     hold_summary = f" | Exportable now: {exportable_count} | Immediate: {immediate_count} | Exceptions: {exception_count}"
     if planned_count:
@@ -722,6 +727,8 @@ def update_review_summary(app):
         hold_summary += f" | Critical held: {critical_held_count}"
     if ambiguous_receipt_vendor_count:
         hold_summary += f" | Receipt vendor ambiguity: {ambiguous_receipt_vendor_count}"
+    if lumpy_demand_count:
+        hold_summary += f" | Lumpy demand: {lumpy_demand_count}"
     if low_recency_counts:
         parts = []
         for bucket in (
@@ -777,6 +784,7 @@ def apply_review_filter(app):
             expected_attention = {
                 "Normal": "normal",
                 "Missed Reorder": "review_missed_reorder",
+                "Lumpy Demand": "review_lumpy_demand",
             }.get(attention_filter, "")
             if attention != expected_attention:
                 continue

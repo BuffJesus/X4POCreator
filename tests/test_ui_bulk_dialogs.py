@@ -421,6 +421,8 @@ class BulkDialogTests(unittest.TestCase):
         self.assertEqual(row_lookup["Sales Window"], "2025-03-01 to 2026-02-28 (365 days)")
         self.assertEqual(row_lookup["Avg Weekly Sales"], "1.00")
         self.assertEqual(row_lookup["Annualized Sales"], "52.03")
+        self.assertEqual(row_lookup["Demand Shape"], "-")
+        self.assertEqual(row_lookup["Shape Confidence"], "-")
         self.assertEqual(row_lookup["Days Since Last Sale"], "7")
         self.assertEqual(row_lookup["Recency Confidence"], "-")
         self.assertEqual(row_lookup["Data Completeness"], "-")
@@ -740,12 +742,45 @@ class BulkDialogTests(unittest.TestCase):
         rows = ui_bulk_dialogs.item_details_rows(app, item, inv, ("AER-", "GH781-4"))
         row_lookup = dict(row for row in rows if row[0])
 
+        self.assertEqual(row_lookup["Demand Shape"], "-")
+        self.assertEqual(row_lookup["Shape Confidence"], "-")
         self.assertEqual(row_lookup["Txn Count"], "7")
         self.assertEqual(row_lookup["Sale Days"], "5")
         self.assertEqual(row_lookup["Avg Units / Txn"], "2.50")
         self.assertEqual(row_lookup["Median Units / Txn"], "2.00")
         self.assertEqual(row_lookup["Max Units / Txn"], "6.00")
         self.assertEqual(row_lookup["Avg Days Between Sales"], "4.50")
+
+    def test_item_details_rows_show_detailed_sales_shape(self):
+        app = SimpleNamespace(
+            on_po_qty={("AER-", "GH781-4"): 0},
+            recent_orders={},
+            duplicate_ic_lookup={},
+            _suggest_min_max=lambda key: (None, None),
+        )
+        item = {
+            "line_code": "AER-",
+            "item_code": "GH781-4",
+            "qty_sold": 1,
+            "qty_suspended": 0,
+            "qty_received": 5,
+            "qty_on_po": 0,
+            "raw_need": 1,
+            "suggested_qty": 2,
+            "final_qty": 2,
+            "order_policy": "soft_pack",
+            "status": "ok",
+            "data_flags": [],
+            "detailed_sales_shape": "lumpy_bulk",
+            "detailed_sales_shape_confidence": "medium",
+        }
+        inv = {"qoh": 0, "min": 0, "max": 1}
+
+        rows = ui_bulk_dialogs.item_details_rows(app, item, inv, ("AER-", "GH781-4"))
+        row_lookup = dict(row for row in rows if row[0])
+
+        self.assertEqual(row_lookup["Demand Shape"], "lumpy_bulk")
+        self.assertEqual(row_lookup["Shape Confidence"], "medium")
 
     def test_finish_bulk_final_carries_recency_fields_into_review_items(self):
         events = []

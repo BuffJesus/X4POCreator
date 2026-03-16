@@ -159,6 +159,8 @@ def build_individual_tab(app):
         "Supplier:",
         "Receipt Vendor:",
         "Receipt Confidence:",
+        "Demand Shape:",
+        "Shape Confidence:",
         "Last Receipt:",
         "Last Sale:",
     ]
@@ -267,6 +269,8 @@ def populate_assign_item(app):
         receipt_confidence = item.get("receipt_vendor_confidence", "") or "-"
         app.assign_detail_vars["Receipt Vendor:"].set(receipt_vendor)
         app.assign_detail_vars["Receipt Confidence:"].set(receipt_confidence)
+        app.assign_detail_vars["Demand Shape:"].set(item.get("detailed_sales_shape", "") or "-")
+        app.assign_detail_vars["Shape Confidence:"].set(item.get("detailed_sales_shape_confidence", "") or "-")
         app.assign_detail_vars["Last Receipt:"].set(inventory.get("last_receipt", "") or "-")
         app.assign_detail_vars["Last Sale:"].set(inventory.get("last_sale", "") or "-")
     else:
@@ -282,6 +286,8 @@ def populate_assign_item(app):
             "Supplier:",
             "Receipt Vendor:",
             "Receipt Confidence:",
+            "Demand Shape:",
+            "Shape Confidence:",
             "Last Receipt:",
             "Last Sale:",
         ):

@@ -56,6 +56,7 @@ class AssignmentFlowTests(unittest.TestCase):
         self.assertEqual(session.filtered_items[0]["reorder_cycle_weeks"], 2)
         self.assertEqual(session.filtered_items[0]["performance_profile"], "legacy")
         self.assertEqual(session.filtered_items[0]["sales_health_signal"], "unknown")
+        self.assertEqual(session.filtered_items[0]["detailed_sales_shape"], "")
         self.assertEqual(session.filtered_items[0]["recent_local_order_count"], 1)
         self.assertEqual(session.filtered_items[0]["recent_local_order_qty"], 1)
         self.assertTrue(session.filtered_items[0]["has_recent_local_order"])
@@ -110,6 +111,50 @@ class AssignmentFlowTests(unittest.TestCase):
         self.assertEqual(session.filtered_items[0]["receipt_primary_vendor"], "MOTION")
         self.assertEqual(session.filtered_items[0]["receipt_vendor_confidence"], "high")
         self.assertEqual(session.filtered_items[0]["receipt_vendor_candidates"], ["MOTION"])
+
+    def test_prepare_assignment_session_carries_detailed_sales_shape_signals(self):
+        session = AppSessionState(
+            sales_items=[{
+                "line_code": "AER-",
+                "item_code": "GH781-4",
+                "description": "HOSE",
+                "qty_received": 5,
+                "qty_sold": 24,
+                "transaction_count": 4,
+                "sale_day_count": 4,
+                "avg_units_per_transaction": 6.0,
+                "max_units_per_transaction": 18.0,
+                "avg_days_between_sales": 28.0,
+                "annualized_sales_loaded": 48.0,
+            }],
+            inventory_lookup={("AER-", "GH781-4"): {"qoh": 0, "max": 10}},
+            order_rules={},
+        )
+
+        with patch("assignment_flow.storage.get_recent_orders", return_value={}), \
+             patch("assignment_flow.storage.load_vendor_codes", return_value=["MOTION"]):
+            result = assignment_flow.prepare_assignment_session(
+                session,
+                excluded_line_codes=set(),
+                excluded_customers=set(),
+                dup_whitelist=set(),
+                ignored_keys=set(),
+                lookback_days=14,
+                order_history_path=str(ROOT / "test_order_history.json"),
+                vendor_codes_path=str(ROOT / "test_vendor_codes.txt"),
+                known_vendors=["MOTION"],
+                get_suspense_carry_qty=lambda key: 0,
+                default_vendor_for_key=lambda key: "MOTION",
+                resolve_pack_size=lambda key: 6,
+                suggest_min_max=lambda key: (None, None),
+                get_cycle_weeks=lambda: 2,
+                get_rule_key=lambda lc, ic: f"{lc}:{ic}",
+            )
+
+        self.assertTrue(result)
+        self.assertEqual(session.filtered_items[0]["detailed_sales_shape"], "lumpy_bulk")
+        self.assertEqual(session.filtered_items[0]["reorder_attention_signal"], "review_lumpy_demand")
+        self.assertIn("Detailed sales shape: Lumpy / job-driven demand", session.filtered_items[0]["why"])
 
     def test_prepare_assignment_session_returns_false_when_no_items_remain(self):
         session = AppSessionState(

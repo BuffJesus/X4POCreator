@@ -180,7 +180,13 @@ class UIReviewTests(unittest.TestCase):
         fake_app = SimpleNamespace(
             assigned_items=[
                 {"vendor": "MOTION", "release_decision": "release_now", "recency_review_bucket": "critical_min_rule_protected"},
-                {"vendor": "MOTION", "release_decision": "export_next_business_day_for_free_day", "recency_review_bucket": "new_or_sparse", "receipt_vendor_ambiguous": True},
+                {
+                    "vendor": "MOTION",
+                    "release_decision": "export_next_business_day_for_free_day",
+                    "recency_review_bucket": "new_or_sparse",
+                    "receipt_vendor_ambiguous": True,
+                    "reorder_attention_signal": "review_lumpy_demand",
+                },
                 {"vendor": "MOTION", "release_decision": "hold_for_threshold", "recency_review_bucket": "stale_or_likely_dead", "status": "review"},
                 {"vendor": "SOURCE", "release_decision": ""},
             ],
@@ -197,6 +203,7 @@ class UIReviewTests(unittest.TestCase):
         self.assertIn("Held by shipping policy: 1", text)
         self.assertIn("Critical held: 1", text)
         self.assertIn("Receipt vendor ambiguity: 1", text)
+        self.assertIn("Lumpy demand: 1", text)
         self.assertIn("Low-confidence recency: 3", text)
         self.assertIn("1 stale / likely dead", text)
         self.assertIn("1 new / sparse", text)
@@ -208,6 +215,7 @@ class UIReviewTests(unittest.TestCase):
         self.assertTrue(ui_review.is_review_exception({"review_required": True}))
         self.assertTrue(ui_review.is_review_exception({"recency_confidence": "low"}))
         self.assertTrue(ui_review.is_review_exception({"vendor_value_coverage": "partial"}))
+        self.assertTrue(ui_review.is_review_exception({"reorder_attention_signal": "review_lumpy_demand"}))
         self.assertTrue(ui_review.is_review_exception({"receipt_vendor_ambiguous": True}))
         self.assertFalse(ui_review.is_review_exception({"release_decision": "release_now", "status": "ok"}))
 
