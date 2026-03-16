@@ -174,6 +174,20 @@ class SessionStateFlowTests(unittest.TestCase):
             )
         )
 
+    def test_compact_bulk_history_state_pair_does_not_deepcopy_unchanged_pruned_sections(self):
+        class NoDeepcopy:
+            def __deepcopy__(self, memo):
+                raise AssertionError("unchanged pruned sections should not be deep-copied")
+
+        payload = NoDeepcopy()
+        before_state, after_state = session_state_flow.compact_bulk_history_state_pair(
+            {"filtered_items": [{"item_code": "A"}], "last_removed_bulk_items": [payload]},
+            {"filtered_items": [{"item_code": "B"}], "last_removed_bulk_items": [payload]},
+        )
+
+        self.assertEqual(before_state, {"filtered_items": [{"item_code": "A"}]})
+        self.assertEqual(after_state, {"filtered_items": [{"item_code": "B"}]})
+
     def test_compact_bulk_history_state_pair_normalizes_full_rows_and_row_patches(self):
         before_state, after_state = session_state_flow.compact_bulk_history_state_pair(
             {"filtered_items_rows": [("0", {"vendor": "", "why": "keep"})]},

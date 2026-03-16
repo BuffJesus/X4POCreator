@@ -161,8 +161,8 @@ def _merge_bulk_history_entry(app, label, before_state, after_state, coalesce_ke
 
 
 def _prune_unchanged_bulk_history_state(before_state, after_state):
-    normalized_before = copy.deepcopy(before_state)
-    normalized_after = copy.deepcopy(after_state)
+    normalized_before = dict(before_state)
+    normalized_after = dict(after_state)
     normalized_before, normalized_after = _normalize_bulk_history_state_pair_shapes(
         normalized_before,
         normalized_after,
