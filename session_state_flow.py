@@ -9,17 +9,18 @@ ITEM_RUNTIME_CACHE_KEYS = frozenset({
 })
 
 
-def bulk_history_capture_spec(*, inventory_lookup=False, qoh_adjustments=False, order_rules=False, vendor_codes_used=False, last_removed_bulk_items=True):
+def bulk_history_capture_spec(*, inventory_lookup=False, qoh_adjustments=False, order_rules=False, vendor_codes_used=False, last_removed_bulk_items=True, filtered_items_row_ids=()):
     return {
         "inventory_lookup": bool(inventory_lookup),
         "qoh_adjustments": bool(qoh_adjustments),
         "order_rules": bool(order_rules),
         "vendor_codes_used": bool(vendor_codes_used),
         "last_removed_bulk_items": bool(last_removed_bulk_items),
+        "filtered_items_row_ids": tuple(str(row_id) for row_id in (filtered_items_row_ids or ())),
     }
 
 
-def bulk_history_capture_spec_for_columns(col_names, *, include_vendor_codes=False, include_last_removed=True):
+def bulk_history_capture_spec_for_columns(col_names, *, row_ids=(), include_vendor_codes=False, include_last_removed=True):
     normalized = {str(col_name or "") for col_name in (col_names or ()) if str(col_name or "")}
     return bulk_history_capture_spec(
         inventory_lookup=bool(normalized.intersection({"qoh", "cur_min", "cur_max"})),
@@ -27,6 +28,7 @@ def bulk_history_capture_spec_for_columns(col_names, *, include_vendor_codes=Fal
         order_rules="pack_size" in normalized,
         vendor_codes_used=bool(include_vendor_codes or "vendor" in normalized),
         last_removed_bulk_items=include_last_removed,
+        filtered_items_row_ids=row_ids,
     )
 
 
@@ -79,15 +81,32 @@ def ignore_items_by_keys(app, ignore_keys):
 
 def capture_bulk_history_state(app, capture_spec=None):
     spec = bulk_history_capture_spec() if capture_spec is None else dict(capture_spec)
-    state = {
-        "filtered_items": _copy_bulk_history_items(app.filtered_items),
-    }
+    row_ids = tuple(str(row_id) for row_id in spec.get("filtered_items_row_ids", ()) if str(row_id))
+    item_keys = _bulk_history_item_keys(app, row_ids)
+    if row_ids:
+        state = {
+            "filtered_items_rows": _copy_bulk_history_rows(app, row_ids),
+        }
+    else:
+        state = {
+            "filtered_items": _copy_bulk_history_items(app.filtered_items),
+        }
     if spec.get("inventory_lookup"):
-        state["inventory_lookup"] = copy.deepcopy(app.inventory_lookup)
+        if item_keys:
+            state["inventory_lookup_entries"] = _copy_bulk_history_mapping_entries(app.inventory_lookup, item_keys)
+        else:
+            state["inventory_lookup"] = copy.deepcopy(app.inventory_lookup)
     if spec.get("qoh_adjustments"):
-        state["qoh_adjustments"] = copy.deepcopy(app.qoh_adjustments)
+        if item_keys:
+            state["qoh_adjustments_entries"] = _copy_bulk_history_mapping_entries(app.qoh_adjustments, item_keys)
+        else:
+            state["qoh_adjustments"] = copy.deepcopy(app.qoh_adjustments)
     if spec.get("order_rules"):
-        state["order_rules"] = copy.deepcopy(app.order_rules)
+        if item_keys:
+            rule_keys = tuple(f"{line_code}:{item_code}" for line_code, item_code in item_keys)
+            state["order_rules_entries"] = _copy_bulk_history_mapping_entries(app.order_rules, rule_keys)
+        else:
+            state["order_rules"] = copy.deepcopy(app.order_rules)
     if spec.get("vendor_codes_used"):
         state["vendor_codes_used"] = list(app.vendor_codes_used)
     if spec.get("last_removed_bulk_items", True):
@@ -155,13 +174,28 @@ def finalize_bulk_history_action(app, label, before_state, max_bulk_history, *, 
 
 
 def restore_bulk_history_state(app, state):
-    ui_bulk.replace_filtered_items(app, _copy_bulk_history_items(state.get("filtered_items", [])))
+    if "filtered_items_rows" in state:
+        filtered_items = list(getattr(app, "filtered_items", ()) or ())
+        for row_id, item in state.get("filtered_items_rows", []):
+            idx, _existing = ui_bulk.resolve_bulk_row_id(app, row_id)
+            if idx is None or not (0 <= idx < len(filtered_items)):
+                continue
+            filtered_items[idx] = _sanitize_bulk_history_item(item)
+        ui_bulk.replace_filtered_items(app, filtered_items)
+    else:
+        ui_bulk.replace_filtered_items(app, _copy_bulk_history_items(state.get("filtered_items", [])))
     if "inventory_lookup" in state:
         app.inventory_lookup = copy.deepcopy(state.get("inventory_lookup", {}))
+    elif "inventory_lookup_entries" in state:
+        app.inventory_lookup = _restore_bulk_history_mapping_entries(app.inventory_lookup, state.get("inventory_lookup_entries", []))
     if "qoh_adjustments" in state:
         app.qoh_adjustments = copy.deepcopy(state.get("qoh_adjustments", {}))
+    elif "qoh_adjustments_entries" in state:
+        app.qoh_adjustments = _restore_bulk_history_mapping_entries(app.qoh_adjustments, state.get("qoh_adjustments_entries", []))
     if "order_rules" in state:
         app.order_rules = copy.deepcopy(state.get("order_rules", {}))
+    elif "order_rules_entries" in state:
+        app.order_rules = _restore_bulk_history_mapping_entries(app.order_rules, state.get("order_rules_entries", []))
     if "vendor_codes_used" in state:
         app.vendor_codes_used = list(state.get("vendor_codes_used", []))
     if "last_removed_bulk_items" in state:
@@ -184,3 +218,43 @@ def _sanitize_bulk_history_item(item):
 
 def _copy_bulk_history_items(items):
     return [_sanitize_bulk_history_item(item) for item in list(items or [])]
+
+
+def _copy_bulk_history_rows(app, row_ids):
+    rows = []
+    for row_id in row_ids:
+        _idx, item = ui_bulk.resolve_bulk_row_id(app, row_id)
+        if item is None:
+            continue
+        rows.append((str(row_id), _sanitize_bulk_history_item(item)))
+    return rows
+
+
+def _bulk_history_item_keys(app, row_ids):
+    keys = []
+    for row_id in row_ids:
+        _idx, item = ui_bulk.resolve_bulk_row_id(app, row_id)
+        if item is None:
+            continue
+        keys.append((item.get("line_code"), item.get("item_code")))
+    return tuple(keys)
+
+
+def _copy_bulk_history_mapping_entries(mapping, keys):
+    entries = []
+    for key in keys:
+        if key in mapping:
+            entries.append((copy.deepcopy(key), True, copy.deepcopy(mapping[key])))
+        else:
+            entries.append((copy.deepcopy(key), False, None))
+    return entries
+
+
+def _restore_bulk_history_mapping_entries(current_mapping, entries):
+    restored = copy.deepcopy(current_mapping)
+    for key, present, value in entries:
+        if present:
+            restored[key] = copy.deepcopy(value)
+        else:
+            restored.pop(key, None)
+    return restored

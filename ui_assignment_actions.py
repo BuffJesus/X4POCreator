@@ -82,7 +82,7 @@ def bulk_apply_selected(app):
     if not selected:
         messagebox.showinfo("No Selection", "Select rows in the table first.")
         return
-    capture_spec = session_state_flow.bulk_history_capture_spec_for_columns(("vendor",), include_vendor_codes=True)
+    capture_spec = session_state_flow.bulk_history_capture_spec_for_columns(("vendor",), row_ids=selected, include_vendor_codes=True)
     before_state = capture_bulk_history_state(app, capture_spec=capture_spec)
     for item_id in selected:
         resolver = getattr(app, "_resolve_bulk_row_id", None)
@@ -128,7 +128,7 @@ def bulk_apply_visible(app):
     if not visible:
         messagebox.showinfo("No Items", "There are no visible rows to update.")
         return
-    capture_spec = session_state_flow.bulk_history_capture_spec_for_columns(("vendor",), include_vendor_codes=True)
+    capture_spec = session_state_flow.bulk_history_capture_spec_for_columns(("vendor",), row_ids=visible, include_vendor_codes=True)
     before_state = capture_bulk_history_state(app, capture_spec=capture_spec)
     for item_id in visible:
         resolver = getattr(app, "_resolve_bulk_row_id", None)

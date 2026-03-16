@@ -243,7 +243,10 @@ class BulkSheetView:
         before_state = None
         capture_spec = None
         if pending and pending.get("editable") and hasattr(self.app, "_capture_bulk_history_state"):
-            capture_spec = session_state_flow.bulk_history_capture_spec_for_columns((pending.get("col_name"),))
+            capture_spec = session_state_flow.bulk_history_capture_spec_for_columns(
+                (pending.get("col_name"),),
+                row_ids=pending.get("target_row_ids", ()),
+            )
             try:
                 before_state = self.app._capture_bulk_history_state(capture_spec=capture_spec)
             except TypeError:
@@ -937,18 +940,18 @@ class BulkSheetView:
         target_col = selected_col or self.current_editable_column_name()
 
         if len(matrix[0]) == 1 and target_col in self.editable_cols:
-            capture_spec = session_state_flow.bulk_history_capture_spec_for_columns((target_col,))
+            row_ids = list(self.selected_target_row_ids(target_col))
+            if not row_ids and current_row is not None:
+                row_ids = [str(self.row_ids[current_row])]
+            if not row_ids:
+                return False
+            capture_spec = session_state_flow.bulk_history_capture_spec_for_columns((target_col,), row_ids=row_ids)
             before_state = None
             if hasattr(self.app, "_capture_bulk_history_state"):
                 try:
                     before_state = self.app._capture_bulk_history_state(capture_spec=capture_spec)
                 except TypeError:
                     before_state = self.app._capture_bulk_history_state()
-            row_ids = list(self.selected_target_row_ids(target_col))
-            if not row_ids and current_row is not None:
-                row_ids = [str(self.row_ids[current_row])]
-            if not row_ids:
-                return False
             values = [row[0] for row in matrix]
             if len(values) == 1:
                 values = values * len(row_ids)
@@ -988,20 +991,24 @@ class BulkSheetView:
             for col_name in self.columns[current_col:current_col + max((len(row) for row in matrix), default=0)]
             if col_name in self.editable_cols
         )
-        capture_spec = session_state_flow.bulk_history_capture_spec_for_columns(changed_cols)
+        touched_row_ids = []
+        for row_offset, _row_values in enumerate(matrix):
+            row_pos = current_row + row_offset
+            if row_pos >= len(self.row_ids):
+                break
+            touched_row_ids.append(str(self.row_ids[row_pos]))
+        capture_spec = session_state_flow.bulk_history_capture_spec_for_columns(changed_cols, row_ids=touched_row_ids)
         before_state = None
         if hasattr(self.app, "_capture_bulk_history_state"):
             try:
                 before_state = self.app._capture_bulk_history_state(capture_spec=capture_spec)
             except TypeError:
                 before_state = self.app._capture_bulk_history_state()
-        touched_row_ids = []
         for row_offset, row_values in enumerate(matrix):
             row_pos = current_row + row_offset
             if row_pos >= len(self.row_ids):
                 break
             row_id = str(self.row_ids[row_pos])
-            touched_row_ids.append(row_id)
             for col_offset, value in enumerate(row_values):
                 col_pos = current_col + col_offset
                 if col_pos >= len(self.columns):

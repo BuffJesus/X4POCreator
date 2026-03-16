@@ -200,7 +200,7 @@ def bulk_fill_selection_with_current_value(app, editable_cols, write_debug, even
     if col_name not in editable_cols or not row_ids:
         return "break"
     value = app.bulk_sheet.current_cell_value().strip()
-    capture_spec = session_state_flow.bulk_history_capture_spec_for_columns((col_name,))
+    capture_spec = session_state_flow.bulk_history_capture_spec_for_columns((col_name,), row_ids=row_ids)
     before_state = capture_bulk_history_state(app, capture_spec=capture_spec)
     write_debug(
         "bulk_shortcut_fill",
@@ -280,7 +280,7 @@ def bulk_begin_edit(app, editable_cols, askstring, write_debug, event=None):
         write_debug("bulk_begin_edit.open_cell", col_name=col_name, row_count=len(row_ids))
         app._right_click_bulk_context = None
         return "break"
-    capture_spec = session_state_flow.bulk_history_capture_spec_for_columns((col_name,))
+    capture_spec = session_state_flow.bulk_history_capture_spec_for_columns((col_name,), row_ids=row_ids)
     before_state = capture_bulk_history_state(app, capture_spec=capture_spec)
     write_debug(
         "bulk_begin_edit.apply",
@@ -387,7 +387,7 @@ def bulk_fill_selected_cells(app, editable_cols, askstring, showinfo):
     value = askstring("Fill Selected Cells", f"Enter a value for {col_name}:", parent=app.root)
     if value is None:
         return
-    capture_spec = session_state_flow.bulk_history_capture_spec_for_columns((col_name,))
+    capture_spec = session_state_flow.bulk_history_capture_spec_for_columns((col_name,), row_ids=row_ids)
     before_state = capture_bulk_history_state(app, capture_spec=capture_spec)
     for row_id in row_ids:
         app._bulk_apply_editor_value(row_id, col_name, value.strip())
@@ -417,7 +417,7 @@ def bulk_clear_selected_cells(app, editable_cols, showinfo):
     if col_name not in editable_cols or not row_ids:
         showinfo("No Cell Selection", "Select one or more rows or cells in a single editable column first.")
         return
-    capture_spec = session_state_flow.bulk_history_capture_spec_for_columns((col_name,))
+    capture_spec = session_state_flow.bulk_history_capture_spec_for_columns((col_name,), row_ids=row_ids)
     before_state = capture_bulk_history_state(app, capture_spec=capture_spec)
     for row_id in row_ids:
         app._bulk_apply_editor_value(row_id, col_name, "")

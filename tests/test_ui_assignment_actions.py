@@ -81,6 +81,7 @@ class AssignmentActionTests(unittest.TestCase):
                             "order_rules": False,
                             "vendor_codes_used": True,
                             "last_removed_bulk_items": True,
+                            "filtered_items_row_ids": ("0", "1"),
                         },
                     },
                     {"kind": "vendor_selected", "col_name": "vendor", "row_ids": ("0", "1"), "scope": {"vendor": "GREGDIST"}},
