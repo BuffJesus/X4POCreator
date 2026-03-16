@@ -93,6 +93,7 @@ class AppSessionState:
     all_line_codes: list = field(default_factory=list)
     inventory_lookup: dict = field(default_factory=dict)
     inventory_source_lookup: dict = field(default_factory=dict)
+    receipt_history_lookup: dict = field(default_factory=dict)
     pack_size_lookup: dict = field(default_factory=dict)
     pack_size_source_lookup: dict = field(default_factory=dict)
     pack_size_by_item: dict = field(default_factory=dict)

@@ -48,6 +48,16 @@ class ParserSmokeTests(unittest.TestCase):
             self.assertEqual(found["sales"], str(sales))
             self.assertEqual(found["onhand"], str(onhand))
 
+    def test_identify_report_type_detects_detailed_sales_and_received_parts_by_filename(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            detailed = Path(tmp) / "DETAILEDPARTSALES.csv"
+            received = Path(tmp) / "ReceivedPartsDetail.csv"
+            detailed.write_text("line code,item code,qty sold,sale date\n", encoding="utf-8-sig")
+            received.write_text("line code,item code,qty received,vendor,receipt date\n", encoding="utf-8-sig")
+
+            self.assertEqual(parsers.identify_report_type(str(detailed)), "detailedsales")
+            self.assertEqual(parsers.identify_report_type(str(received)), "receivedparts")
+
     def test_parse_pack_sizes_generic_csv(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "generic_pack.csv"
@@ -98,6 +108,60 @@ class ParserSmokeTests(unittest.TestCase):
             self.assertEqual(len(rows), 1)
             self.assertEqual(rows[0]["qty_received"], 10)
             self.assertEqual(rows[0]["qty_sold"], 14)
+
+    def test_parse_detailed_part_sales_and_received_parts_detail_build_summary(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            detailed = Path(tmp) / "detailed.csv"
+            received = Path(tmp) / "received.csv"
+            with open(detailed, "w", newline="", encoding="utf-8-sig") as f:
+                writer = csv.writer(f)
+                writer.writerow(["line code", "item code", "description", "qty sold", "sale date"])
+                writer.writerow(["AER-", "GH781-4", "HOSE", "2", "01-Mar-2026"])
+                writer.writerow(["AER-", "GH781-4", "HOSE", "3", "05-Mar-2026"])
+            with open(received, "w", newline="", encoding="utf-8-sig") as f:
+                writer = csv.writer(f)
+                writer.writerow(["line code", "item code", "description", "qty received", "vendor", "receipt date"])
+                writer.writerow(["AER-", "GH781-4", "HOSE", "4", "motion", "02-Mar-2026"])
+                writer.writerow(["AER-", "GH781-4", "HOSE", "1", "motion", "06-Mar-2026"])
+
+            sales_rows = parsers.parse_detailed_part_sales_csv(str(detailed))
+            receipt_rows = parsers.parse_received_parts_detail_csv(str(received))
+            summary = parsers.build_sales_receipt_summary(sales_rows, receipt_rows)
+            sales_start, sales_end = parsers.parse_detailed_sales_date_range(sales_rows)
+
+            self.assertEqual(summary, [{
+                "line_code": "AER-",
+                "item_code": "GH781-4",
+                "description": "HOSE",
+                "qty_received": 5,
+                "qty_sold": 5,
+            }])
+            self.assertEqual(sales_start.date().isoformat(), "2026-03-01")
+            self.assertEqual(sales_end.date().isoformat(), "2026-03-05")
+
+    def test_build_receipt_history_lookup_ranks_vendors_by_recency_then_quantity(self):
+        receipt_rows = [
+            {
+                "line_code": "AER-",
+                "item_code": "GH781-4",
+                "qty_received": 2,
+                "vendor": "SOURCE",
+                "receipt_date": "01-Mar-2026",
+            },
+            {
+                "line_code": "AER-",
+                "item_code": "GH781-4",
+                "qty_received": 5,
+                "vendor": "MOTION",
+                "receipt_date": "05-Mar-2026",
+            },
+        ]
+
+        history = parsers.build_receipt_history_lookup(receipt_rows)
+
+        self.assertEqual(history[("AER-", "GH781-4")]["primary_vendor"], "MOTION")
+        self.assertEqual(history[("AER-", "GH781-4")]["vendor_candidates"], ["MOTION", "SOURCE"])
+        self.assertEqual(history[("AER-", "GH781-4")]["last_receipt_date"], "2026-03-05")
 
     def test_build_pack_size_fallbacks_detects_conflicts(self):
         lookup = {

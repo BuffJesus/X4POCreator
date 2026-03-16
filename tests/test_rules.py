@@ -981,11 +981,12 @@ class RulesTests(unittest.TestCase):
 
         enrich_item(item, {"qoh": 0, "min": 0, "max": 1}, 1, None)
         self.assertEqual(item["recency_confidence"], "low")
-        self.assertEqual(item["data_completeness"], "missing_recency")
+        self.assertEqual(item["data_completeness"], "missing_recency_activity_protected")
         self.assertEqual(item["recency_review_bucket"], "new_or_sparse")
         self.assertEqual(item["order_policy"], "manual_only")
         self.assertEqual(item["suggested_qty"], 0)
         self.assertIn("may be new or too sparse", item["why"])
+        self.assertIn("Loaded receipts in selected window: 2", item["why"])
 
     def test_missing_recency_with_explicit_trigger_rule_remains_orderable(self):
         item = {

@@ -7,13 +7,43 @@ import performance_flow
 import sales_history_flow
 
 
+def _parse_sales_inputs(paths):
+    sales_path = str(paths.get("sales", "") or "").strip()
+    detailed_sales_path = str(paths.get("detailedsales", "") or "").strip()
+    received_parts_path = str(paths.get("receivedparts", "") or "").strip()
+
+    if sales_path:
+        return {
+            "sales_items": parsers.parse_part_sales_csv(sales_path),
+            "sales_window": parsers.parse_sales_date_range(sales_path),
+            "receipt_history_lookup": {},
+        }
+
+    if detailed_sales_path and received_parts_path:
+        detailed_sales_rows = parsers.parse_detailed_part_sales_csv(detailed_sales_path)
+        received_rows = parsers.parse_received_parts_detail_csv(received_parts_path)
+        return {
+            "sales_items": parsers.build_sales_receipt_summary(detailed_sales_rows, received_rows),
+            "sales_window": parsers.parse_detailed_sales_date_range(detailed_sales_rows),
+            "receipt_history_lookup": parsers.build_receipt_history_lookup(received_rows),
+        }
+
+    return {
+        "sales_items": [],
+        "sales_window": (None, None),
+        "receipt_history_lookup": {},
+    }
+
+
 def parse_all_files(paths, *, old_po_warning_days, short_sales_window_days, now=None):
     """Parse the selected input files into a single workflow result."""
     warnings = []
     startup_warning_rows = []
     result = {"warnings": warnings, "startup_warning_rows": startup_warning_rows}
 
-    result["sales_items"] = parsers.parse_part_sales_csv(paths["sales"])
+    sales_inputs = _parse_sales_inputs(paths)
+    result["sales_items"] = sales_inputs["sales_items"]
+    result["receipt_history_lookup"] = sales_inputs.get("receipt_history_lookup", {})
     if not result["sales_items"]:
         return result
 
@@ -21,7 +51,7 @@ def parse_all_files(paths, *, old_po_warning_days, short_sales_window_days, now=
         (s.get("line_code", ""), s.get("item_code", "")): s.get("description", "")
         for s in result["sales_items"]
     }
-    sales_start, sales_end = parsers.parse_sales_date_range(paths["sales"])
+    sales_start, sales_end = sales_inputs["sales_window"]
     if sales_start and sales_end:
         span_days = (sales_end.date() - sales_start.date()).days + 1
         result["sales_span_days"] = span_days
@@ -50,7 +80,7 @@ def parse_all_files(paths, *, old_po_warning_days, short_sales_window_days, now=
 
     all_line_codes = sorted(set(item["line_code"] for item in result["sales_items"]))
 
-    if paths["po"]:
+    if paths.get("po"):
         try:
             po_items = parsers.parse_po_listing_csv(paths["po"])
             open_po_lookup = defaultdict(list)
@@ -123,7 +153,7 @@ def parse_all_files(paths, *, old_po_warning_days, short_sales_window_days, now=
         except Exception as exc:
             warnings.append(("PO Parse Warning", f"Could not parse PO listing:\n{exc}\nContinuing without it."))
 
-    if paths["susp"]:
+    if paths.get("susp"):
         try:
             susp_items, susp_set = parsers.parse_suspended_csv(paths["susp"])
             susp_lookup = defaultdict(list)
@@ -143,7 +173,7 @@ def parse_all_files(paths, *, old_po_warning_days, short_sales_window_days, now=
             warnings.append(("Suspended Parse Warning", f"Could not parse suspended items:\n{exc}\nContinuing without it."))
 
     inventory_lookup = {}
-    if paths["onhand"]:
+    if paths.get("onhand"):
         try:
             oh_data = parsers.parse_on_hand_report(paths["onhand"])
             for key, info in oh_data.items():
@@ -161,7 +191,7 @@ def parse_all_files(paths, *, old_po_warning_days, short_sales_window_days, now=
         except Exception as exc:
             warnings.append(("On Hand Parse Warning", f"Could not parse On Hand Report:\n{exc}\nContinuing without it."))
 
-    if paths["minmax"]:
+    if paths.get("minmax"):
         try:
             mm_data = parsers.parse_on_hand_min_max(paths["minmax"])
             for key, info in mm_data.items():
@@ -250,7 +280,7 @@ def parse_all_files(paths, *, old_po_warning_days, short_sales_window_days, now=
                     "details": "Sales item missing from inventory/min-max data.",
                 })
 
-    if paths["packsize"]:
+    if paths.get("packsize"):
         try:
             result["pack_size_lookup"] = parsers.parse_pack_sizes_csv(paths["packsize"])
         except Exception as exc:
@@ -271,6 +301,7 @@ def apply_load_result(session, result, *, parsers_module=parsers):
     session.suspended_lookup = result.get("suspended_lookup", {})
     session.inventory_lookup = result.get("inventory_lookup", {})
     session.inventory_source_lookup = copy.deepcopy(session.inventory_lookup)
+    session.receipt_history_lookup = result.get("receipt_history_lookup", {})
     session.pack_size_lookup = result.get("pack_size_lookup", {})
     session.pack_size_source_lookup = copy.deepcopy(session.pack_size_lookup)
     session.startup_warning_rows = result.get("startup_warning_rows", [])

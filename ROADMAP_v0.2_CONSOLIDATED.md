@@ -2,7 +2,7 @@
 
 Status: reconciled against the current workspace and test-covered behavior
 
-Current app version: `0.1.12`
+Current app version: `0.1.16`
 
 This file consolidates:
 
@@ -67,6 +67,26 @@ The goal is to keep one phased checklist that reflects what is actually done in 
 - [x] Cover full-pack / small-operational-max edge cases with rule tests.
 - [x] Thread clearer `why` / reason-code explanations through the enriched item model.
 - [x] Extend cadence-aware reorder logic beyond pack floors into explicit cover-days / cover-cycles rules.
+
+## Phase 2A. Detailed Sales and Receiving Evidence
+
+- [ ] Replace the legacy combined `Part Sales & Receipts` dependency with first-class support for:
+  - `DETAILEDPARTSALES.csv`
+  - `ReceivedPartsDetail.csv`
+- [ ] Keep the current downstream assignment/reorder session shape stable while building it from the two detailed files.
+- [ ] Derive the active sales window from detailed sales rows when the combined report is not used.
+- [ ] Carry receipt-history metadata into session state for later vendor-ranking and review flows.
+- [ ] Use receiving detail as the primary vendor-evidence source ahead of stale X4 supplier defaults.
+- [ ] Add receipt-derived vendor confidence / ambiguity handling instead of blindly trusting one receipt row.
+- [ ] Factor loaded receipt activity into reorder-confidence handling so recent receipts protect items even when open-PO evidence is missing.
+- [ ] Decide how receipt activity should influence target-stock / reorder suppression beyond recency protection.
+- [ ] Add detailed-sales transaction-shape metrics:
+  - units per transaction
+  - sale-day frequency
+  - inter-sale cadence
+  - burstiness / lumpy-demand signals
+- [ ] Surface receipt-history and detailed-sales evidence in item detail and assignment UI before making it authoritative for automation.
+- [ ] Compare detailed-sales-driven min/max suggestions against current X4 / heuristic suggestions before changing default reorder behavior.
 
 ## Phase 3. Rule Model Expansion and Pack-Trigger Behavior
 
@@ -298,6 +318,7 @@ These are the best next steps after reconciliation.
 - [ ] Add cost-confidence and threshold-progress signals to vendor shipping decisions.
 - [ ] Add planned release dates and "export the day before free-freight day" workflow for vendor policies.
 - [ ] Add stronger vendor-group release consolidation and explicit urgent paid-freight override workflow.
+- [ ] Replace the combined sales/receipts input path with `DETAILEDPARTSALES.csv` + `ReceivedPartsDetail.csv`, including receipt-derived vendor evidence and receipt-aware reorder protection.
 - [x] Deepen shipping review/export options so users can export immediate, planned-tomorrow, or all-due batches intentionally.
 - [x] Deepen recency-confidence classification for new-item / stale-item / critical-item distinctions.
 - [x] Keep missing-recency activity-protected items visible with zero default qty instead of letting them ride through as implicitly orderable rows.

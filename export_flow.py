@@ -126,13 +126,20 @@ def select_export_items(app, exportable_items, *, selection_mode="default"):
 
 
 def loaded_report_paths_from_app(app):
+    def _value(attr_name):
+        variable = getattr(app, attr_name, None)
+        getter = getattr(variable, "get", None)
+        return getter().strip() if callable(getter) else ""
+
     return {
-        "sales": app.var_sales_path.get().strip(),
-        "po": app.var_po_path.get().strip(),
-        "susp": app.var_susp_path.get().strip(),
-        "onhand": app.var_onhand_path.get().strip(),
-        "minmax": app.var_minmax_path.get().strip(),
-        "packsize": app.var_packsize_path.get().strip(),
+        "sales": _value("var_sales_path"),
+        "detailedsales": _value("var_detailed_sales_path"),
+        "receivedparts": _value("var_received_parts_path"),
+        "po": _value("var_po_path"),
+        "susp": _value("var_susp_path"),
+        "onhand": _value("var_onhand_path"),
+        "minmax": _value("var_minmax_path"),
+        "packsize": _value("var_packsize_path"),
     }
 
 

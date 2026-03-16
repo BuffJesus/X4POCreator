@@ -330,6 +330,7 @@ def classify_recency_confidence(item, inv, rule):
     has_last_receipt = bool((inv or {}).get("last_receipt"))
     has_recent_suspense = bool(item.get("effective_qty_suspended", item.get("qty_suspended", 0)))
     has_open_po = bool(item.get("qty_on_po", 0))
+    has_loaded_receipt_activity = bool(item.get("qty_received", 0))
     has_recent_local_order = bool(item.get("has_recent_local_order"))
     has_explicit_critical_min_rule = bool(get_rule_int(rule, "min_order_qty"))
     has_other_protective_rule = bool(
@@ -343,7 +344,7 @@ def classify_recency_confidence(item, inv, rule):
     elif has_last_sale or has_last_receipt:
         item["recency_confidence"] = "medium"
         item["data_completeness"] = "partial_recency"
-    elif has_recent_suspense or has_open_po:
+    elif has_recent_suspense or has_open_po or has_loaded_receipt_activity:
         item["recency_confidence"] = "low"
         item["data_completeness"] = "missing_recency_activity_protected"
     elif has_recent_local_order:
@@ -380,14 +381,14 @@ def classify_low_confidence_recency(item, inv, rule):
         bucket = "critical_rule_protected"
     elif data_completeness == "missing_recency_local_po_protected":
         bucket = "recent_local_po_protected"
-    elif data_completeness == "missing_recency_activity_protected":
-        bucket = "activity_protected"
     elif (
         qty_received > 0
         and sales_health in ("", "unknown")
         and historical_rank < 24
     ):
         bucket = "new_or_sparse"
+    elif data_completeness == "missing_recency_activity_protected":
+        bucket = "activity_protected"
     elif sales_health in ("dormant", "stale") or (
         performance == "legacy" and qty_received <= 0 and qoh <= 0
     ):
@@ -999,6 +1000,9 @@ def enrich_item(item, inv, pack_qty, rule):
         if recent_local_order_date:
             recent_local_detail += f", latest {recent_local_order_date}"
         detail_parts.append(recent_local_detail)
+    loaded_receipts = item.get("qty_received", 0) or 0
+    if loaded_receipts > 0:
+        detail_parts.append(f"Loaded receipts in selected window: {loaded_receipts:g}")
     if acceptable_overstock > 0:
         overstock_basis = item.get("acceptable_overstock_basis")
         basis_label = {

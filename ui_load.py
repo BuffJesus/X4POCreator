@@ -76,10 +76,17 @@ def build_load_tab(app):
     file_frame = ttk.LabelFrame(content, text="Input Files", padding=12)
     file_frame.pack(fill=tk.X, pady=4)
 
+    ttk.Label(
+        file_frame,
+        text="Load either the legacy combined Part Sales & Receipts report, or the Detailed Part Sales + Received Parts Detail pair.",
+        style="Info.TLabel",
+        wraplength=900,
+    ).grid(row=0, column=0, columnspan=3, sticky="w", padx=4, pady=(0, 8))
+
     _add_file_row(
         app,
         file_frame,
-        row=0,
+        row=1,
         label="Order Multiples / Pack Sizes CSV",
         attr_name="var_packsize_path",
         browse_key="packsize",
@@ -88,7 +95,7 @@ def build_load_tab(app):
     _add_file_row(
         app,
         file_frame,
-        row=1,
+        row=2,
         label="On Hand Min/Max Sales CSV",
         attr_name="var_minmax_path",
         browse_key="minmax",
@@ -97,7 +104,7 @@ def build_load_tab(app):
     _add_file_row(
         app,
         file_frame,
-        row=2,
+        row=3,
         label="On Hand Report CSV",
         attr_name="var_onhand_path",
         browse_key="onhand",
@@ -106,7 +113,7 @@ def build_load_tab(app):
     _add_file_row(
         app,
         file_frame,
-        row=3,
+        row=4,
         label="Open PO Listing CSV",
         attr_name="var_po_path",
         browse_key="po",
@@ -115,8 +122,8 @@ def build_load_tab(app):
     _add_file_row(
         app,
         file_frame,
-        row=4,
-        label="Part Sales & Receipts CSV *",
+        row=5,
+        label="Part Sales & Receipts CSV",
         attr_name="var_sales_path",
         browse_key="sales",
         hint="Standard -> Sales -> Part Sales & Receipts",
@@ -124,7 +131,25 @@ def build_load_tab(app):
     _add_file_row(
         app,
         file_frame,
-        row=5,
+        row=6,
+        label="Detailed Part Sales CSV",
+        attr_name="var_detailed_sales_path",
+        browse_key="detailedsales",
+        hint="Detailed sales export used with Received Parts Detail",
+    )
+    _add_file_row(
+        app,
+        file_frame,
+        row=7,
+        label="Received Parts Detail CSV",
+        attr_name="var_received_parts_path",
+        browse_key="receivedparts",
+        hint="Receiving detail export used with Detailed Part Sales",
+    )
+    _add_file_row(
+        app,
+        file_frame,
+        row=8,
         label="Suspended Items CSV",
         attr_name="var_susp_path",
         browse_key="susp",

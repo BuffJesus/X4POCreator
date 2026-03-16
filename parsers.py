@@ -5,20 +5,105 @@ from collections import defaultdict
 from datetime import datetime
 
 
+HEADER_ALIASES = {
+    "line_code": {"linecode", "line_code", "line", "pg", "productgroup", "product_group"},
+    "item_code": {"itemcode", "item_code", "item", "partnumber", "part_number", "part"},
+    "description": {"description", "desc", "itemdescription", "item_description"},
+    "qty_sold": {"qtysold", "soldqty", "quantitysold", "salesqty", "invoiceqty", "qty"},
+    "sale_date": {"saledate", "salesdate", "invoicedate", "transdate", "transactiondate", "date", "dated"},
+    "qty_received": {"qtyreceived", "receivedqty", "quantityreceived", "receiptqty", "receivedquantity", "qty"},
+    "receipt_date": {"receiptdate", "receiveddate", "datereceived", "rcvdate", "receivingdate", "date", "dated"},
+    "vendor": {"vendor", "vendorcode", "supplier", "suppliercode", "vend", "vendorid"},
+}
+
+
+def _normalize_header_label(value):
+    return re.sub(r"[^a-z0-9]+", "", str(value or "").strip().lower())
+
+
+def _safe_cell(row, index):
+    if index is None or index < 0 or index >= len(row):
+        return ""
+    return str(row[index] or "").strip()
+
+
+def _coerce_int(value):
+    text = str(value or "").strip().replace(",", "")
+    if not text:
+        return 0
+    try:
+        return int(float(text))
+    except (TypeError, ValueError):
+        return 0
+
+
+def _normalize_vendor_code(value):
+    return str(value or "").strip().upper()
+
+
+def _match_header_columns(rows, required_fields, optional_fields=()):
+    for row_index, row in enumerate(rows):
+        normalized = [_normalize_header_label(cell) for cell in row]
+        if not any(normalized):
+            continue
+        indexes = {}
+        matched = True
+        for field_name in required_fields:
+            aliases = HEADER_ALIASES[field_name]
+            index = next((i for i, value in enumerate(normalized) if value in aliases), None)
+            if index is None:
+                matched = False
+                break
+            indexes[field_name] = index
+        if not matched:
+            continue
+        for field_name in optional_fields:
+            aliases = HEADER_ALIASES[field_name]
+            indexes[field_name] = next((i for i, value in enumerate(normalized) if value in aliases), None)
+        return row_index, indexes
+    return None, {}
+
+
+def _dedupe_detail_rows(rows):
+    seen_rows = set()
+    unique_rows = []
+    for row in rows:
+        normalized = tuple(str(cell).strip() for cell in row)
+        if not any(normalized):
+            continue
+        if normalized in seen_rows:
+            continue
+        seen_rows.add(normalized)
+        unique_rows.append(row)
+    return unique_rows
+
+
 def identify_report_type(filepath):
     """
-    Read the first row of a CSV and identify which X4 report it is.
-    Returns one of: 'sales', 'minmax', 'onhand', 'po', 'susp', 'packsize', or None.
+    Read a CSV and identify which X4 report it is.
+    Returns one of: 'sales', 'detailedsales', 'receivedparts', 'minmax', 'onhand',
+    'po', 'susp', 'packsize', or None.
     """
+    filename_key = re.sub(r"[^a-z0-9]+", "", os.path.basename(filepath).lower())
+    if "detailedpartsales" in filename_key:
+        return "detailedsales"
+    if "receivedpartsdetail" in filename_key:
+        return "receivedparts"
     try:
         with open(filepath, "r", encoding="utf-8-sig") as f:
             reader = csv.reader(f)
+            sampled_rows = []
             for row in reader:
+                sampled_rows.append(row)
                 if not any(str(c).strip() for c in row):
                     continue
                 first_cols = " ".join(str(c).upper() for c in row[:16])
                 if "PART SALES & RECEIPTS" in first_cols:
                     return "sales"
+                if "DETAILED PART SALES" in first_cols:
+                    return "detailedsales"
+                if "RECEIVED PARTS DETAIL" in first_cols:
+                    return "receivedparts"
                 if "SUSPENSE REPORT" in first_cols:
                     return "susp"
                 if "PO PART LISTING BY PRODUCT GROUP" in first_cols:
@@ -33,6 +118,20 @@ def identify_report_type(filepath):
                     qoh_idx = upper_cols.index("QOH")
                     if qoh_idx > pg_idx:
                         return "minmax"
+            header_idx, _ = _match_header_columns(
+                sampled_rows,
+                ("line_code", "item_code", "qty_sold"),
+                optional_fields=("sale_date",),
+            )
+            if header_idx is not None:
+                return "detailedsales"
+            header_idx, _ = _match_header_columns(
+                sampled_rows,
+                ("line_code", "item_code", "qty_received", "vendor"),
+                optional_fields=("receipt_date",),
+            )
+            if header_idx is not None:
+                return "receivedparts"
     except Exception:
         pass
     return None
@@ -118,6 +217,152 @@ def parse_part_sales_csv(filepath):
                 if not agg[key].get("description") and description:
                     agg[key]["description"] = description
     return list(agg.values())
+
+
+def parse_detailed_part_sales_csv(filepath):
+    with open(filepath, "r", encoding="utf-8-sig") as f:
+        rows = list(csv.reader(f))
+    header_index, indexes = _match_header_columns(
+        rows,
+        ("line_code", "item_code", "qty_sold"),
+        optional_fields=("description", "sale_date"),
+    )
+    if header_index is None:
+        return []
+    items = []
+    for row in _dedupe_detail_rows(rows[header_index + 1:]):
+        line_code = _safe_cell(row, indexes["line_code"])
+        item_code = _safe_cell(row, indexes["item_code"])
+        if not item_code:
+            continue
+        items.append({
+            "line_code": line_code,
+            "item_code": item_code,
+            "description": _clean_item_description(_safe_cell(row, indexes.get("description"))),
+            "qty_sold": _coerce_int(_safe_cell(row, indexes["qty_sold"])),
+            "sale_date": _safe_cell(row, indexes.get("sale_date")),
+        })
+    return items
+
+
+def parse_received_parts_detail_csv(filepath):
+    with open(filepath, "r", encoding="utf-8-sig") as f:
+        rows = list(csv.reader(f))
+    header_index, indexes = _match_header_columns(
+        rows,
+        ("line_code", "item_code", "qty_received", "vendor"),
+        optional_fields=("description", "receipt_date"),
+    )
+    if header_index is None:
+        return []
+    items = []
+    for row in _dedupe_detail_rows(rows[header_index + 1:]):
+        line_code = _safe_cell(row, indexes["line_code"])
+        item_code = _safe_cell(row, indexes["item_code"])
+        if not item_code:
+            continue
+        items.append({
+            "line_code": line_code,
+            "item_code": item_code,
+            "description": _clean_item_description(_safe_cell(row, indexes.get("description"))),
+            "qty_received": _coerce_int(_safe_cell(row, indexes["qty_received"])),
+            "receipt_date": _safe_cell(row, indexes.get("receipt_date")),
+            "vendor": _normalize_vendor_code(_safe_cell(row, indexes["vendor"])),
+        })
+    return items
+
+
+def parse_detailed_sales_date_range(sales_rows, *, parse_date=None):
+    parse_date = parse_date or parse_x4_date
+    dates = []
+    for row in sales_rows or []:
+        sale_dt = parse_date(row.get("sale_date", "")) if row.get("sale_date") else None
+        if sale_dt is not None:
+            dates.append(sale_dt)
+    if not dates:
+        return None, None
+    return min(dates), max(dates)
+
+
+def build_sales_receipt_summary(sales_rows, receipt_rows):
+    agg = {}
+    for row in sales_rows or []:
+        key = (row.get("line_code", ""), row.get("item_code", ""))
+        if not key[1]:
+            continue
+        entry = agg.setdefault(key, {
+            "line_code": key[0],
+            "item_code": key[1],
+            "description": "",
+            "qty_received": 0,
+            "qty_sold": 0,
+        })
+        entry["qty_sold"] += max(0, _coerce_int(row.get("qty_sold", 0)))
+        if not entry["description"] and row.get("description"):
+            entry["description"] = row.get("description", "")
+    for row in receipt_rows or []:
+        key = (row.get("line_code", ""), row.get("item_code", ""))
+        if not key[1]:
+            continue
+        entry = agg.setdefault(key, {
+            "line_code": key[0],
+            "item_code": key[1],
+            "description": "",
+            "qty_received": 0,
+            "qty_sold": 0,
+        })
+        entry["qty_received"] += max(0, _coerce_int(row.get("qty_received", 0)))
+        if not entry["description"] and row.get("description"):
+            entry["description"] = row.get("description", "")
+    return list(agg.values())
+
+
+def build_receipt_history_lookup(receipt_rows, *, parse_date=None):
+    parse_date = parse_date or parse_x4_date
+    history = {}
+    for row in receipt_rows or []:
+        key = (row.get("line_code", ""), row.get("item_code", ""))
+        if not key[1]:
+            continue
+        vendor = _normalize_vendor_code(row.get("vendor", ""))
+        qty_received = max(0, _coerce_int(row.get("qty_received", 0)))
+        receipt_date = str(row.get("receipt_date", "") or "").strip()
+        receipt_dt = parse_date(receipt_date) if receipt_date else None
+        entry = history.setdefault(key, {
+            "last_receipt_date": "",
+            "primary_vendor": "",
+            "vendor_candidates": [],
+            "vendors": {},
+        })
+        if receipt_dt is not None:
+            iso_date = receipt_dt.date().isoformat()
+            if iso_date > entry["last_receipt_date"]:
+                entry["last_receipt_date"] = iso_date
+        vendor_entry = entry["vendors"].setdefault(vendor, {
+            "qty_received": 0,
+            "receipt_count": 0,
+            "last_receipt_date": "",
+        })
+        vendor_entry["qty_received"] += qty_received
+        vendor_entry["receipt_count"] += 1
+        if receipt_dt is not None:
+            iso_date = receipt_dt.date().isoformat()
+            if iso_date > vendor_entry["last_receipt_date"]:
+                vendor_entry["last_receipt_date"] = iso_date
+    for entry in history.values():
+        ranked_vendors = sorted(
+            entry["vendors"].items(),
+            key=lambda vendor_row: (
+                vendor_row[1].get("last_receipt_date", ""),
+                vendor_row[1].get("qty_received", 0),
+                vendor_row[1].get("receipt_count", 0),
+                vendor_row[0],
+            ),
+            reverse=True,
+        )
+        entry["vendor_candidates"] = [vendor for vendor, _info in ranked_vendors if vendor]
+        entry["primary_vendor"] = entry["vendor_candidates"][0] if entry["vendor_candidates"] else ""
+    return history
 
 
 def parse_sales_date_range(filepath):

@@ -344,6 +344,7 @@ class POBuilderApp:
     all_line_codes = _session_field("all_line_codes")
     inventory_lookup = _session_field("inventory_lookup")
     inventory_source_lookup = _session_field("inventory_source_lookup")
+    receipt_history_lookup = _session_field("receipt_history_lookup")
     pack_size_lookup = _session_field("pack_size_lookup")
     pack_size_source_lookup = _session_field("pack_size_source_lookup")
     pack_size_by_item = _session_field("pack_size_by_item")
@@ -704,6 +705,8 @@ class POBuilderApp:
 
         var_map = {
             "sales": self.var_sales_path,
+            "detailedsales": self.var_detailed_sales_path,
+            "receivedparts": self.var_received_parts_path,
             "minmax": self.var_minmax_path,
             "onhand": self.var_onhand_path,
             "po": self.var_po_path,
@@ -713,6 +716,8 @@ class POBuilderApp:
 
         report_names = {
             "sales": "Part Sales & Receipts",
+            "detailedsales": "Detailed Part Sales",
+            "receivedparts": "Received Parts Detail",
             "minmax": "On Hand Min/Max Sales",
             "onhand": "On Hand Report",
             "po": "POs by PG",
@@ -740,6 +745,8 @@ class POBuilderApp:
         if path:
             var_map = {
                 "sales": self.var_sales_path,
+                "detailedsales": self.var_detailed_sales_path,
+                "receivedparts": self.var_received_parts_path,
                 "po": self.var_po_path,
                 "susp": self.var_susp_path,
                 "minmax": self.var_minmax_path,
@@ -751,13 +758,20 @@ class POBuilderApp:
 
     def _do_load(self):
         sales_path = self.var_sales_path.get().strip()
-        if not sales_path:
-            messagebox.showerror("Missing File", "The Part Sales & Receipts CSV is required.")
+        detailed_sales_path = self.var_detailed_sales_path.get().strip()
+        received_parts_path = self.var_received_parts_path.get().strip()
+        if not sales_path and not (detailed_sales_path and received_parts_path):
+            messagebox.showerror(
+                "Missing File",
+                "Load either the Part Sales & Receipts CSV, or both Detailed Part Sales and Received Parts Detail CSVs.",
+            )
             return
 
         # Gather paths before showing loading screen
         paths = {
             "sales": sales_path,
+            "detailedsales": detailed_sales_path,
+            "receivedparts": received_parts_path,
             "po": self.var_po_path.get().strip(),
             "susp": self.var_susp_path.get().strip(),
             "onhand": self.var_onhand_path.get().strip(),
@@ -768,7 +782,7 @@ class POBuilderApp:
         try:
             result = self._run_with_loading("Loading files...", self._parse_all_files, paths)
         except Exception as e:
-            messagebox.showerror("Parse Error", f"Failed to parse Part Sales CSV:\n{e}")
+            messagebox.showerror("Parse Error", f"Failed to parse sales/receipt files:\n{e}")
             return
 
         if result is None:
@@ -778,7 +792,10 @@ class POBuilderApp:
         self.sales_span_days = result.get("sales_span_days")
 
         if not self.sales_items:
-            messagebox.showwarning("No Data", "No items found in the Part Sales CSV. Check the file format.")
+            messagebox.showwarning(
+                "No Data",
+                "No items found in the loaded sales/receipt files. Check the file format.",
+            )
             return
 
         # Show warnings from parsing

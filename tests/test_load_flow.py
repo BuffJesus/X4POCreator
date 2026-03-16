@@ -85,6 +85,7 @@ class LoadFlowTests(unittest.TestCase):
             "po_items": [{"line_code": "AER-", "item_code": "GH781-4", "qty": 2}],
             "open_po_lookup": {("AER-", "GH781-4"): [{"qty": 2}]},
             "inventory_lookup": {("AER-", "GH781-4"): {"qoh": 5}},
+            "receipt_history_lookup": {("AER-", "GH781-4"): {"primary_vendor": "MOTION"}},
             "pack_size_lookup": {("AER-", "GH781-4"): 6},
             "startup_warning_rows": [{"warning_type": "Example"}],
         }
@@ -98,8 +99,62 @@ class LoadFlowTests(unittest.TestCase):
         self.assertEqual(session.sales_window_start, "2026-02-01")
         self.assertEqual(session.sales_window_end, "2026-03-03")
         self.assertEqual(session.inventory_source_lookup, result["inventory_lookup"])
+        self.assertEqual(session.receipt_history_lookup, result["receipt_history_lookup"])
         self.assertEqual(session.pack_size_by_item, {"GH781-4": 6})
         self.assertEqual(session.pack_size_conflicts, {"DUP-1"})
+
+    def test_parse_all_files_accepts_detailed_sales_and_received_parts_pair(self):
+        with patch("load_flow.parsers.parse_detailed_part_sales_csv", return_value=[
+            {
+                "line_code": "AER-",
+                "item_code": "GH781-4",
+                "description": "HOSE",
+                "qty_sold": 4,
+                "sale_date": "01-Mar-2026",
+            },
+        ]), patch("load_flow.parsers.parse_received_parts_detail_csv", return_value=[
+            {
+                "line_code": "AER-",
+                "item_code": "GH781-4",
+                "description": "HOSE",
+                "qty_received": 3,
+                "vendor": "MOTION",
+                "receipt_date": "02-Mar-2026",
+            },
+        ]), patch("load_flow.parsers.build_sales_receipt_summary", return_value=[{
+            "line_code": "AER-",
+            "item_code": "GH781-4",
+            "description": "HOSE",
+            "qty_received": 3,
+            "qty_sold": 4,
+        }]), patch(
+            "load_flow.parsers.parse_detailed_sales_date_range",
+            return_value=(datetime(2026, 3, 1), datetime(2026, 3, 10)),
+        ), patch(
+            "load_flow.parsers.build_receipt_history_lookup",
+            return_value={("AER-", "GH781-4"): {"primary_vendor": "MOTION"}},
+        ):
+            result = load_flow.parse_all_files(
+                {
+                    "sales": "",
+                    "detailedsales": "detailed.csv",
+                    "receivedparts": "received.csv",
+                    "po": "",
+                    "susp": "",
+                    "onhand": "",
+                    "minmax": "",
+                    "packsize": "",
+                },
+                old_po_warning_days=90,
+                short_sales_window_days=7,
+            )
+
+        self.assertEqual(result["sales_items"][0]["qty_sold"], 4)
+        self.assertEqual(result["sales_items"][0]["qty_received"], 3)
+        self.assertEqual(result["sales_span_days"], 10)
+        self.assertEqual(result["sales_window_start"], "2026-03-01")
+        self.assertEqual(result["sales_window_end"], "2026-03-10")
+        self.assertEqual(result["receipt_history_lookup"][("AER-", "GH781-4")]["primary_vendor"], "MOTION")
 
     def test_parse_all_files_old_po_warning_includes_po_reference(self):
         with patch("load_flow.parsers.parse_part_sales_csv", return_value=[{
