@@ -185,9 +185,34 @@ class SessionStateFlowTests(unittest.TestCase):
             state,
             {
                 "filtered_items_rows": [(ui_bulk.bulk_row_id(item_b), {"line_code": "MOT-", "item_code": "B", "vendor": "MOTION"})],
-                "vendor_codes_used": [],
+                "vendor_codes_used_entries": [("MOTION", False, None)],
                 "last_removed_bulk_items": [],
             },
+        )
+
+    def test_capture_bulk_history_state_uses_row_scoped_vendor_code_entries_with_index(self):
+        item = {"line_code": "MOT-", "item_code": "B", "vendor": "MOTION"}
+        fake_app = SimpleNamespace(
+            filtered_items=[item],
+            inventory_lookup={},
+            qoh_adjustments={},
+            order_rules={},
+            vendor_codes_used=["GREGDIST", "MOTION", "SOURCE"],
+            last_removed_bulk_items=[],
+        )
+
+        state = session_state_flow.capture_bulk_history_state(
+            fake_app,
+            capture_spec=session_state_flow.bulk_history_capture_spec_for_columns(
+                ("vendor",),
+                row_ids=(ui_bulk.bulk_row_id(item),),
+                include_vendor_codes=True,
+            ),
+        )
+
+        self.assertEqual(
+            state["vendor_codes_used_entries"],
+            [("MOTION", True, 1)],
         )
 
     def test_capture_bulk_history_state_uses_row_scoped_mapping_entries_for_qoh_edits(self):
@@ -476,6 +501,97 @@ class SessionStateFlowTests(unittest.TestCase):
         )
 
         self.assertEqual(fake_app.vendor_codes_used, ["NEW"])
+        self.assertEqual(events, ["vendors", "summary", "status"])
+
+    def test_restore_bulk_history_state_applies_vendor_code_entries_in_place(self):
+        events = []
+        fake_app = SimpleNamespace(
+            filtered_items=[],
+            inventory_lookup={},
+            qoh_adjustments={},
+            order_rules={},
+            vendor_codes_used=["GREGDIST", "SOURCE"],
+            _loaded_order_rules={},
+            _loaded_vendor_codes=[],
+            last_removed_bulk_items=[],
+            bulk_sheet=None,
+            _refresh_vendor_inputs=lambda: events.append("vendors"),
+            _apply_bulk_filter=lambda: events.append("bulk"),
+            _update_bulk_summary=lambda: events.append("summary"),
+            _update_bulk_cell_status=lambda: events.append("status"),
+        )
+        vendor_codes_used = fake_app.vendor_codes_used
+
+        session_state_flow.restore_bulk_history_state(
+            fake_app,
+            {
+                "filtered_items": [],
+                "vendor_codes_used_entries": [("MOTION", True, 1)],
+            },
+        )
+
+        self.assertIs(fake_app.vendor_codes_used, vendor_codes_used)
+        self.assertEqual(fake_app.vendor_codes_used, ["GREGDIST", "MOTION", "SOURCE"])
+        self.assertEqual(events, ["vendors", "summary", "status"])
+
+    def test_restore_bulk_history_state_removes_vendor_code_entries_in_place(self):
+        events = []
+        fake_app = SimpleNamespace(
+            filtered_items=[],
+            inventory_lookup={},
+            qoh_adjustments={},
+            order_rules={},
+            vendor_codes_used=["GREGDIST", "MOTION", "SOURCE"],
+            _loaded_order_rules={},
+            _loaded_vendor_codes=[],
+            last_removed_bulk_items=[],
+            bulk_sheet=None,
+            _refresh_vendor_inputs=lambda: events.append("vendors"),
+            _apply_bulk_filter=lambda: events.append("bulk"),
+            _update_bulk_summary=lambda: events.append("summary"),
+            _update_bulk_cell_status=lambda: events.append("status"),
+        )
+        vendor_codes_used = fake_app.vendor_codes_used
+
+        session_state_flow.restore_bulk_history_state(
+            fake_app,
+            {
+                "filtered_items": [],
+                "vendor_codes_used_entries": [("MOTION", False, None)],
+            },
+        )
+
+        self.assertIs(fake_app.vendor_codes_used, vendor_codes_used)
+        self.assertEqual(fake_app.vendor_codes_used, ["GREGDIST", "SOURCE"])
+        self.assertEqual(events, ["vendors", "summary", "status"])
+
+    def test_restore_bulk_history_state_reorders_vendor_code_entries_in_place(self):
+        events = []
+        fake_app = SimpleNamespace(
+            filtered_items=[],
+            inventory_lookup={},
+            qoh_adjustments={},
+            order_rules={},
+            vendor_codes_used=["MOTION", "GREGDIST", "SOURCE"],
+            _loaded_order_rules={},
+            _loaded_vendor_codes=[],
+            last_removed_bulk_items=[],
+            bulk_sheet=None,
+            _refresh_vendor_inputs=lambda: events.append("vendors"),
+            _apply_bulk_filter=lambda: events.append("bulk"),
+            _update_bulk_summary=lambda: events.append("summary"),
+            _update_bulk_cell_status=lambda: events.append("status"),
+        )
+
+        session_state_flow.restore_bulk_history_state(
+            fake_app,
+            {
+                "filtered_items": [],
+                "vendor_codes_used_entries": [("MOTION", True, 1)],
+            },
+        )
+
+        self.assertEqual(fake_app.vendor_codes_used, ["GREGDIST", "MOTION", "SOURCE"])
         self.assertEqual(events, ["vendors", "summary", "status"])
 
     def test_restore_bulk_history_state_without_sheet_skips_apply_bulk_filter(self):

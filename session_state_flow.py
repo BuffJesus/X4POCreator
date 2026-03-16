@@ -94,6 +94,7 @@ def capture_bulk_history_state(app, capture_spec=None):
     spec = bulk_history_capture_spec() if capture_spec is None else dict(capture_spec)
     row_ids = tuple(str(row_id) for row_id in spec.get("filtered_items_row_ids", ()) if str(row_id))
     item_keys = _bulk_history_item_keys(app, row_ids)
+    vendor_codes = _bulk_history_row_vendor_codes(app, row_ids)
     if row_ids:
         state = {
             "filtered_items_rows": _copy_bulk_history_rows(app, row_ids),
@@ -119,7 +120,10 @@ def capture_bulk_history_state(app, capture_spec=None):
         else:
             state["order_rules"] = copy.deepcopy(app.order_rules)
     if spec.get("vendor_codes_used"):
-        state["vendor_codes_used"] = list(app.vendor_codes_used)
+        if vendor_codes:
+            state["vendor_codes_used_entries"] = _copy_bulk_history_vendor_code_entries(app.vendor_codes_used, vendor_codes)
+        else:
+            state["vendor_codes_used"] = list(app.vendor_codes_used)
     if spec.get("last_removed_bulk_items", True):
         state["last_removed_bulk_items"] = list(getattr(app, "last_removed_bulk_items", ()) or ())
     return state
@@ -160,6 +164,7 @@ def _prune_unchanged_bulk_history_state(before_state, after_state):
         "order_rules",
         "order_rules_entries",
         "vendor_codes_used",
+        "vendor_codes_used_entries",
         "last_removed_bulk_items",
     )
     normalized_before = copy.deepcopy(before_state)
@@ -244,6 +249,11 @@ def restore_bulk_history_state(app, state, *, capture_spec=None):
         restored_vendor_codes = list(state.get("vendor_codes_used", []))
         vendor_codes_changed = list(getattr(app, "vendor_codes_used", [])) != restored_vendor_codes
         app.vendor_codes_used = restored_vendor_codes
+    elif "vendor_codes_used_entries" in state:
+        vendor_codes_changed = _restore_bulk_history_vendor_code_entries_in_place(
+            app.vendor_codes_used,
+            state.get("vendor_codes_used_entries", []),
+        )
     if "last_removed_bulk_items" in state:
         app.last_removed_bulk_items = list(state.get("last_removed_bulk_items", []))
     if vendor_codes_changed:
@@ -295,6 +305,21 @@ def _bulk_history_item_keys(app, row_ids):
     return tuple(keys)
 
 
+def _bulk_history_row_vendor_codes(app, row_ids):
+    vendor_codes = []
+    seen = set()
+    for row_id in row_ids:
+        _idx, item = ui_bulk.resolve_bulk_row_id(app, row_id)
+        if item is None:
+            continue
+        vendor = str(item.get("vendor", "") or "").strip()
+        if not vendor or vendor in seen:
+            continue
+        seen.add(vendor)
+        vendor_codes.append(vendor)
+    return tuple(vendor_codes)
+
+
 def _copy_bulk_history_mapping_entries(mapping, keys):
     entries = []
     for key in keys:
@@ -302,6 +327,17 @@ def _copy_bulk_history_mapping_entries(mapping, keys):
             entries.append((copy.deepcopy(key), True, copy.deepcopy(mapping[key])))
         else:
             entries.append((copy.deepcopy(key), False, None))
+    return entries
+
+
+def _copy_bulk_history_vendor_code_entries(vendor_codes_used, vendor_codes):
+    normalized = [str(code or "").strip() for code in list(vendor_codes_used or [])]
+    entries = []
+    for vendor in vendor_codes:
+        if vendor in normalized:
+            entries.append((vendor, True, normalized.index(vendor)))
+        else:
+            entries.append((vendor, False, None))
     return entries
 
 
@@ -322,3 +358,30 @@ def _restore_bulk_history_mapping_entries_in_place(current_mapping, entries):
         else:
             current_mapping.pop(key, None)
     return current_mapping
+
+
+def _restore_bulk_history_vendor_code_entries_in_place(current_vendor_codes, entries):
+    changed = False
+    for vendor, present, index in entries:
+        normalized_vendor = str(vendor or "").strip()
+        if not normalized_vendor:
+            continue
+        try:
+            current_index = current_vendor_codes.index(normalized_vendor)
+        except ValueError:
+            current_index = None
+        if present:
+            target_index = max(0, min(int(index or 0), len(current_vendor_codes)))
+            if current_index is None:
+                current_vendor_codes.insert(target_index, normalized_vendor)
+                changed = True
+                continue
+            if current_index != target_index:
+                current_vendor_codes.pop(current_index)
+                target_index = max(0, min(target_index, len(current_vendor_codes)))
+                current_vendor_codes.insert(target_index, normalized_vendor)
+                changed = True
+        elif current_index is not None:
+            current_vendor_codes.pop(current_index)
+            changed = True
+    return changed
