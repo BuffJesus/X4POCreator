@@ -31,7 +31,28 @@ def suggest_min_max(app, key, min_annual_sales_for_suggestions):
     return sug_min, sug_max
 
 
+def receipt_history_for_key(app, key):
+    return dict((getattr(app, "receipt_history_lookup", {}) or {}).get(key, {}) or {})
+
+
+def receipt_vendor_candidates(app, key):
+    history = receipt_history_for_key(app, key)
+    candidates = []
+    for vendor in list(history.get("vendor_candidates", []) or []):
+        normalized = str(vendor or "").strip().upper()
+        if normalized and normalized not in candidates:
+            candidates.append(normalized)
+    primary_vendor = str(history.get("primary_vendor", "") or "").strip().upper()
+    if primary_vendor and primary_vendor not in candidates:
+        candidates.insert(0, primary_vendor)
+    return candidates
+
 def default_vendor_for_key(app, key):
+    candidates = receipt_vendor_candidates(app, key)
+    if len(candidates) == 1:
+        return candidates[0]
+    if candidates:
+        return ""
     inv = app.inventory_lookup.get(key, {})
     supplier = (inv.get("supplier", "") or "").strip().upper()
     return supplier or ""

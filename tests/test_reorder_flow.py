@@ -26,6 +26,26 @@ class ReorderFlowTests(unittest.TestCase):
 
         self.assertEqual(result, "MOTION")
 
+    def test_default_vendor_for_key_prefers_unique_receipt_vendor_over_supplier(self):
+        fake_app = SimpleNamespace(
+            inventory_lookup={("AER-", "GH781-4"): {"supplier": " source "}},
+            receipt_history_lookup={("AER-", "GH781-4"): {"vendor_candidates": ["MOTION"], "primary_vendor": "MOTION"}},
+        )
+
+        result = reorder_flow.default_vendor_for_key(fake_app, ("AER-", "GH781-4"))
+
+        self.assertEqual(result, "MOTION")
+
+    def test_default_vendor_for_key_returns_blank_when_receipt_history_is_mixed(self):
+        fake_app = SimpleNamespace(
+            inventory_lookup={("AER-", "GH781-4"): {"supplier": " source "}},
+            receipt_history_lookup={("AER-", "GH781-4"): {"vendor_candidates": ["MOTION", "GREGDIST"], "primary_vendor": "MOTION"}},
+        )
+
+        result = reorder_flow.default_vendor_for_key(fake_app, ("AER-", "GH781-4"))
+
+        self.assertEqual(result, "")
+
     def test_refresh_recent_orders_uses_default_lookback_on_control_error(self):
         events = []
         fake_app = SimpleNamespace(

@@ -1,6 +1,8 @@
 import tkinter as tk
 from tkinter import ttk
 
+import reorder_flow
+
 
 def vendor_history_suggestions(app, key):
     recent_list = list((getattr(app, "recent_orders", {}) or {}).get(key, []) or [])
@@ -24,14 +26,23 @@ def vendor_history_suggestions(app, key):
     return [vendor for vendor, _meta in ordered]
 
 
+def receipt_vendor_suggestions(app, key):
+    return reorder_flow.receipt_vendor_candidates(app, key)
+
+
 def suggested_vendor_for_item(app, item, inventory):
     current_vendor = str(item.get("vendor", "") or "").strip().upper()
     if current_vendor:
         return current_vendor, "current assignment"
+    key = (item.get("line_code", ""), item.get("item_code", ""))
+    receipt_vendors = receipt_vendor_suggestions(app, key)
+    if len(receipt_vendors) == 1:
+        return receipt_vendors[0], "receipt history"
+    if receipt_vendors:
+        return "", ""
     supplier = str(inventory.get("supplier", "") or "").strip().upper()
     if supplier:
         return supplier, "report supplier"
-    key = (item.get("line_code", ""), item.get("item_code", ""))
     history_vendors = vendor_history_suggestions(app, key)
     if len(history_vendors) == 1:
         return history_vendors[0], "recent local order history"
@@ -49,10 +60,13 @@ def prioritized_vendor_choices(app, item, inventory):
     suggested_vendor, _source = suggested_vendor_for_item(app, item, inventory)
     _add(suggested_vendor)
 
+    key = (item.get("line_code", ""), item.get("item_code", ""))
+    for vendor in receipt_vendor_suggestions(app, key):
+        _add(vendor)
+
     supplier = str(inventory.get("supplier", "") or "").strip().upper()
     _add(supplier)
 
-    key = (item.get("line_code", ""), item.get("item_code", ""))
     for vendor in vendor_history_suggestions(app, key):
         _add(vendor)
 
@@ -305,10 +319,14 @@ def populate_assign_item(app):
         app.var_vendor_input.set(suggested_vendor)
         app.lbl_vendor_suggestion.config(text=f"Auto-filled vendor from {suggestion_source}: {suggested_vendor}")
     else:
-        history_vendors = vendor_history_suggestions(app, key)
-        if history_vendors:
-            app.lbl_vendor_suggestion.config(text=f"Recent vendor history: {', '.join(history_vendors[:3])}")
+        receipt_vendors = receipt_vendor_suggestions(app, key)
+        if receipt_vendors:
+            app.lbl_vendor_suggestion.config(text=f"Receipt vendor history: {', '.join(receipt_vendors[:3])}")
         else:
-            app.lbl_vendor_suggestion.config(text="")
+            history_vendors = vendor_history_suggestions(app, key)
+            if history_vendors:
+                app.lbl_vendor_suggestion.config(text=f"Recent vendor history: {', '.join(history_vendors[:3])}")
+            else:
+                app.lbl_vendor_suggestion.config(text="")
         app.var_vendor_input.set("")
     app.combo_vendor.focus_set()
