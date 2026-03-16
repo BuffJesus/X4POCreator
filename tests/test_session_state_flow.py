@@ -287,11 +287,14 @@ class SessionStateFlowTests(unittest.TestCase):
         events = []
         item_a = {"line_code": "AER-", "item_code": "A", "vendor": ""}
         item_b = {"line_code": "MOT-", "item_code": "B", "vendor": ""}
+        inventory_lookup = {("AER-", "A"): {"qoh": 1}, ("MOT-", "B"): {"qoh": 9}}
+        qoh_adjustments = {("MOT-", "B"): {"new": 9}}
+        order_rules = {"AER-:A": {"pack_size": 4}, "MOT-:B": {"pack_size": 10}}
         fake_app = SimpleNamespace(
             filtered_items=[item_a, item_b],
-            inventory_lookup={("AER-", "A"): {"qoh": 1}, ("MOT-", "B"): {"qoh": 9}},
-            qoh_adjustments={("MOT-", "B"): {"new": 9}},
-            order_rules={"AER-:A": {"pack_size": 4}, "MOT-:B": {"pack_size": 10}},
+            inventory_lookup=inventory_lookup,
+            qoh_adjustments=qoh_adjustments,
+            order_rules=order_rules,
             vendor_codes_used=[],
             _loaded_order_rules={},
             _loaded_vendor_codes=[],
@@ -315,6 +318,9 @@ class SessionStateFlowTests(unittest.TestCase):
             },
         )
 
+        self.assertIs(fake_app.inventory_lookup, inventory_lookup)
+        self.assertIs(fake_app.qoh_adjustments, qoh_adjustments)
+        self.assertIs(fake_app.order_rules, order_rules)
         self.assertEqual(fake_app.inventory_lookup, {("AER-", "A"): {"qoh": 1}, ("MOT-", "B"): {"qoh": 2}})
         self.assertEqual(fake_app.qoh_adjustments, {})
         self.assertEqual(fake_app.order_rules, {"AER-:A": {"pack_size": 4}})

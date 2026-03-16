@@ -197,15 +197,15 @@ def restore_bulk_history_state(app, state):
     if "inventory_lookup" in state:
         app.inventory_lookup = copy.deepcopy(state.get("inventory_lookup", {}))
     elif "inventory_lookup_entries" in state:
-        app.inventory_lookup = _restore_bulk_history_mapping_entries(app.inventory_lookup, state.get("inventory_lookup_entries", []))
+        _restore_bulk_history_mapping_entries_in_place(app.inventory_lookup, state.get("inventory_lookup_entries", []))
     if "qoh_adjustments" in state:
         app.qoh_adjustments = copy.deepcopy(state.get("qoh_adjustments", {}))
     elif "qoh_adjustments_entries" in state:
-        app.qoh_adjustments = _restore_bulk_history_mapping_entries(app.qoh_adjustments, state.get("qoh_adjustments_entries", []))
+        _restore_bulk_history_mapping_entries_in_place(app.qoh_adjustments, state.get("qoh_adjustments_entries", []))
     if "order_rules" in state:
         app.order_rules = copy.deepcopy(state.get("order_rules", {}))
     elif "order_rules_entries" in state:
-        app.order_rules = _restore_bulk_history_mapping_entries(app.order_rules, state.get("order_rules_entries", []))
+        _restore_bulk_history_mapping_entries_in_place(app.order_rules, state.get("order_rules_entries", []))
     if "vendor_codes_used" in state:
         app.vendor_codes_used = list(state.get("vendor_codes_used", []))
     if "last_removed_bulk_items" in state:
@@ -268,3 +268,12 @@ def _restore_bulk_history_mapping_entries(current_mapping, entries):
         else:
             restored.pop(key, None)
     return restored
+
+
+def _restore_bulk_history_mapping_entries_in_place(current_mapping, entries):
+    for key, present, value in entries:
+        if present:
+            current_mapping[key] = copy.deepcopy(value)
+        else:
+            current_mapping.pop(key, None)
+    return current_mapping
