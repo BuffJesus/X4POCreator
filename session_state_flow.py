@@ -169,6 +169,31 @@ def _prune_unchanged_bulk_history_state(before_state, after_state):
     )
     normalized_before = copy.deepcopy(before_state)
     normalized_after = copy.deepcopy(after_state)
+    normalized_before, normalized_after = _prune_unchanged_bulk_history_entries(
+        normalized_before,
+        normalized_after,
+        "filtered_items_rows",
+    )
+    normalized_before, normalized_after = _prune_unchanged_bulk_history_entries(
+        normalized_before,
+        normalized_after,
+        "inventory_lookup_entries",
+    )
+    normalized_before, normalized_after = _prune_unchanged_bulk_history_entries(
+        normalized_before,
+        normalized_after,
+        "qoh_adjustments_entries",
+    )
+    normalized_before, normalized_after = _prune_unchanged_bulk_history_entries(
+        normalized_before,
+        normalized_after,
+        "order_rules_entries",
+    )
+    normalized_before, normalized_after = _prune_unchanged_bulk_history_entries(
+        normalized_before,
+        normalized_after,
+        "vendor_codes_used_entries",
+    )
     for key in optional_keys:
         if key in normalized_before and key in normalized_after and normalized_before[key] == normalized_after[key]:
             normalized_before.pop(key, None)
@@ -339,6 +364,35 @@ def _copy_bulk_history_vendor_code_entries(vendor_codes_used, vendor_codes):
         else:
             entries.append((vendor, False, None))
     return entries
+
+
+def _prune_unchanged_bulk_history_entries(before_state, after_state, key):
+    if key not in before_state or key not in after_state:
+        return before_state, after_state
+    before_entries = list(before_state.get(key, ()))
+    after_entries = list(after_state.get(key, ()))
+    if not before_entries or not after_entries:
+        return before_state, after_state
+    before_by_id = {entry[0]: entry for entry in before_entries}
+    after_by_id = {entry[0]: entry for entry in after_entries}
+    unchanged_ids = {
+        entry_id
+        for entry_id in before_by_id.keys() & after_by_id.keys()
+        if before_by_id[entry_id] == after_by_id[entry_id]
+    }
+    if not unchanged_ids:
+        return before_state, after_state
+    before_pruned = [entry for entry in before_entries if entry[0] not in unchanged_ids]
+    after_pruned = [entry for entry in after_entries if entry[0] not in unchanged_ids]
+    if before_pruned:
+        before_state[key] = before_pruned
+    else:
+        before_state.pop(key, None)
+    if after_pruned:
+        after_state[key] = after_pruned
+    else:
+        after_state.pop(key, None)
+    return before_state, after_state
 
 
 def _restore_bulk_history_mapping_entries(current_mapping, entries):

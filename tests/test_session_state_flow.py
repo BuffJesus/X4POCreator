@@ -141,6 +141,124 @@ class SessionStateFlowTests(unittest.TestCase):
         self.assertNotIn("qoh_adjustments_entries", fake_app.bulk_undo_stack[0]["before"])
         self.assertNotIn("qoh_adjustments_entries", fake_app.bulk_undo_stack[0]["after"])
 
+    def test_finalize_bulk_history_action_prunes_only_unchanged_row_scoped_entries(self):
+        capture_spec = session_state_flow.bulk_history_capture_spec_for_columns(("vendor",), row_ids=("0", "1"))
+        fake_app = SimpleNamespace(
+            bulk_undo_stack=[],
+            bulk_redo_stack=[],
+            _capture_bulk_history_state=lambda capture_spec=None: {
+                "filtered_items_rows": [
+                    ("0", {"vendor": "MOTION"}),
+                    ("1", {"vendor": "SOURCE"}),
+                ],
+            },
+        )
+
+        changed = session_state_flow.finalize_bulk_history_action(
+            fake_app,
+            "edit:vendor",
+            {
+                "filtered_items_rows": [
+                    ("0", {"vendor": ""}),
+                    ("1", {"vendor": "SOURCE"}),
+                ],
+            },
+            max_bulk_history=5,
+            capture_spec=capture_spec,
+        )
+
+        self.assertTrue(changed)
+        self.assertEqual(fake_app.bulk_undo_stack[0]["before"]["filtered_items_rows"], [("0", {"vendor": ""})])
+        self.assertEqual(fake_app.bulk_undo_stack[0]["after"]["filtered_items_rows"], [("0", {"vendor": "MOTION"})])
+
+    def test_finalize_bulk_history_action_prunes_only_unchanged_vendor_code_entries(self):
+        capture_spec = session_state_flow.bulk_history_capture_spec_for_columns(("vendor",), row_ids=("0", "1"), include_vendor_codes=True)
+        fake_app = SimpleNamespace(
+            bulk_undo_stack=[],
+            bulk_redo_stack=[],
+            _capture_bulk_history_state=lambda capture_spec=None: {
+                "filtered_items_rows": [
+                    ("0", {"vendor": "MOTION"}),
+                    ("1", {"vendor": "SOURCE"}),
+                ],
+                "vendor_codes_used_entries": [
+                    ("MOTION", True, 0),
+                    ("SOURCE", True, 1),
+                ],
+            },
+        )
+
+        changed = session_state_flow.finalize_bulk_history_action(
+            fake_app,
+            "edit:vendor",
+            {
+                "filtered_items_rows": [
+                    ("0", {"vendor": ""}),
+                    ("1", {"vendor": "SOURCE"}),
+                ],
+                "vendor_codes_used_entries": [
+                    ("MOTION", False, None),
+                    ("SOURCE", True, 1),
+                ],
+            },
+            max_bulk_history=5,
+            capture_spec=capture_spec,
+        )
+
+        self.assertTrue(changed)
+        self.assertEqual(fake_app.bulk_undo_stack[0]["before"]["vendor_codes_used_entries"], [("MOTION", False, None)])
+        self.assertEqual(fake_app.bulk_undo_stack[0]["after"]["vendor_codes_used_entries"], [("MOTION", True, 0)])
+        self.assertEqual(fake_app.bulk_undo_stack[0]["before"]["filtered_items_rows"], [("0", {"vendor": ""})])
+        self.assertEqual(fake_app.bulk_undo_stack[0]["after"]["filtered_items_rows"], [("0", {"vendor": "MOTION"})])
+
+    def test_finalize_bulk_history_action_prunes_only_unchanged_mapping_entries(self):
+        capture_spec = session_state_flow.bulk_history_capture_spec_for_columns(("qoh",), row_ids=("0", "1"))
+        fake_app = SimpleNamespace(
+            bulk_undo_stack=[],
+            bulk_redo_stack=[],
+            _capture_bulk_history_state=lambda capture_spec=None: {
+                "filtered_items_rows": [
+                    ("0", {"line_code": "AER-", "item_code": "A", "qoh": 7}),
+                    ("1", {"line_code": "MOT-", "item_code": "B", "qoh": 4}),
+                ],
+                "inventory_lookup_entries": [
+                    (("AER-", "A"), True, {"qoh": 7}),
+                    (("MOT-", "B"), True, {"qoh": 4}),
+                ],
+                "qoh_adjustments_entries": [
+                    (("AER-", "A"), True, {"new": 7}),
+                    (("MOT-", "B"), True, {"new": 4}),
+                ],
+            },
+        )
+
+        changed = session_state_flow.finalize_bulk_history_action(
+            fake_app,
+            "edit:qoh",
+            {
+                "filtered_items_rows": [
+                    ("0", {"line_code": "AER-", "item_code": "A", "qoh": 5}),
+                    ("1", {"line_code": "MOT-", "item_code": "B", "qoh": 4}),
+                ],
+                "inventory_lookup_entries": [
+                    (("AER-", "A"), True, {"qoh": 5}),
+                    (("MOT-", "B"), True, {"qoh": 4}),
+                ],
+                "qoh_adjustments_entries": [
+                    (("AER-", "A"), True, {"new": 5}),
+                    (("MOT-", "B"), True, {"new": 4}),
+                ],
+            },
+            max_bulk_history=5,
+            capture_spec=capture_spec,
+        )
+
+        self.assertTrue(changed)
+        self.assertEqual(fake_app.bulk_undo_stack[0]["before"]["inventory_lookup_entries"], [(("AER-", "A"), True, {"qoh": 5})])
+        self.assertEqual(fake_app.bulk_undo_stack[0]["after"]["inventory_lookup_entries"], [(("AER-", "A"), True, {"qoh": 7})])
+        self.assertEqual(fake_app.bulk_undo_stack[0]["before"]["qoh_adjustments_entries"], [(("AER-", "A"), True, {"new": 5})])
+        self.assertEqual(fake_app.bulk_undo_stack[0]["after"]["qoh_adjustments_entries"], [(("AER-", "A"), True, {"new": 7})])
+
     def test_capture_bulk_history_state_respects_column_capture_spec(self):
         fake_app = SimpleNamespace(
             filtered_items=[{"item_code": "ABC123"}],
