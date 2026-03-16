@@ -687,9 +687,13 @@ def _restore_bulk_history_mapping_entries(current_mapping, entries):
 
 def _restore_bulk_history_mapping_entries_in_place(current_mapping, entries):
     for key, present, value in entries:
+        current_present = key in current_mapping
+        current_value = current_mapping.get(key)
         if present:
+            if current_present and current_value == value:
+                continue
             current_mapping[key] = copy.deepcopy(value)
-        else:
+        elif current_present:
             current_mapping.pop(key, None)
     return current_mapping
 
@@ -703,11 +707,9 @@ def _restore_bulk_history_mapping_patches_in_place(current_mapping, entry_patche
         if not isinstance(current_value, dict):
             current_value = {}
             current_mapping[key] = current_value
-        for field_name, present, value in normalized_patch_entries:
-            if present:
-                current_value[field_name] = copy.deepcopy(value)
-            else:
-                current_value.pop(field_name, None)
+        changed = _apply_bulk_history_item_patch_in_place(current_value, normalized_patch_entries)
+        if not changed and key not in current_mapping:
+            continue
         if not current_value:
             current_mapping.pop(key, None)
     return current_mapping
@@ -749,11 +751,9 @@ def _restore_bulk_history_row_patches_in_place(app, row_patches):
         if current_item is None:
             continue
         before_summary_item = ui_bulk.bulk_filter_bucket_snapshot(current_item)
-        for field_name, present, value in patch_entries:
-            if present:
-                current_item[field_name] = copy.deepcopy(value)
-            else:
-                current_item.pop(field_name, None)
+        changed = _apply_bulk_history_item_patch_in_place(current_item, patch_entries)
+        if not changed:
+            continue
         ui_bulk.adjust_bulk_summary_for_item_change(
             app,
             before_summary_item,
@@ -762,3 +762,19 @@ def _restore_bulk_history_row_patches_in_place(app, row_patches):
         )
         touched_row_ids.append(str(row_id))
     return touched_row_ids
+
+
+def _apply_bulk_history_item_patch_in_place(current_item, patch_entries):
+    changed = False
+    for field_name, present, value in list(patch_entries or ()):
+        current_present = field_name in current_item
+        current_value = current_item.get(field_name)
+        if present:
+            if current_present and current_value == value:
+                continue
+            current_item[field_name] = copy.deepcopy(value)
+            changed = True
+        elif current_present:
+            current_item.pop(field_name, None)
+            changed = True
+    return changed
