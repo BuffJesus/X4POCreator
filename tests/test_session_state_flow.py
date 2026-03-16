@@ -130,6 +130,50 @@ class SessionStateFlowTests(unittest.TestCase):
         self.assertEqual(fake_app.bulk_undo_stack, [])
         self.assertEqual(fake_app.bulk_redo_stack, [])
 
+    def test_finalize_bulk_history_action_coalesces_when_previous_after_and_before_are_equivalent_in_mixed_shapes(self):
+        fake_app = SimpleNamespace(
+            bulk_undo_stack=[
+                {
+                    "label": "edit:vendor",
+                    "before": {"filtered_items_row_patches": [("0", [("vendor", True, "")])]},
+                    "after": {"filtered_items_rows": [("0", {"vendor": "MOTION", "why": "keep"})]},
+                    "_coalesce_key": ("kind", "sheet_edit"),
+                }
+            ],
+            bulk_redo_stack=[{"label": "redo"}],
+            _capture_bulk_history_state=lambda: {
+                "filtered_items_rows": [("0", {"vendor": "SOURCE", "why": "keep"})],
+            },
+        )
+
+        changed = session_state_flow.finalize_bulk_history_action(
+            fake_app,
+            "edit:vendor",
+            {"filtered_items_row_patches": [("0", [("vendor", True, "MOTION"), ("why", True, "keep")])]},
+            max_bulk_history=5,
+            coalesce_key=("kind", "sheet_edit"),
+        )
+
+        self.assertTrue(changed)
+        self.assertEqual(len(fake_app.bulk_undo_stack), 1)
+        self.assertEqual(
+            fake_app.bulk_undo_stack[0]["before"],
+            {"filtered_items_row_patches": [("0", [("vendor", True, "")])]},
+        )
+        self.assertEqual(
+            fake_app.bulk_undo_stack[0]["after"],
+            {"filtered_items_row_patches": [("0", [("vendor", True, "SOURCE")])]},
+        )
+        self.assertEqual(fake_app.bulk_redo_stack, [])
+
+    def test_bulk_history_states_equivalent_matches_mixed_mapping_shapes(self):
+        self.assertTrue(
+            session_state_flow.bulk_history_states_equivalent(
+                {"inventory_lookup_entries": [(("AER-", "A"), True, {"qoh": 5, "supplier": "SOURCE"})]},
+                {"inventory_lookup_entry_patches": [(("AER-", "A"), [("qoh", True, 5)])]},
+            )
+        )
+
     def test_compact_bulk_history_state_pair_normalizes_full_rows_and_row_patches(self):
         before_state, after_state = session_state_flow.compact_bulk_history_state_pair(
             {"filtered_items_rows": [("0", {"vendor": "", "why": "keep"})]},

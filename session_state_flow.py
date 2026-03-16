@@ -148,7 +148,7 @@ def _merge_bulk_history_entry(app, label, before_state, after_state, coalesce_ke
     previous = undo_stack[-1]
     if previous.get("_coalesce_key") != coalesce_key:
         return False
-    if previous.get("after") != before_state:
+    if not bulk_history_states_equivalent(previous.get("after", {}), before_state):
         return False
     merged_before, merged_after = compact_bulk_history_state_pair(previous.get("before", {}), after_state)
     if merged_after == merged_before:
@@ -238,6 +238,11 @@ def _prune_unchanged_bulk_history_state(before_state, after_state):
 
 def compact_bulk_history_state_pair(before_state, after_state):
     return _prune_unchanged_bulk_history_state(before_state, after_state)
+
+
+def bulk_history_states_equivalent(left_state, right_state):
+    normalized_left, normalized_right = compact_bulk_history_state_pair(left_state, right_state)
+    return normalized_left == normalized_right
 
 
 def finalize_bulk_history_action(app, label, before_state, max_bulk_history, *, coalesce_key=None, capture_spec=None):
