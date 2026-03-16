@@ -846,6 +846,66 @@ class SessionStateFlowTests(unittest.TestCase):
         self.assertEqual(list(fake_app._bulk_row_render_cache.keys()), [ui_bulk.bulk_row_id(item)])
         self.assertEqual(events, ["summary", "status"])
 
+    def test_restore_bulk_history_state_recreates_missing_mapping_entry_from_patches(self):
+        events = []
+        item = {"line_code": "MOT-", "item_code": "B", "vendor": ""}
+        fake_app = SimpleNamespace(
+            filtered_items=[item],
+            inventory_lookup={},
+            qoh_adjustments={},
+            order_rules={},
+            vendor_codes_used=[],
+            _loaded_order_rules={},
+            _loaded_vendor_codes=[],
+            last_removed_bulk_items=[],
+            bulk_sheet=None,
+            _refresh_vendor_inputs=lambda: events.append("vendors"),
+            _apply_bulk_filter=lambda: events.append("bulk"),
+            _update_bulk_summary=lambda: events.append("summary"),
+            _update_bulk_cell_status=lambda: events.append("status"),
+        )
+
+        session_state_flow.restore_bulk_history_state(
+            fake_app,
+            {
+                "filtered_items_row_patches": [(ui_bulk.bulk_row_id(item), [])],
+                "inventory_lookup_entry_patches": [(("MOT-", "B"), [("qoh", True, 2), ("supplier", True, "SOURCE")])],
+            },
+        )
+
+        self.assertEqual(fake_app.inventory_lookup, {("MOT-", "B"): {"qoh": 2, "supplier": "SOURCE"}})
+        self.assertEqual(events, ["summary", "status"])
+
+    def test_restore_bulk_history_state_drops_mapping_entry_when_patch_removes_all_fields(self):
+        events = []
+        item = {"line_code": "MOT-", "item_code": "B", "vendor": ""}
+        fake_app = SimpleNamespace(
+            filtered_items=[item],
+            inventory_lookup={("MOT-", "B"): {"qoh": 2}},
+            qoh_adjustments={},
+            order_rules={},
+            vendor_codes_used=[],
+            _loaded_order_rules={},
+            _loaded_vendor_codes=[],
+            last_removed_bulk_items=[],
+            bulk_sheet=None,
+            _refresh_vendor_inputs=lambda: events.append("vendors"),
+            _apply_bulk_filter=lambda: events.append("bulk"),
+            _update_bulk_summary=lambda: events.append("summary"),
+            _update_bulk_cell_status=lambda: events.append("status"),
+        )
+
+        session_state_flow.restore_bulk_history_state(
+            fake_app,
+            {
+                "filtered_items_row_patches": [(ui_bulk.bulk_row_id(item), [])],
+                "inventory_lookup_entry_patches": [(("MOT-", "B"), [("qoh", False, None)])],
+            },
+        )
+
+        self.assertEqual(fake_app.inventory_lookup, {})
+        self.assertEqual(events, ["summary", "status"])
+
     def test_restore_bulk_history_state_uses_incremental_refresh_for_row_scoped_restore_when_available(self):
         events = []
         item = {"line_code": "MOT-", "item_code": "B", "vendor": "SOURCE"}

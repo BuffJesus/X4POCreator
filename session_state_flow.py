@@ -696,16 +696,20 @@ def _restore_bulk_history_mapping_entries_in_place(current_mapping, entries):
 
 def _restore_bulk_history_mapping_patches_in_place(current_mapping, entry_patches):
     for key, patch_entries in entry_patches:
-        if not list(patch_entries or ()):
+        normalized_patch_entries = list(patch_entries or ())
+        if not normalized_patch_entries:
             continue
-        if key not in current_mapping or not isinstance(current_mapping.get(key), dict):
-            continue
-        current_value = current_mapping[key]
-        for field_name, present, value in patch_entries:
+        current_value = current_mapping.get(key)
+        if not isinstance(current_value, dict):
+            current_value = {}
+            current_mapping[key] = current_value
+        for field_name, present, value in normalized_patch_entries:
             if present:
                 current_value[field_name] = copy.deepcopy(value)
             else:
                 current_value.pop(field_name, None)
+        if not current_value:
+            current_mapping.pop(key, None)
     return current_mapping
 
 
