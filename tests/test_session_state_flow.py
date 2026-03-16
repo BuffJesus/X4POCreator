@@ -66,6 +66,70 @@ class SessionStateFlowTests(unittest.TestCase):
         self.assertEqual(fake_app.bulk_undo_stack[0]["after"], {"n": 3})
         self.assertEqual(fake_app.bulk_redo_stack, [])
 
+    def test_finalize_bulk_history_action_recompacts_coalesced_entry_to_net_field_change(self):
+        fake_app = SimpleNamespace(
+            bulk_undo_stack=[
+                {
+                    "label": "edit:vendor",
+                    "before": {"filtered_items_row_patches": [("0", [("vendor", True, "")])]},
+                    "after": {"filtered_items_row_patches": [("0", [("vendor", True, "MOTION")])]},
+                    "_coalesce_key": ("kind", "sheet_edit"),
+                }
+            ],
+            bulk_redo_stack=[{"label": "redo"}],
+            _capture_bulk_history_state=lambda: {
+                "filtered_items_rows": [("0", {"vendor": "SOURCE"})],
+            },
+        )
+
+        changed = session_state_flow.finalize_bulk_history_action(
+            fake_app,
+            "edit:vendor",
+            {"filtered_items_rows": [("0", {"vendor": "MOTION"})]},
+            max_bulk_history=5,
+            coalesce_key=("kind", "sheet_edit"),
+        )
+
+        self.assertTrue(changed)
+        self.assertEqual(len(fake_app.bulk_undo_stack), 1)
+        self.assertEqual(
+            fake_app.bulk_undo_stack[0]["before"],
+            {"filtered_items_row_patches": [("0", [("vendor", True, "")])]},
+        )
+        self.assertEqual(
+            fake_app.bulk_undo_stack[0]["after"],
+            {"filtered_items_row_patches": [("0", [("vendor", True, "SOURCE")])]},
+        )
+        self.assertEqual(fake_app.bulk_redo_stack, [])
+
+    def test_finalize_bulk_history_action_drops_coalesced_entry_when_net_state_returns_to_start(self):
+        fake_app = SimpleNamespace(
+            bulk_undo_stack=[
+                {
+                    "label": "edit:vendor",
+                    "before": {"filtered_items_row_patches": [("0", [("vendor", True, "")])]},
+                    "after": {"filtered_items_row_patches": [("0", [("vendor", True, "MOTION")])]},
+                    "_coalesce_key": ("kind", "sheet_edit"),
+                }
+            ],
+            bulk_redo_stack=[{"label": "redo"}],
+            _capture_bulk_history_state=lambda: {
+                "filtered_items_rows": [("0", {"vendor": ""})],
+            },
+        )
+
+        changed = session_state_flow.finalize_bulk_history_action(
+            fake_app,
+            "edit:vendor",
+            {"filtered_items_rows": [("0", {"vendor": "MOTION"})]},
+            max_bulk_history=5,
+            coalesce_key=("kind", "sheet_edit"),
+        )
+
+        self.assertTrue(changed)
+        self.assertEqual(fake_app.bulk_undo_stack, [])
+        self.assertEqual(fake_app.bulk_redo_stack, [])
+
     def test_finalize_bulk_history_action_stores_capture_spec_on_new_entry(self):
         fake_app = SimpleNamespace(
             bulk_undo_stack=[],

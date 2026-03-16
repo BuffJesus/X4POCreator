@@ -150,8 +150,13 @@ def _merge_bulk_history_entry(app, label, before_state, after_state, coalesce_ke
         return False
     if previous.get("after") != before_state:
         return False
+    merged_before, merged_after = compact_bulk_history_state_pair(previous.get("before", {}), after_state)
+    if merged_after == merged_before:
+        undo_stack.pop()
+        return True
     previous["label"] = label
-    previous["after"] = after_state
+    previous["before"] = merged_before
+    previous["after"] = merged_after
     return True
 
 
