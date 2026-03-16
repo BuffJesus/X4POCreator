@@ -286,63 +286,94 @@ def restore_bulk_history_state(app, state, *, capture_spec=None):
     row_scoped_restore = "filtered_items_rows" in state or "filtered_items_row_patches" in state
     touched_row_ids = []
     vendor_codes_changed = False
+    any_state_changed = False
     if "filtered_items_rows" in state:
-        for row_id, restored_item in state.get("filtered_items_rows", []):
-            _idx, current_item = ui_bulk.resolve_bulk_row_id(app, row_id)
-            if current_item is None:
-                continue
-            before_summary_item = ui_bulk.bulk_filter_bucket_snapshot(current_item)
-            sanitized_item = _sanitize_bulk_history_item(restored_item)
-            current_item.clear()
-            current_item.update(sanitized_item)
-            ui_bulk.adjust_bulk_summary_for_item_change(
-                app,
-                before_summary_item,
-                ui_bulk.bulk_filter_bucket_snapshot(current_item),
-                item=current_item,
-            )
-            touched_row_ids.append(str(row_id))
-        ui_bulk.invalidate_bulk_row_render_entries(app, touched_row_ids)
+        touched_row_ids = _restore_bulk_history_rows_in_place(
+            app,
+            state.get("filtered_items_rows", []),
+        )
+        any_state_changed = any_state_changed or bool(touched_row_ids)
+        if touched_row_ids:
+            ui_bulk.invalidate_bulk_row_render_entries(app, touched_row_ids)
     elif "filtered_items_row_patches" in state:
         touched_row_ids = _restore_bulk_history_row_patches_in_place(
             app,
             state.get("filtered_items_row_patches", []),
         )
-        ui_bulk.invalidate_bulk_row_render_entries(app, touched_row_ids)
+        any_state_changed = any_state_changed or bool(touched_row_ids)
+        if touched_row_ids:
+            ui_bulk.invalidate_bulk_row_render_entries(app, touched_row_ids)
     elif "filtered_items" in state:
-        ui_bulk.replace_filtered_items(app, _copy_bulk_history_items(state.get("filtered_items", [])))
+        restored_items = _copy_bulk_history_items(state.get("filtered_items", []))
+        if list(getattr(app, "filtered_items", [])) != restored_items:
+            ui_bulk.replace_filtered_items(app, restored_items)
+            any_state_changed = True
     if "inventory_lookup" in state:
-        app.inventory_lookup = copy.deepcopy(state.get("inventory_lookup", {}))
+        restored_inventory = copy.deepcopy(state.get("inventory_lookup", {}))
+        if app.inventory_lookup != restored_inventory:
+            app.inventory_lookup = restored_inventory
+            any_state_changed = True
     else:
         if "inventory_lookup_entries" in state:
-            _restore_bulk_history_mapping_entries_in_place(app.inventory_lookup, state.get("inventory_lookup_entries", []))
+            any_state_changed = _restore_bulk_history_mapping_entries_in_place(
+                app.inventory_lookup,
+                state.get("inventory_lookup_entries", []),
+            ) or any_state_changed
         if "inventory_lookup_entry_patches" in state:
-            _restore_bulk_history_mapping_patches_in_place(app.inventory_lookup, state.get("inventory_lookup_entry_patches", []))
+            any_state_changed = _restore_bulk_history_mapping_patches_in_place(
+                app.inventory_lookup,
+                state.get("inventory_lookup_entry_patches", []),
+            ) or any_state_changed
     if "qoh_adjustments" in state:
-        app.qoh_adjustments = copy.deepcopy(state.get("qoh_adjustments", {}))
+        restored_adjustments = copy.deepcopy(state.get("qoh_adjustments", {}))
+        if app.qoh_adjustments != restored_adjustments:
+            app.qoh_adjustments = restored_adjustments
+            any_state_changed = True
     else:
         if "qoh_adjustments_entries" in state:
-            _restore_bulk_history_mapping_entries_in_place(app.qoh_adjustments, state.get("qoh_adjustments_entries", []))
+            any_state_changed = _restore_bulk_history_mapping_entries_in_place(
+                app.qoh_adjustments,
+                state.get("qoh_adjustments_entries", []),
+            ) or any_state_changed
         if "qoh_adjustments_entry_patches" in state:
-            _restore_bulk_history_mapping_patches_in_place(app.qoh_adjustments, state.get("qoh_adjustments_entry_patches", []))
+            any_state_changed = _restore_bulk_history_mapping_patches_in_place(
+                app.qoh_adjustments,
+                state.get("qoh_adjustments_entry_patches", []),
+            ) or any_state_changed
     if "order_rules" in state:
-        app.order_rules = copy.deepcopy(state.get("order_rules", {}))
+        restored_rules = copy.deepcopy(state.get("order_rules", {}))
+        if app.order_rules != restored_rules:
+            app.order_rules = restored_rules
+            any_state_changed = True
     else:
         if "order_rules_entries" in state:
-            _restore_bulk_history_mapping_entries_in_place(app.order_rules, state.get("order_rules_entries", []))
+            any_state_changed = _restore_bulk_history_mapping_entries_in_place(
+                app.order_rules,
+                state.get("order_rules_entries", []),
+            ) or any_state_changed
         if "order_rules_entry_patches" in state:
-            _restore_bulk_history_mapping_patches_in_place(app.order_rules, state.get("order_rules_entry_patches", []))
+            any_state_changed = _restore_bulk_history_mapping_patches_in_place(
+                app.order_rules,
+                state.get("order_rules_entry_patches", []),
+            ) or any_state_changed
     if "vendor_codes_used" in state:
         restored_vendor_codes = list(state.get("vendor_codes_used", []))
         vendor_codes_changed = list(getattr(app, "vendor_codes_used", [])) != restored_vendor_codes
-        app.vendor_codes_used = restored_vendor_codes
+        if vendor_codes_changed:
+            app.vendor_codes_used = restored_vendor_codes
     elif "vendor_codes_used_entries" in state:
         vendor_codes_changed = _restore_bulk_history_vendor_code_entries_in_place(
             app.vendor_codes_used,
             state.get("vendor_codes_used_entries", []),
         )
+    any_state_changed = any_state_changed or vendor_codes_changed
     if "last_removed_bulk_items" in state:
-        app.last_removed_bulk_items = list(state.get("last_removed_bulk_items", []))
+        restored_removed = list(state.get("last_removed_bulk_items", []))
+        if list(getattr(app, "last_removed_bulk_items", [])) != restored_removed:
+            app.last_removed_bulk_items = restored_removed
+            any_state_changed = True
+    if not any_state_changed:
+        return
     if vendor_codes_changed:
         app._refresh_vendor_inputs()
     if app.bulk_sheet:
@@ -685,7 +716,30 @@ def _restore_bulk_history_mapping_entries(current_mapping, entries):
     return restored
 
 
+def _restore_bulk_history_rows_in_place(app, rows):
+    touched_row_ids = []
+    for row_id, restored_item in rows:
+        _idx, current_item = ui_bulk.resolve_bulk_row_id(app, row_id)
+        if current_item is None:
+            continue
+        sanitized_item = _sanitize_bulk_history_item(restored_item)
+        if _sanitize_bulk_history_item(current_item) == sanitized_item:
+            continue
+        before_summary_item = ui_bulk.bulk_filter_bucket_snapshot(current_item)
+        current_item.clear()
+        current_item.update(sanitized_item)
+        ui_bulk.adjust_bulk_summary_for_item_change(
+            app,
+            before_summary_item,
+            ui_bulk.bulk_filter_bucket_snapshot(current_item),
+            item=current_item,
+        )
+        touched_row_ids.append(str(row_id))
+    return touched_row_ids
+
+
 def _restore_bulk_history_mapping_entries_in_place(current_mapping, entries):
+    changed = False
     for key, present, value in entries:
         current_present = key in current_mapping
         current_value = current_mapping.get(key)
@@ -693,26 +747,35 @@ def _restore_bulk_history_mapping_entries_in_place(current_mapping, entries):
             if current_present and current_value == value:
                 continue
             current_mapping[key] = copy.deepcopy(value)
+            changed = True
         elif current_present:
             current_mapping.pop(key, None)
-    return current_mapping
+            changed = True
+    return changed
 
 
 def _restore_bulk_history_mapping_patches_in_place(current_mapping, entry_patches):
+    changed = False
     for key, patch_entries in entry_patches:
         normalized_patch_entries = list(patch_entries or ())
         if not normalized_patch_entries:
             continue
+        had_key = key in current_mapping
         current_value = current_mapping.get(key)
         if not isinstance(current_value, dict):
             current_value = {}
             current_mapping[key] = current_value
-        changed = _apply_bulk_history_item_patch_in_place(current_value, normalized_patch_entries)
-        if not changed and key not in current_mapping:
+        entry_changed = _apply_bulk_history_item_patch_in_place(current_value, normalized_patch_entries)
+        if not entry_changed and not had_key and key not in current_mapping:
             continue
         if not current_value:
             current_mapping.pop(key, None)
-    return current_mapping
+            if had_key:
+                changed = True
+            continue
+        if entry_changed or not had_key:
+            changed = True
+    return changed
 
 
 def _restore_bulk_history_vendor_code_entries_in_place(current_vendor_codes, entries):

@@ -648,6 +648,42 @@ class SessionStateFlowTests(unittest.TestCase):
         self.assertEqual(fake_app.last_removed_bulk_items, [("keep", {"item_code": "OLD"})])
         self.assertEqual(events, ["summary", "status"])
 
+    def test_restore_bulk_history_state_returns_early_for_no_op_full_state(self):
+        events = []
+        filtered_items = [{"item_code": "ABC123"}]
+        inventory_lookup = {("AER-", "ABC123"): {"qoh": 4}}
+        fake_app = SimpleNamespace(
+            filtered_items=filtered_items,
+            inventory_lookup=inventory_lookup,
+            qoh_adjustments={("AER-", "ABC123"): {"new": 4}},
+            order_rules={"AER-:ABC123": {"pack_size": 6}},
+            vendor_codes_used=["MOTION"],
+            _loaded_order_rules={},
+            _loaded_vendor_codes=[],
+            last_removed_bulk_items=[{"item_code": "OLD"}],
+            bulk_sheet=SimpleNamespace(clear_selection=lambda: events.append("clear")),
+            _refresh_vendor_inputs=lambda: events.append("vendors"),
+            _apply_bulk_filter=lambda: events.append("bulk"),
+            _update_bulk_summary=lambda: events.append("summary"),
+            _update_bulk_cell_status=lambda: events.append("status"),
+        )
+
+        session_state_flow.restore_bulk_history_state(
+            fake_app,
+            {
+                "filtered_items": [{"item_code": "ABC123"}],
+                "inventory_lookup": {("AER-", "ABC123"): {"qoh": 4}},
+                "qoh_adjustments": {("AER-", "ABC123"): {"new": 4}},
+                "order_rules": {"AER-:ABC123": {"pack_size": 6}},
+                "vendor_codes_used": ["MOTION"],
+                "last_removed_bulk_items": [{"item_code": "OLD"}],
+            },
+        )
+
+        self.assertIs(fake_app.filtered_items, filtered_items)
+        self.assertIs(fake_app.inventory_lookup, inventory_lookup)
+        self.assertEqual(events, [])
+
     def test_restore_bulk_history_state_applies_row_scoped_filtered_item_snapshots(self):
         events = []
         item_a = {"line_code": "AER-", "item_code": "A", "vendor": ""}
@@ -686,6 +722,41 @@ class SessionStateFlowTests(unittest.TestCase):
         self.assertEqual(fake_app.filtered_items, [item_a, {"line_code": "MOT-", "item_code": "B", "vendor": "MOTION"}])
         self.assertEqual(list(fake_app._bulk_row_render_cache.keys()), [ui_bulk.bulk_row_id(item_a)])
         self.assertEqual(events, ["summary", "status"])
+
+    def test_restore_bulk_history_state_ignores_row_snapshots_with_no_effect(self):
+        events = []
+        item = {"line_code": "MOT-", "item_code": "B", "vendor": "SOURCE"}
+        fake_app = SimpleNamespace(
+            filtered_items=[item],
+            inventory_lookup={},
+            qoh_adjustments={},
+            order_rules={},
+            vendor_codes_used=[],
+            _loaded_order_rules={},
+            _loaded_vendor_codes=[],
+            last_removed_bulk_items=[],
+            _bulk_row_render_cache={
+                ui_bulk.bulk_row_id(item): (("sig-b",), ("row-b",)),
+            },
+            bulk_sheet=SimpleNamespace(clear_selection=lambda: events.append("clear")),
+            _refresh_vendor_inputs=lambda: events.append("vendors"),
+            _apply_bulk_filter=lambda: events.append("bulk"),
+            _update_bulk_summary=lambda: events.append("summary"),
+            _update_bulk_cell_status=lambda: events.append("status"),
+        )
+
+        session_state_flow.restore_bulk_history_state(
+            fake_app,
+            {
+                "filtered_items_rows": [
+                    (ui_bulk.bulk_row_id(item), {"line_code": "MOT-", "item_code": "B", "vendor": "SOURCE"})
+                ],
+            },
+        )
+
+        self.assertEqual(fake_app.filtered_items, [item])
+        self.assertEqual(list(fake_app._bulk_row_render_cache.keys()), [ui_bulk.bulk_row_id(item)])
+        self.assertEqual(events, [])
 
     def test_restore_bulk_history_state_applies_row_scoped_filtered_item_patches(self):
         events = []
@@ -844,7 +915,7 @@ class SessionStateFlowTests(unittest.TestCase):
         self.assertEqual(fake_app.filtered_items, [item])
         self.assertEqual(fake_app.inventory_lookup, {("MOT-", "B"): {"qoh": 9}})
         self.assertEqual(list(fake_app._bulk_row_render_cache.keys()), [ui_bulk.bulk_row_id(item)])
-        self.assertEqual(events, ["summary", "status"])
+        self.assertEqual(events, [])
 
     def test_restore_bulk_history_state_ignores_row_patches_with_no_effect(self):
         events = []
@@ -877,7 +948,7 @@ class SessionStateFlowTests(unittest.TestCase):
 
         self.assertEqual(fake_app.filtered_items, [item])
         self.assertEqual(list(fake_app._bulk_row_render_cache.keys()), [ui_bulk.bulk_row_id(item)])
-        self.assertEqual(events, ["summary", "status"])
+        self.assertEqual(events, [])
 
     def test_restore_bulk_history_state_recreates_missing_mapping_entry_from_patches(self):
         events = []
@@ -938,7 +1009,7 @@ class SessionStateFlowTests(unittest.TestCase):
 
         self.assertIs(fake_app.inventory_lookup, inventory_lookup)
         self.assertEqual(fake_app.inventory_lookup, {("MOT-", "B"): {"qoh": 2, "supplier": "SOURCE"}})
-        self.assertEqual(events, ["summary", "status"])
+        self.assertEqual(events, [])
 
     def test_restore_bulk_history_state_drops_mapping_entry_when_patch_removes_all_fields(self):
         events = []
