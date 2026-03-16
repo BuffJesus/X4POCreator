@@ -2,6 +2,7 @@ import csv
 import os
 import re
 from collections import defaultdict
+from statistics import median
 from datetime import datetime
 
 
@@ -398,6 +399,60 @@ def build_receipt_history_lookup(receipt_rows, *, parse_date=None):
                 entry["vendor_confidence_reason"] = "mixed_vendor_history"
             entry["vendor_ambiguous"] = vendor_count > 1 and entry["vendor_confidence"] != "high"
     return history
+
+
+def build_detailed_sales_stats_lookup(sales_rows, *, parse_date=None):
+    parse_date = parse_date or parse_x4_date
+    stats_lookup = {}
+    for row in sales_rows or []:
+        key = (row.get("line_code", ""), row.get("item_code", ""))
+        if not key[1]:
+            continue
+        qty_sold = max(0, _coerce_int(row.get("qty_sold", 0)))
+        sale_date_raw = str(row.get("sale_date", "") or "").strip()
+        sale_dt = parse_date(sale_date_raw) if sale_date_raw else None
+        entry = stats_lookup.setdefault(key, {
+            "transaction_count": 0,
+            "qty_sold_total": 0,
+            "sale_dates": [],
+            "quantities": [],
+            "first_sale_date": "",
+            "last_sale_date": "",
+            "annualized_qty_sold": None,
+        })
+        entry["transaction_count"] += 1
+        entry["qty_sold_total"] += qty_sold
+        entry["quantities"].append(qty_sold)
+        if sale_dt is not None:
+            iso_date = sale_dt.date().isoformat()
+            entry["sale_dates"].append(sale_dt.date())
+            if not entry["first_sale_date"] or iso_date < entry["first_sale_date"]:
+                entry["first_sale_date"] = iso_date
+            if iso_date > entry["last_sale_date"]:
+                entry["last_sale_date"] = iso_date
+
+    for entry in stats_lookup.values():
+        quantities = [max(0, int(qty)) for qty in entry.pop("quantities", [])]
+        unique_dates = sorted(set(entry.pop("sale_dates", [])))
+        entry["sale_day_count"] = len(unique_dates)
+        entry["avg_units_per_transaction"] = (
+            float(entry["qty_sold_total"]) / float(entry["transaction_count"])
+            if entry["transaction_count"] > 0 else None
+        )
+        entry["median_units_per_transaction"] = median(quantities) if quantities else None
+        entry["max_units_per_transaction"] = max(quantities) if quantities else None
+        if len(unique_dates) >= 2:
+            gaps = []
+            for idx in range(1, len(unique_dates)):
+                gap_days = (unique_dates[idx] - unique_dates[idx - 1]).days
+                if gap_days >= 0:
+                    gaps.append(gap_days)
+            entry["avg_days_between_sales"] = (
+                float(sum(gaps)) / float(len(gaps)) if gaps else None
+            )
+        else:
+            entry["avg_days_between_sales"] = None
+    return stats_lookup
 
 
 def parse_sales_date_range(filepath):

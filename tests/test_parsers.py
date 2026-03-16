@@ -178,6 +178,25 @@ class ParserSmokeTests(unittest.TestCase):
         self.assertEqual(history["vendor_confidence_reason"], "mixed_vendor_history")
         self.assertTrue(history["vendor_ambiguous"])
 
+    def test_build_detailed_sales_stats_lookup_captures_transaction_shape(self):
+        sales_rows = [
+            {"line_code": "AER-", "item_code": "GH781-4", "qty_sold": 1, "sale_date": "01-Mar-2026"},
+            {"line_code": "AER-", "item_code": "GH781-4", "qty_sold": 3, "sale_date": "03-Mar-2026"},
+            {"line_code": "AER-", "item_code": "GH781-4", "qty_sold": 5, "sale_date": "07-Mar-2026"},
+        ]
+
+        stats = parsers.build_detailed_sales_stats_lookup(sales_rows)[("AER-", "GH781-4")]
+
+        self.assertEqual(stats["transaction_count"], 3)
+        self.assertEqual(stats["qty_sold_total"], 9)
+        self.assertEqual(stats["sale_day_count"], 3)
+        self.assertEqual(stats["first_sale_date"], "2026-03-01")
+        self.assertEqual(stats["last_sale_date"], "2026-03-07")
+        self.assertEqual(stats["avg_units_per_transaction"], 3.0)
+        self.assertEqual(stats["median_units_per_transaction"], 3)
+        self.assertEqual(stats["max_units_per_transaction"], 5)
+        self.assertEqual(stats["avg_days_between_sales"], 3.0)
+
     def test_build_pack_size_fallbacks_detects_conflicts(self):
         lookup = {
             ("AER-", "GH781-4"): 500,

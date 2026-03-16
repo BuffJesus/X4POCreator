@@ -708,6 +708,45 @@ class BulkDialogTests(unittest.TestCase):
         self.assertEqual(row_lookup["Receipt Confidence"], "high")
         self.assertEqual(row_lookup["Receipt Vendor Candidates"], "MOTION, SOURCE")
 
+    def test_item_details_rows_show_detailed_sales_transaction_shape(self):
+        app = SimpleNamespace(
+            on_po_qty={("AER-", "GH781-4"): 0},
+            recent_orders={},
+            duplicate_ic_lookup={},
+            _suggest_min_max=lambda key: (None, None),
+        )
+        item = {
+            "line_code": "AER-",
+            "item_code": "GH781-4",
+            "qty_sold": 1,
+            "qty_suspended": 0,
+            "qty_received": 5,
+            "qty_on_po": 0,
+            "raw_need": 1,
+            "suggested_qty": 2,
+            "final_qty": 2,
+            "order_policy": "soft_pack",
+            "status": "ok",
+            "data_flags": [],
+            "transaction_count": 7,
+            "sale_day_count": 5,
+            "avg_units_per_transaction": 2.5,
+            "median_units_per_transaction": 2,
+            "max_units_per_transaction": 6,
+            "avg_days_between_sales": 4.5,
+        }
+        inv = {"qoh": 0, "min": 0, "max": 1}
+
+        rows = ui_bulk_dialogs.item_details_rows(app, item, inv, ("AER-", "GH781-4"))
+        row_lookup = dict(row for row in rows if row[0])
+
+        self.assertEqual(row_lookup["Txn Count"], "7")
+        self.assertEqual(row_lookup["Sale Days"], "5")
+        self.assertEqual(row_lookup["Avg Units / Txn"], "2.50")
+        self.assertEqual(row_lookup["Median Units / Txn"], "2.00")
+        self.assertEqual(row_lookup["Max Units / Txn"], "6.00")
+        self.assertEqual(row_lookup["Avg Days Between Sales"], "4.50")
+
     def test_finish_bulk_final_carries_recency_fields_into_review_items(self):
         events = []
         app = SimpleNamespace(

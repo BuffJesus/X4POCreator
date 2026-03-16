@@ -86,6 +86,7 @@ class LoadFlowTests(unittest.TestCase):
             "open_po_lookup": {("AER-", "GH781-4"): [{"qty": 2}]},
             "inventory_lookup": {("AER-", "GH781-4"): {"qoh": 5}},
             "receipt_history_lookup": {("AER-", "GH781-4"): {"primary_vendor": "MOTION"}},
+            "detailed_sales_stats_lookup": {("AER-", "GH781-4"): {"transaction_count": 3}},
             "pack_size_lookup": {("AER-", "GH781-4"): 6},
             "startup_warning_rows": [{"warning_type": "Example"}],
         }
@@ -100,6 +101,7 @@ class LoadFlowTests(unittest.TestCase):
         self.assertEqual(session.sales_window_end, "2026-03-03")
         self.assertEqual(session.inventory_source_lookup, result["inventory_lookup"])
         self.assertEqual(session.receipt_history_lookup, result["receipt_history_lookup"])
+        self.assertEqual(session.detailed_sales_stats_lookup, result["detailed_sales_stats_lookup"])
         self.assertEqual(session.pack_size_by_item, {"GH781-4": 6})
         self.assertEqual(session.pack_size_conflicts, {"DUP-1"})
 
@@ -133,6 +135,9 @@ class LoadFlowTests(unittest.TestCase):
         ), patch(
             "load_flow.parsers.build_receipt_history_lookup",
             return_value={("AER-", "GH781-4"): {"primary_vendor": "MOTION"}},
+        ), patch(
+            "load_flow.parsers.build_detailed_sales_stats_lookup",
+            return_value={("AER-", "GH781-4"): {"transaction_count": 2, "qty_sold_total": 4}},
         ):
             result = load_flow.parse_all_files(
                 {
@@ -155,6 +160,9 @@ class LoadFlowTests(unittest.TestCase):
         self.assertEqual(result["sales_window_start"], "2026-03-01")
         self.assertEqual(result["sales_window_end"], "2026-03-10")
         self.assertEqual(result["receipt_history_lookup"][("AER-", "GH781-4")]["primary_vendor"], "MOTION")
+        self.assertEqual(result["detailed_sales_stats_lookup"][("AER-", "GH781-4")]["transaction_count"], 2)
+        self.assertAlmostEqual(result["detailed_sales_stats_lookup"][("AER-", "GH781-4")]["annualized_qty_sold"], 146.1, places=3)
+        self.assertEqual(result["sales_items"][0]["transaction_count"], 2)
 
     def test_parse_all_files_old_po_warning_includes_po_reference(self):
         with patch("load_flow.parsers.parse_part_sales_csv", return_value=[{

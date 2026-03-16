@@ -19,12 +19,15 @@ def get_cycle_weeks(app):
 
 def suggest_min_max(app, key, min_annual_sales_for_suggestions):
     inv = app.inventory_lookup.get(key, {})
-    mo12 = inv.get("mo12_sales", 0)
-    if not mo12 or mo12 <= 0:
+    annual_sales = inv.get("mo12_sales", 0)
+    if not annual_sales or annual_sales <= 0:
+        stats = (getattr(app, "detailed_sales_stats_lookup", {}) or {}).get(key, {})
+        annual_sales = stats.get("annualized_qty_sold", 0) or 0
+    if not annual_sales or annual_sales <= 0:
         return None, None
-    if mo12 < min_annual_sales_for_suggestions:
+    if annual_sales < min_annual_sales_for_suggestions:
         return None, None
-    weekly = mo12 / 52
+    weekly = annual_sales / 52
     weeks = app._get_cycle_weeks()
     sug_min = max(1, math.ceil(weekly * weeks))
     sug_max = max(sug_min + 1, math.ceil(weekly * weeks * 2))

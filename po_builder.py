@@ -345,6 +345,7 @@ class POBuilderApp:
     inventory_lookup = _session_field("inventory_lookup")
     inventory_source_lookup = _session_field("inventory_source_lookup")
     receipt_history_lookup = _session_field("receipt_history_lookup")
+    detailed_sales_stats_lookup = _session_field("detailed_sales_stats_lookup")
     pack_size_lookup = _session_field("pack_size_lookup")
     pack_size_source_lookup = _session_field("pack_size_source_lookup")
     pack_size_by_item = _session_field("pack_size_by_item")

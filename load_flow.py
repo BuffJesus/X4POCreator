@@ -17,6 +17,7 @@ def _parse_sales_inputs(paths):
             "sales_items": parsers.parse_part_sales_csv(sales_path),
             "sales_window": parsers.parse_sales_date_range(sales_path),
             "receipt_history_lookup": {},
+            "detailed_sales_stats_lookup": {},
         }
 
     if detailed_sales_path and received_parts_path:
@@ -26,12 +27,14 @@ def _parse_sales_inputs(paths):
             "sales_items": parsers.build_sales_receipt_summary(detailed_sales_rows, received_rows),
             "sales_window": parsers.parse_detailed_sales_date_range(detailed_sales_rows),
             "receipt_history_lookup": parsers.build_receipt_history_lookup(received_rows),
+            "detailed_sales_stats_lookup": parsers.build_detailed_sales_stats_lookup(detailed_sales_rows),
         }
 
     return {
         "sales_items": [],
         "sales_window": (None, None),
         "receipt_history_lookup": {},
+        "detailed_sales_stats_lookup": {},
     }
 
 
@@ -44,6 +47,7 @@ def parse_all_files(paths, *, old_po_warning_days, short_sales_window_days, now=
     sales_inputs = _parse_sales_inputs(paths)
     result["sales_items"] = sales_inputs["sales_items"]
     result["receipt_history_lookup"] = sales_inputs.get("receipt_history_lookup", {})
+    result["detailed_sales_stats_lookup"] = sales_inputs.get("detailed_sales_stats_lookup", {})
     if not result["sales_items"]:
         return result
 
@@ -57,6 +61,9 @@ def parse_all_files(paths, *, old_po_warning_days, short_sales_window_days, now=
         result["sales_span_days"] = span_days
         result["sales_window_start"] = sales_start.date().isoformat()
         result["sales_window_end"] = sales_end.date().isoformat()
+        for entry in result["detailed_sales_stats_lookup"].values():
+            qty_total = float(entry.get("qty_sold_total", 0) or 0)
+            entry["annualized_qty_sold"] = (qty_total * 365.25) / float(span_days) if span_days > 0 else None
         if span_days < short_sales_window_days:
             warnings.append((
                 "Sales Window Warning",
@@ -214,6 +221,10 @@ def parse_all_files(paths, *, old_po_warning_days, short_sales_window_days, now=
         parse_date=parsers.parse_x4_date,
         now=now,
     )
+    for item in result["sales_items"]:
+        stats = result["detailed_sales_stats_lookup"].get((item.get("line_code", ""), item.get("item_code", "")), {})
+        if stats:
+            item.update(stats)
     performance_flow.annotate_items(
         result["sales_items"],
         inventory_lookup=inventory_lookup,
@@ -302,6 +313,7 @@ def apply_load_result(session, result, *, parsers_module=parsers):
     session.inventory_lookup = result.get("inventory_lookup", {})
     session.inventory_source_lookup = copy.deepcopy(session.inventory_lookup)
     session.receipt_history_lookup = result.get("receipt_history_lookup", {})
+    session.detailed_sales_stats_lookup = result.get("detailed_sales_stats_lookup", {})
     session.pack_size_lookup = result.get("pack_size_lookup", {})
     session.pack_size_source_lookup = copy.deepcopy(session.pack_size_lookup)
     session.startup_warning_rows = result.get("startup_warning_rows", [])
