@@ -67,11 +67,28 @@ RECENCY_FILTER_LABELS = {
 }
 
 
+SUGGESTION_FILTER_LABELS = {
+    "detailed_only": "Detailed Only",
+    "detailed_higher": "Detailed Higher",
+    "detailed_lower": "Detailed Lower",
+    "different": "Different",
+    "aligned": "Aligned",
+    "no_detailed": "No Detailed",
+}
+
+
 def recency_filter_label(item):
     bucket = item.get("recency_review_bucket")
     if not bucket:
         return "None"
     return RECENCY_FILTER_LABELS.get(bucket, recency_review_bucket_label(bucket) or str(bucket))
+
+
+def suggestion_filter_label(item):
+    code = str(item.get("detailed_suggestion_compare", "") or "").strip().lower()
+    if not code:
+        return "None"
+    return SUGGESTION_FILTER_LABELS.get(code, str(item.get("detailed_suggestion_compare_label", "") or code))
 
 
 def build_vendor_release_plan_rows(app):
@@ -177,6 +194,8 @@ def apply_release_plan_view(app, vendor, *, focus="Exceptions Only", release="AL
         app.var_review_attention_filter.set("ALL")
     if hasattr(app, "var_review_recency_filter"):
         app.var_review_recency_filter.set("ALL")
+    if hasattr(app, "var_review_suggestion_filter"):
+        app.var_review_suggestion_filter.set("ALL")
     if hasattr(app, "var_review_release_filter"):
         app.var_review_release_filter.set(release)
     if hasattr(app, "var_review_focus_filter"):
@@ -563,6 +582,18 @@ def build_review_tab(app):
     app.combo_review_recency.pack(side=tk.LEFT)
     app.combo_review_recency.bind("<<ComboboxSelected>>", lambda e: app._apply_review_filter())
 
+    ttk.Label(filter_frame, text="Suggestions:").pack(side=tk.LEFT, padx=(12, 6))
+    app.var_review_suggestion_filter = tk.StringVar(value="ALL")
+    app.combo_review_suggestion = ttk.Combobox(
+        filter_frame,
+        textvariable=app.var_review_suggestion_filter,
+        state="readonly",
+        width=16,
+        values=["ALL"] + list(SUGGESTION_FILTER_LABELS.values()),
+    )
+    app.combo_review_suggestion.pack(side=tk.LEFT)
+    app.combo_review_suggestion.bind("<<ComboboxSelected>>", lambda e: app._apply_review_filter())
+
     ttk.Label(filter_frame, text="Release:").pack(side=tk.LEFT, padx=(12, 6))
     app.var_review_release_filter = tk.StringVar(value="ALL")
     app.combo_review_release = ttk.Combobox(
@@ -698,6 +729,7 @@ def populate_review_tab(app):
     app.var_review_performance_filter.set("ALL")
     app.var_review_attention_filter.set("ALL")
     app.var_review_recency_filter.set("ALL")
+    app.var_review_suggestion_filter.set("ALL")
     app.var_review_release_filter.set("ALL")
     focus = "Exceptions Only"
     get_focus = getattr(app, "_get_review_export_focus", None)
@@ -719,6 +751,7 @@ def update_review_summary(app):
     ambiguous_receipt_vendor_count = 0
     lumpy_demand_count = 0
     suggestion_gap_count = 0
+    suggestion_gap_breakdown = {}
     for item in app.assigned_items:
         bucket = item.get("recency_review_bucket")
         if bucket:
@@ -729,6 +762,9 @@ def update_review_summary(app):
             lumpy_demand_count += 1
         if has_suggestion_gap(item):
             suggestion_gap_count += 1
+            code = str(item.get("detailed_suggestion_compare", "") or "").strip().lower()
+            if code:
+                suggestion_gap_breakdown[code] = suggestion_gap_breakdown.get(code, 0) + 1
     exportable_count = immediate_count + planned_count
     hold_summary = f" | Exportable now: {exportable_count} | Immediate: {immediate_count} | Exceptions: {exception_count}"
     if planned_count:
@@ -743,6 +779,13 @@ def update_review_summary(app):
         hold_summary += f" | Lumpy demand: {lumpy_demand_count}"
     if suggestion_gap_count:
         hold_summary += f" | Suggestion gaps: {suggestion_gap_count}"
+        gap_parts = []
+        for code in ("detailed_only", "detailed_higher", "detailed_lower", "different"):
+            count = suggestion_gap_breakdown.get(code)
+            if count:
+                gap_parts.append(f"{count} {SUGGESTION_FILTER_LABELS.get(code, code).lower()}")
+        if gap_parts:
+            hold_summary += f" ({', '.join(gap_parts)})"
     if low_recency_counts:
         parts = []
         for bucket in (
@@ -774,6 +817,8 @@ def apply_review_filter(app):
     performance_filter = app.var_review_performance_filter.get()
     attention_filter = app.var_review_attention_filter.get()
     recency_filter = app.var_review_recency_filter.get()
+    suggestion_filter_var = getattr(app, "var_review_suggestion_filter", None)
+    suggestion_filter = suggestion_filter_var.get() if suggestion_filter_var and hasattr(suggestion_filter_var, "get") else "ALL"
     release_filter = app.var_review_release_filter.get()
     focus_filter = app.var_review_focus_filter.get()
     for item_id in app.tree.get_children():
@@ -803,6 +848,8 @@ def apply_review_filter(app):
             if attention != expected_attention:
                 continue
         if recency_filter != "ALL" and recency_filter_label(item) != recency_filter:
+            continue
+        if suggestion_filter != "ALL" and suggestion_filter_label(item) != suggestion_filter:
             continue
         if release_filter != "ALL":
             if release_filter == "Critical Held":
