@@ -163,6 +163,10 @@ def _merge_bulk_history_entry(app, label, before_state, after_state, coalesce_ke
 def _prune_unchanged_bulk_history_state(before_state, after_state):
     normalized_before = copy.deepcopy(before_state)
     normalized_after = copy.deepcopy(after_state)
+    normalized_before, normalized_after = _normalize_bulk_history_state_pair_shapes(
+        normalized_before,
+        normalized_after,
+    )
     normalized_before, normalized_after = _prune_unchanged_bulk_history_entries(
         normalized_before,
         normalized_after,
@@ -445,6 +449,95 @@ def _prune_unchanged_bulk_history_entries(before_state, after_state, key):
     return before_state, after_state
 
 
+def _normalize_bulk_history_state_pair_shapes(before_state, after_state):
+    before_state, after_state = _normalize_bulk_history_item_pair_shapes(
+        before_state,
+        after_state,
+        "filtered_items_rows",
+        "filtered_items_row_patches",
+    )
+    before_state, after_state = _normalize_bulk_history_mapping_pair_shapes(
+        before_state,
+        after_state,
+        "inventory_lookup_entries",
+        "inventory_lookup_entry_patches",
+    )
+    before_state, after_state = _normalize_bulk_history_mapping_pair_shapes(
+        before_state,
+        after_state,
+        "qoh_adjustments_entries",
+        "qoh_adjustments_entry_patches",
+    )
+    before_state, after_state = _normalize_bulk_history_mapping_pair_shapes(
+        before_state,
+        after_state,
+        "order_rules_entries",
+        "order_rules_entry_patches",
+    )
+    return before_state, after_state
+
+
+def _normalize_bulk_history_item_pair_shapes(before_state, after_state, rows_key, patches_key):
+    before_rows = before_state.get(rows_key)
+    after_rows = after_state.get(rows_key)
+    before_patches = before_state.get(patches_key)
+    after_patches = after_state.get(patches_key)
+    if before_rows is not None and after_rows is None and after_patches is not None:
+        inflated = _inflate_bulk_history_item_rows(before_rows, after_patches)
+        if inflated is not None:
+            after_state[rows_key] = inflated
+            after_state.pop(patches_key, None)
+    elif after_rows is not None and before_rows is None and before_patches is not None:
+        inflated = _inflate_bulk_history_item_rows(after_rows, before_patches)
+        if inflated is not None:
+            before_state[rows_key] = inflated
+            before_state.pop(patches_key, None)
+    return before_state, after_state
+
+
+def _normalize_bulk_history_mapping_pair_shapes(before_state, after_state, entries_key, patches_key):
+    before_entries = before_state.get(entries_key)
+    after_entries = after_state.get(entries_key)
+    before_patches = before_state.get(patches_key)
+    after_patches = after_state.get(patches_key)
+    if before_entries is not None and after_entries is None and after_patches is not None:
+        inflated = _inflate_bulk_history_mapping_entries(before_entries, after_patches)
+        if inflated is not None:
+            after_state[entries_key] = inflated
+            after_state.pop(patches_key, None)
+    elif after_entries is not None and before_entries is None and before_patches is not None:
+        inflated = _inflate_bulk_history_mapping_entries(after_entries, before_patches)
+        if inflated is not None:
+            before_state[entries_key] = inflated
+            before_state.pop(patches_key, None)
+    return before_state, after_state
+
+
+def _inflate_bulk_history_item_rows(base_rows, patch_rows):
+    base_by_id = {row_id: item for row_id, item in list(base_rows or [])}
+    patch_by_id = {row_id: patch_entries for row_id, patch_entries in list(patch_rows or [])}
+    if tuple(base_by_id.keys()) != tuple(patch_by_id.keys()):
+        return None
+    inflated = []
+    for row_id, item in list(base_rows or []):
+        inflated.append((row_id, _apply_bulk_history_item_patch(item, patch_by_id.get(row_id, ()))))
+    return inflated
+
+
+def _inflate_bulk_history_mapping_entries(base_entries, patch_entries):
+    base_by_id = {entry_id: (present, value) for entry_id, present, value in list(base_entries or [])}
+    patch_by_id = {entry_id: patch for entry_id, patch in list(patch_entries or [])}
+    if tuple(base_by_id.keys()) != tuple(patch_by_id.keys()):
+        return None
+    inflated = []
+    for entry_id, present, value in list(base_entries or []):
+        patch = patch_by_id.get(entry_id, ())
+        if not present or not isinstance(value, dict):
+            return None
+        inflated.append((entry_id, True, _apply_bulk_history_item_patch(value, patch)))
+    return inflated
+
+
 def _compact_bulk_history_mapping_entry_patches(before_state, after_state, entry_key, patch_key):
     if entry_key not in before_state or entry_key not in after_state:
         return before_state, after_state
@@ -532,6 +625,16 @@ def _build_bulk_history_item_patch_pair(before_item, after_item):
         before_patch.append((key, before_present, copy.deepcopy(before_value) if before_present else None))
         after_patch.append((key, after_present, copy.deepcopy(after_value) if after_present else None))
     return before_patch, after_patch
+
+
+def _apply_bulk_history_item_patch(item, patch_entries):
+    updated = copy.deepcopy(item)
+    for field_name, present, value in list(patch_entries or []):
+        if present:
+            updated[field_name] = copy.deepcopy(value)
+        else:
+            updated.pop(field_name, None)
+    return updated
 
 
 def _restore_bulk_history_mapping_entries(current_mapping, entries):

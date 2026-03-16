@@ -130,6 +130,36 @@ class SessionStateFlowTests(unittest.TestCase):
         self.assertEqual(fake_app.bulk_undo_stack, [])
         self.assertEqual(fake_app.bulk_redo_stack, [])
 
+    def test_compact_bulk_history_state_pair_normalizes_full_rows_and_row_patches(self):
+        before_state, after_state = session_state_flow.compact_bulk_history_state_pair(
+            {"filtered_items_rows": [("0", {"vendor": "", "why": "keep"})]},
+            {"filtered_items_row_patches": [("0", [("vendor", True, "MOTION")])]},
+        )
+
+        self.assertEqual(
+            before_state,
+            {"filtered_items_row_patches": [("0", [("vendor", True, "")])]},
+        )
+        self.assertEqual(
+            after_state,
+            {"filtered_items_row_patches": [("0", [("vendor", True, "MOTION")])]},
+        )
+
+    def test_compact_bulk_history_state_pair_normalizes_full_mapping_entries_and_entry_patches(self):
+        before_state, after_state = session_state_flow.compact_bulk_history_state_pair(
+            {"inventory_lookup_entries": [(("AER-", "A"), True, {"qoh": 5, "supplier": "SOURCE"})]},
+            {"inventory_lookup_entry_patches": [(("AER-", "A"), [("qoh", True, 7)])]},
+        )
+
+        self.assertEqual(
+            before_state,
+            {"inventory_lookup_entry_patches": [(("AER-", "A"), [("qoh", True, 5)])]},
+        )
+        self.assertEqual(
+            after_state,
+            {"inventory_lookup_entry_patches": [(("AER-", "A"), [("qoh", True, 7)])]},
+        )
+
     def test_finalize_bulk_history_action_stores_capture_spec_on_new_entry(self):
         fake_app = SimpleNamespace(
             bulk_undo_stack=[],
