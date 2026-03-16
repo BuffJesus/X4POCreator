@@ -1,6 +1,7 @@
 import math
 
 import item_workflow
+import performance_flow
 import storage
 
 
@@ -17,20 +18,46 @@ def get_cycle_weeks(app):
     return {"Weekly": 1, "Biweekly": 2, "Monthly": 4}.get(cycle, 2)
 
 
+def base_suggest_min_max_from_annual_sales(annual_sales, cycle_weeks):
+    weekly = annual_sales / 52
+    sug_min = max(1, math.ceil(weekly * cycle_weeks))
+    sug_max = max(sug_min + 1, math.ceil(weekly * cycle_weeks * 2))
+    return sug_min, sug_max
+
+
+def tune_detailed_sales_fallback_suggestion(stats, sug_min, sug_max):
+    shape = performance_flow.classify_detailed_sales_shape(stats).get("detailed_sales_shape", "")
+    if shape in ("sparse_transactions", "lumpy_bulk"):
+        return None, None
+
+    if shape == "steady_repeat":
+        txn_floor = max(
+            int(math.ceil(float(stats.get("avg_units_per_transaction", 0) or 0))),
+            int(math.ceil(float(stats.get("median_units_per_transaction", 0) or 0))),
+        )
+        if txn_floor > 0:
+            sug_min = max(sug_min, txn_floor)
+            sug_max = max(sug_max, sug_min + txn_floor)
+    return sug_min, sug_max
+
+
 def suggest_min_max(app, key, min_annual_sales_for_suggestions):
     inv = app.inventory_lookup.get(key, {})
     annual_sales = inv.get("mo12_sales", 0)
+    use_detailed_fallback = False
+    stats = {}
     if not annual_sales or annual_sales <= 0:
         stats = (getattr(app, "detailed_sales_stats_lookup", {}) or {}).get(key, {})
         annual_sales = stats.get("annualized_qty_sold", 0) or 0
+        use_detailed_fallback = bool(annual_sales and annual_sales > 0)
     if not annual_sales or annual_sales <= 0:
         return None, None
     if annual_sales < min_annual_sales_for_suggestions:
         return None, None
-    weekly = annual_sales / 52
     weeks = app._get_cycle_weeks()
-    sug_min = max(1, math.ceil(weekly * weeks))
-    sug_max = max(sug_min + 1, math.ceil(weekly * weeks * 2))
+    sug_min, sug_max = base_suggest_min_max_from_annual_sales(annual_sales, weeks)
+    if use_detailed_fallback:
+        sug_min, sug_max = tune_detailed_sales_fallback_suggestion(stats, sug_min, sug_max)
     return sug_min, sug_max
 
 

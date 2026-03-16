@@ -289,6 +289,25 @@ class POBuilderTests(unittest.TestCase):
 
         self.assertEqual(result, (1, 2))
 
+    def test_suggest_min_max_suppresses_sparse_detailed_sales_fallback_through_app_wrapper(self):
+        fake_app = SimpleNamespace(
+            inventory_lookup={("AER-", "GH781-4"): {"mo12_sales": 0}},
+            detailed_sales_stats_lookup={("AER-", "GH781-4"): {
+                "annualized_qty_sold": 104,
+                "transaction_count": 2,
+                "sale_day_count": 2,
+                "avg_units_per_transaction": 52.0,
+                "median_units_per_transaction": 52.0,
+                "max_units_per_transaction": 52.0,
+                "avg_days_between_sales": 45.0,
+            }},
+            _get_cycle_weeks=lambda: 2,
+        )
+
+        result = po_builder.POBuilderApp._suggest_min_max(fake_app, ("AER-", "GH781-4"))
+
+        self.assertEqual(result, (None, None))
+
     def test_proceed_to_assign_surfaces_assignment_errors_and_hides_loading(self):
         events = []
         fake_app = SimpleNamespace(

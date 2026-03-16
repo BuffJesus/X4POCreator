@@ -85,6 +85,63 @@ class ReorderFlowTests(unittest.TestCase):
 
         self.assertEqual(result, (2, 4))
 
+    def test_suggest_min_max_suppresses_sparse_detailed_sales_fallback(self):
+        fake_app = SimpleNamespace(
+            inventory_lookup={("AER-", "GH781-4"): {"mo12_sales": 0}},
+            detailed_sales_stats_lookup={("AER-", "GH781-4"): {
+                "annualized_qty_sold": 104,
+                "transaction_count": 2,
+                "sale_day_count": 2,
+                "avg_units_per_transaction": 52.0,
+                "median_units_per_transaction": 52.0,
+                "max_units_per_transaction": 52.0,
+                "avg_days_between_sales": 45.0,
+            }},
+            _get_cycle_weeks=lambda: 2,
+        )
+
+        result = reorder_flow.suggest_min_max(fake_app, ("AER-", "GH781-4"), min_annual_sales_for_suggestions=12)
+
+        self.assertEqual(result, (None, None))
+
+    def test_suggest_min_max_suppresses_lumpy_detailed_sales_fallback(self):
+        fake_app = SimpleNamespace(
+            inventory_lookup={("AER-", "GH781-4"): {"mo12_sales": 0}},
+            detailed_sales_stats_lookup={("AER-", "GH781-4"): {
+                "annualized_qty_sold": 104,
+                "transaction_count": 4,
+                "sale_day_count": 4,
+                "avg_units_per_transaction": 6.0,
+                "median_units_per_transaction": 4.0,
+                "max_units_per_transaction": 18.0,
+                "avg_days_between_sales": 28.0,
+            }},
+            _get_cycle_weeks=lambda: 2,
+        )
+
+        result = reorder_flow.suggest_min_max(fake_app, ("AER-", "GH781-4"), min_annual_sales_for_suggestions=12)
+
+        self.assertEqual(result, (None, None))
+
+    def test_suggest_min_max_raises_steady_repeat_fallback_to_transaction_floor(self):
+        fake_app = SimpleNamespace(
+            inventory_lookup={("AER-", "GH781-4"): {"mo12_sales": 0}},
+            detailed_sales_stats_lookup={("AER-", "GH781-4"): {
+                "annualized_qty_sold": 26,
+                "transaction_count": 6,
+                "sale_day_count": 5,
+                "avg_units_per_transaction": 3.0,
+                "median_units_per_transaction": 3.0,
+                "max_units_per_transaction": 4.0,
+                "avg_days_between_sales": 7.0,
+            }},
+            _get_cycle_weeks=lambda: 2,
+        )
+
+        result = reorder_flow.suggest_min_max(fake_app, ("AER-", "GH781-4"), min_annual_sales_for_suggestions=12)
+
+        self.assertEqual(result, (3, 6))
+
     def test_refresh_recent_orders_uses_default_lookback_on_control_error(self):
         events = []
         fake_app = SimpleNamespace(
