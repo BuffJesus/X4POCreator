@@ -858,6 +858,8 @@ def item_details_rows(app, item, inv, key):
         ("Min / Max", f"{inv.get('min', '-')} / {inv.get('max', '-')}"),
         ("Sug Min / Max", "/".join(str(x) if x else "-" for x in app._suggest_min_max(key))),
         ("Supplier", inv.get("supplier", "-")),
+        ("Receipt Vendor", item.get("receipt_primary_vendor") or "-"),
+        ("Receipt Confidence", item.get("receipt_vendor_confidence") or "-"),
         ("Last Receipt", inv.get("last_receipt", "-")),
         ("Last Sale", inv.get("last_sale", "-")),
         ("Days Since Last Sale", str(item.get("days_since_last_sale", "-") if item.get("days_since_last_sale") is not None else "-")),
@@ -918,6 +920,9 @@ def item_details_rows(app, item, inv, key):
         total_recent = sum(row["qty"] for row in recent_list)
         entries = "; ".join(f"{row['qty']}x via {row['vendor']} ({row['date']})" for row in recent_list)
         details.append(("Recent Orders", f"{total_recent} total: {entries}"))
+    receipt_candidates = list(item.get("receipt_vendor_candidates", []) or [])
+    if receipt_candidates:
+        details.append(("Receipt Vendor Candidates", ", ".join(receipt_candidates[:5])))
 
     other_lcs = app.duplicate_ic_lookup.get(item["item_code"], set())
     others = sorted(lc for lc in other_lcs if lc != item["line_code"])
@@ -1134,6 +1139,14 @@ def finish_bulk_final(app):
             "recent_local_order_count": item.get("recent_local_order_count", 0),
             "recent_local_order_qty": item.get("recent_local_order_qty", 0),
             "recent_local_order_date": item.get("recent_local_order_date", ""),
+            "receipt_primary_vendor": item.get("receipt_primary_vendor", ""),
+            "receipt_most_recent_vendor": item.get("receipt_most_recent_vendor", ""),
+            "receipt_vendor_confidence": item.get("receipt_vendor_confidence", ""),
+            "receipt_vendor_confidence_reason": item.get("receipt_vendor_confidence_reason", ""),
+            "receipt_vendor_ambiguous": item.get("receipt_vendor_ambiguous", False),
+            "receipt_vendor_qty_share": item.get("receipt_vendor_qty_share"),
+            "receipt_vendor_receipt_share": item.get("receipt_vendor_receipt_share"),
+            "receipt_vendor_candidates": list(item.get("receipt_vendor_candidates", []) or []),
             "inventory_position": item.get("inventory_position", 0),
         }
         for item in app.filtered_items

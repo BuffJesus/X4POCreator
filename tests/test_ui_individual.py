@@ -106,13 +106,16 @@ class UIIndividualTests(unittest.TestCase):
                 "order_qty": 1,
                 "pack_size": 1,
                 "vendor": "",
+                "receipt_primary_vendor": "GREGDIST",
+                "receipt_vendor_confidence": "high",
             }],
             lbl_assign_progress=SimpleNamespace(config=lambda **kwargs: None),
             assign_progress={},
             assign_detail_vars={label: DummyVar() for label in (
                 "Line Code:", "Item Code:", "Description:", "Source:", "Qty Sold:", "Qty Suspended:",
                 "Qty Received:", "Order Qty:", "Pack Size:", "QOH:", "On PO:", "Min:", "Max:",
-                "Sug Min:", "Sug Max:", "YTD Sales:", "12 Mo Sales:", "Supplier:", "Last Receipt:", "Last Sale:"
+                "Sug Min:", "Sug Max:", "YTD Sales:", "12 Mo Sales:", "Supplier:", "Receipt Vendor:",
+                "Receipt Confidence:", "Last Receipt:", "Last Sale:"
             )},
             inventory_lookup={("AER-", "GH781-4"): {"supplier": "gregdist", "qoh": 2, "min": 1, "max": 4}},
             on_po_qty={("AER-", "GH781-4"): 0},
@@ -146,6 +149,8 @@ class UIIndividualTests(unittest.TestCase):
         self.assertEqual(app.var_vendor_input.get(), "GREGDIST")
         self.assertIn("receipt history", app._vendor_hint)
         self.assertEqual(app._combo_values[:3], ["GREGDIST", "MOTION", "SOURCE"])
+        self.assertEqual(app.assign_detail_vars["Receipt Vendor:"].get(), "GREGDIST")
+        self.assertEqual(app.assign_detail_vars["Receipt Confidence:"].get(), "high")
         self.assertTrue(app._focused)
 
     def test_populate_assign_item_autofills_dominant_high_confidence_receipt_vendor(self):
@@ -161,13 +166,16 @@ class UIIndividualTests(unittest.TestCase):
                 "order_qty": 1,
                 "pack_size": 1,
                 "vendor": "",
+                "receipt_primary_vendor": "MOTION",
+                "receipt_vendor_confidence": "high",
             }],
             lbl_assign_progress=SimpleNamespace(config=lambda **kwargs: None),
             assign_progress={},
             assign_detail_vars={label: DummyVar() for label in (
                 "Line Code:", "Item Code:", "Description:", "Source:", "Qty Sold:", "Qty Suspended:",
                 "Qty Received:", "Order Qty:", "Pack Size:", "QOH:", "On PO:", "Min:", "Max:",
-                "Sug Min:", "Sug Max:", "YTD Sales:", "12 Mo Sales:", "Supplier:", "Last Receipt:", "Last Sale:"
+                "Sug Min:", "Sug Max:", "YTD Sales:", "12 Mo Sales:", "Supplier:", "Receipt Vendor:",
+                "Receipt Confidence:", "Last Receipt:", "Last Sale:"
             )},
             inventory_lookup={("AER-", "GH781-4"): {"supplier": "source", "qoh": 2, "min": 1, "max": 4}},
             on_po_qty={("AER-", "GH781-4"): 0},
@@ -189,7 +197,7 @@ class UIIndividualTests(unittest.TestCase):
                 "vendor_confidence_reason": "dominant_recent_vendor",
                 "primary_vendor_qty_share": 0.83,
                 "primary_vendor_receipt_share": 0.67,
-            }},
+            }},            
             recent_orders={},
             vendor_codes_used=["MOTION", "SOURCE"],
             combo_vendor={"values": ()},
@@ -205,6 +213,8 @@ class UIIndividualTests(unittest.TestCase):
         self.assertEqual(app.var_vendor_input.get(), "MOTION")
         self.assertIn("receipt history", app._vendor_hint)
         self.assertEqual(app._combo_values[:2], ["MOTION", "SOURCE"])
+        self.assertEqual(app.assign_detail_vars["Receipt Vendor:"].get(), "MOTION")
+        self.assertEqual(app.assign_detail_vars["Receipt Confidence:"].get(), "high")
         self.assertTrue(app._focused)
 
     def test_populate_assign_item_leaves_blank_when_receipt_history_is_mixed(self):
@@ -220,13 +230,16 @@ class UIIndividualTests(unittest.TestCase):
                 "order_qty": 1,
                 "pack_size": 1,
                 "vendor": "",
+                "receipt_primary_vendor": "MOTION",
+                "receipt_vendor_confidence": "medium",
             }],
             lbl_assign_progress=SimpleNamespace(config=lambda **kwargs: None),
             assign_progress={},
             assign_detail_vars={label: DummyVar() for label in (
                 "Line Code:", "Item Code:", "Description:", "Source:", "Qty Sold:", "Qty Suspended:",
                 "Qty Received:", "Order Qty:", "Pack Size:", "QOH:", "On PO:", "Min:", "Max:",
-                "Sug Min:", "Sug Max:", "YTD Sales:", "12 Mo Sales:", "Supplier:", "Last Receipt:", "Last Sale:"
+                "Sug Min:", "Sug Max:", "YTD Sales:", "12 Mo Sales:", "Supplier:", "Receipt Vendor:",
+                "Receipt Confidence:", "Last Receipt:", "Last Sale:"
             )},
             inventory_lookup={("AER-", "GH781-4"): {"qoh": 2, "min": 1, "max": 4}},
             on_po_qty={("AER-", "GH781-4"): 0},
@@ -260,6 +273,8 @@ class UIIndividualTests(unittest.TestCase):
         self.assertEqual(app.var_vendor_input.get(), "")
         self.assertIn("Receipt vendor history is mixed", app._vendor_hint)
         self.assertEqual(app._combo_values[:2], ["MOTION", "SOURCE"])
+        self.assertEqual(app.assign_detail_vars["Receipt Vendor:"].get(), "MOTION")
+        self.assertEqual(app.assign_detail_vars["Receipt Confidence:"].get(), "medium")
 
 
 if __name__ == "__main__":

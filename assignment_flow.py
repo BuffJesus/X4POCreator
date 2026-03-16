@@ -1,6 +1,7 @@
 from collections import defaultdict
 
 import performance_flow
+import reorder_flow
 import shipping_flow
 import storage
 import ui_bulk
@@ -90,6 +91,7 @@ def prepare_assignment_session(
             "pack_size": resolve_pack_size(key),
             "reorder_cycle_weeks": get_cycle_weeks(),
         })
+        reorder_flow.apply_receipt_vendor_context(session, filtered_items[-1], key)
         seen_keys.add(key)
 
     for key, susp_list in session.suspended_lookup.items():
@@ -124,6 +126,7 @@ def prepare_assignment_session(
             "pack_size": resolve_pack_size(key),
             "reorder_cycle_weeks": get_cycle_weeks(),
         })
+        reorder_flow.apply_receipt_vendor_context(session, filtered_items[-1], key)
 
     if not filtered_items:
         return False

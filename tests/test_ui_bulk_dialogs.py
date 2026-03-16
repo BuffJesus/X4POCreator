@@ -675,6 +675,39 @@ class BulkDialogTests(unittest.TestCase):
         self.assertEqual(row_lookup["Package Profile"], "Hardware pack")
         self.assertEqual(row_lookup["Replenishment Mode"], "Soft pack / min order")
 
+    def test_item_details_rows_show_receipt_vendor_evidence(self):
+        app = SimpleNamespace(
+            on_po_qty={("AER-", "GH781-4"): 0},
+            recent_orders={},
+            duplicate_ic_lookup={},
+            _suggest_min_max=lambda key: (None, None),
+        )
+        item = {
+            "line_code": "AER-",
+            "item_code": "GH781-4",
+            "qty_sold": 1,
+            "qty_suspended": 0,
+            "qty_received": 5,
+            "qty_on_po": 0,
+            "raw_need": 1,
+            "suggested_qty": 2,
+            "final_qty": 2,
+            "order_policy": "soft_pack",
+            "status": "ok",
+            "data_flags": [],
+            "receipt_primary_vendor": "MOTION",
+            "receipt_vendor_confidence": "high",
+            "receipt_vendor_candidates": ["MOTION", "SOURCE"],
+        }
+        inv = {"qoh": 0, "min": 0, "max": 1}
+
+        rows = ui_bulk_dialogs.item_details_rows(app, item, inv, ("AER-", "GH781-4"))
+        row_lookup = dict(row for row in rows if row[0])
+
+        self.assertEqual(row_lookup["Receipt Vendor"], "MOTION")
+        self.assertEqual(row_lookup["Receipt Confidence"], "high")
+        self.assertEqual(row_lookup["Receipt Vendor Candidates"], "MOTION, SOURCE")
+
     def test_finish_bulk_final_carries_recency_fields_into_review_items(self):
         events = []
         app = SimpleNamespace(
@@ -709,6 +742,9 @@ class BulkDialogTests(unittest.TestCase):
                 "recent_local_order_count": 1,
                 "recent_local_order_qty": 2,
                 "recent_local_order_date": "2026-03-10",
+                "receipt_primary_vendor": "MOTION",
+                "receipt_vendor_confidence": "high",
+                "receipt_vendor_candidates": ["MOTION"],
                 "inventory_position": 0,
             }],
             _annotate_release_decisions=lambda: events.append("annotate"),
@@ -723,6 +759,8 @@ class BulkDialogTests(unittest.TestCase):
         assigned = app.assigned_items[0]
         self.assertEqual(assigned["recency_review_bucket"], "recent_local_po_protected")
         self.assertEqual(assigned["recent_local_order_qty"], 2)
+        self.assertEqual(assigned["receipt_primary_vendor"], "MOTION")
+        self.assertEqual(assigned["receipt_vendor_confidence"], "high")
         self.assertEqual(assigned["final_qty"], 2)
         self.assertIn("annotate", events)
         self.assertIn("review", events)

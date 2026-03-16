@@ -59,8 +59,57 @@ class AssignmentFlowTests(unittest.TestCase):
         self.assertEqual(session.filtered_items[0]["recent_local_order_count"], 1)
         self.assertEqual(session.filtered_items[0]["recent_local_order_qty"], 1)
         self.assertTrue(session.filtered_items[0]["has_recent_local_order"])
+        self.assertEqual(session.filtered_items[0]["receipt_primary_vendor"], "")
+        self.assertEqual(session.filtered_items[0]["receipt_vendor_confidence"], "none")
         self.assertIn("GH781-4", session.duplicate_ic_lookup)
         self.assertEqual(session.recent_orders[("AER-", "GH781-4")][0]["qty"], 1)
+
+    def test_prepare_assignment_session_attaches_receipt_vendor_context(self):
+        session = AppSessionState(
+            sales_items=[{
+                "line_code": "AER-",
+                "item_code": "GH781-4",
+                "description": "HOSE",
+                "qty_received": 5,
+                "qty_sold": 9,
+            }],
+            inventory_lookup={("AER-", "GH781-4"): {"qoh": 0, "max": 10}},
+            receipt_history_lookup={("AER-", "GH781-4"): {
+                "primary_vendor": "MOTION",
+                "most_recent_vendor": "MOTION",
+                "vendor_confidence": "high",
+                "vendor_confidence_reason": "single_vendor_history",
+                "vendor_candidates": ["MOTION"],
+                "primary_vendor_qty_share": 1.0,
+                "primary_vendor_receipt_share": 1.0,
+            }},
+            order_rules={},
+        )
+
+        with patch("assignment_flow.storage.get_recent_orders", return_value={}), \
+             patch("assignment_flow.storage.load_vendor_codes", return_value=["MOTION"]):
+            result = assignment_flow.prepare_assignment_session(
+                session,
+                excluded_line_codes=set(),
+                excluded_customers=set(),
+                dup_whitelist=set(),
+                ignored_keys=set(),
+                lookback_days=14,
+                order_history_path=str(ROOT / "test_order_history.json"),
+                vendor_codes_path=str(ROOT / "test_vendor_codes.txt"),
+                known_vendors=["MOTION"],
+                get_suspense_carry_qty=lambda key: 0,
+                default_vendor_for_key=lambda key: "MOTION",
+                resolve_pack_size=lambda key: 6,
+                suggest_min_max=lambda key: (None, None),
+                get_cycle_weeks=lambda: 2,
+                get_rule_key=lambda lc, ic: f"{lc}:{ic}",
+            )
+
+        self.assertTrue(result)
+        self.assertEqual(session.filtered_items[0]["receipt_primary_vendor"], "MOTION")
+        self.assertEqual(session.filtered_items[0]["receipt_vendor_confidence"], "high")
+        self.assertEqual(session.filtered_items[0]["receipt_vendor_candidates"], ["MOTION"])
 
     def test_prepare_assignment_session_returns_false_when_no_items_remain(self):
         session = AppSessionState(

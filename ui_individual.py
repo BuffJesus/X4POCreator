@@ -157,6 +157,8 @@ def build_individual_tab(app):
         "YTD Sales:",
         "12 Mo Sales:",
         "Supplier:",
+        "Receipt Vendor:",
+        "Receipt Confidence:",
         "Last Receipt:",
         "Last Sale:",
     ]
@@ -261,6 +263,10 @@ def populate_assign_item(app):
         app.assign_detail_vars["YTD Sales:"].set(str(inventory.get("ytd_sales", 0)) or "-")
         app.assign_detail_vars["12 Mo Sales:"].set(str(inventory.get("mo12_sales", 0)) or "-")
         app.assign_detail_vars["Supplier:"].set(inventory.get("supplier", "") or "-")
+        receipt_vendor = item.get("receipt_primary_vendor", "") or "-"
+        receipt_confidence = item.get("receipt_vendor_confidence", "") or "-"
+        app.assign_detail_vars["Receipt Vendor:"].set(receipt_vendor)
+        app.assign_detail_vars["Receipt Confidence:"].set(receipt_confidence)
         app.assign_detail_vars["Last Receipt:"].set(inventory.get("last_receipt", "") or "-")
         app.assign_detail_vars["Last Sale:"].set(inventory.get("last_sale", "") or "-")
     else:
@@ -274,6 +280,8 @@ def populate_assign_item(app):
             "YTD Sales:",
             "12 Mo Sales:",
             "Supplier:",
+            "Receipt Vendor:",
+            "Receipt Confidence:",
             "Last Receipt:",
             "Last Sale:",
         ):

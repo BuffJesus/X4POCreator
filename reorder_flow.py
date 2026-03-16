@@ -41,13 +41,26 @@ def receipt_vendor_evidence(app, key):
     return {
         "primary_vendor": str(history.get("primary_vendor", "") or "").strip().upper(),
         "most_recent_vendor": str(history.get("most_recent_vendor", "") or "").strip().upper(),
-        "vendor_confidence": str(history.get("vendor_confidence", "") or "").strip().lower(),
+        "vendor_confidence": str(history.get("vendor_confidence", "none") or "none").strip().lower(),
         "vendor_confidence_reason": str(history.get("vendor_confidence_reason", "") or "").strip(),
         "vendor_ambiguous": bool(history.get("vendor_ambiguous")),
         "primary_vendor_qty_share": float(history.get("primary_vendor_qty_share", 0.0) or 0.0),
         "primary_vendor_receipt_share": float(history.get("primary_vendor_receipt_share", 0.0) or 0.0),
         "vendor_candidates": candidates,
     }
+
+
+def apply_receipt_vendor_context(app, item, key):
+    evidence = receipt_vendor_evidence(app, key)
+    item["receipt_primary_vendor"] = evidence["primary_vendor"]
+    item["receipt_most_recent_vendor"] = evidence["most_recent_vendor"]
+    item["receipt_vendor_confidence"] = evidence["vendor_confidence"]
+    item["receipt_vendor_confidence_reason"] = evidence["vendor_confidence_reason"]
+    item["receipt_vendor_ambiguous"] = evidence["vendor_ambiguous"]
+    item["receipt_vendor_qty_share"] = evidence["primary_vendor_qty_share"]
+    item["receipt_vendor_receipt_share"] = evidence["primary_vendor_receipt_share"]
+    item["receipt_vendor_candidates"] = list(evidence["vendor_candidates"])
+    return evidence
 
 
 def receipt_vendor_candidates(app, key):
