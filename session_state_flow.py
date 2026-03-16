@@ -233,6 +233,8 @@ def _prune_unchanged_bulk_history_state(before_state, after_state):
         if key in normalized_before and key in normalized_after and normalized_before[key] == normalized_after[key]:
             normalized_before.pop(key, None)
             normalized_after.pop(key, None)
+    normalized_before = _prune_empty_bulk_history_state_sections(normalized_before)
+    normalized_after = _prune_empty_bulk_history_state_sections(normalized_after)
     return normalized_before, normalized_after
 
 
@@ -280,6 +282,7 @@ def finalize_bulk_history_action(app, label, before_state, max_bulk_history, *, 
 
 
 def restore_bulk_history_state(app, state, *, capture_spec=None):
+    state = _prune_empty_bulk_history_state_sections(dict(state))
     row_scoped_restore = "filtered_items_rows" in state or "filtered_items_row_patches" in state
     touched_row_ids = []
     vendor_codes_changed = False
@@ -306,7 +309,7 @@ def restore_bulk_history_state(app, state, *, capture_spec=None):
             state.get("filtered_items_row_patches", []),
         )
         ui_bulk.invalidate_bulk_row_render_entries(app, touched_row_ids)
-    else:
+    elif "filtered_items" in state:
         ui_bulk.replace_filtered_items(app, _copy_bulk_history_items(state.get("filtered_items", [])))
     if "inventory_lookup" in state:
         app.inventory_lookup = copy.deepcopy(state.get("inventory_lookup", {}))
@@ -480,6 +483,36 @@ def _normalize_bulk_history_state_pair_shapes(before_state, after_state):
         "order_rules_entry_patches",
     )
     return before_state, after_state
+
+
+def _prune_empty_bulk_history_state_sections(state):
+    for key in (
+        "filtered_items_rows",
+        "inventory_lookup_entries",
+        "qoh_adjustments_entries",
+        "order_rules_entries",
+        "vendor_codes_used_entries",
+    ):
+        if key in state and not list(state.get(key, ())):
+            state.pop(key, None)
+    for key in (
+        "filtered_items_row_patches",
+        "inventory_lookup_entry_patches",
+        "qoh_adjustments_entry_patches",
+        "order_rules_entry_patches",
+    ):
+        if key not in state:
+            continue
+        pruned_entries = [
+            (entry_id, patch_entries)
+            for entry_id, patch_entries in list(state.get(key, ()))
+            if list(patch_entries or ())
+        ]
+        if pruned_entries:
+            state[key] = pruned_entries
+        else:
+            state.pop(key, None)
+    return state
 
 
 def _normalize_bulk_history_item_pair_shapes(before_state, after_state, rows_key, patches_key):
@@ -663,6 +696,8 @@ def _restore_bulk_history_mapping_entries_in_place(current_mapping, entries):
 
 def _restore_bulk_history_mapping_patches_in_place(current_mapping, entry_patches):
     for key, patch_entries in entry_patches:
+        if not list(patch_entries or ()):
+            continue
         if key not in current_mapping or not isinstance(current_mapping.get(key), dict):
             continue
         current_value = current_mapping[key]
@@ -704,6 +739,8 @@ def _restore_bulk_history_vendor_code_entries_in_place(current_vendor_codes, ent
 def _restore_bulk_history_row_patches_in_place(app, row_patches):
     touched_row_ids = []
     for row_id, patch_entries in row_patches:
+        if not list(patch_entries or ()):
+            continue
         _idx, current_item = ui_bulk.resolve_bulk_row_id(app, row_id)
         if current_item is None:
             continue
