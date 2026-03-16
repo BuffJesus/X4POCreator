@@ -156,17 +156,6 @@ def _merge_bulk_history_entry(app, label, before_state, after_state, coalesce_ke
 
 
 def _prune_unchanged_bulk_history_state(before_state, after_state):
-    optional_keys = (
-        "inventory_lookup",
-        "inventory_lookup_entries",
-        "qoh_adjustments",
-        "qoh_adjustments_entries",
-        "order_rules",
-        "order_rules_entries",
-        "vendor_codes_used",
-        "vendor_codes_used_entries",
-        "last_removed_bulk_items",
-    )
     normalized_before = copy.deepcopy(before_state)
     normalized_after = copy.deepcopy(after_state)
     normalized_before, normalized_after = _prune_unchanged_bulk_history_entries(
@@ -194,11 +183,31 @@ def _prune_unchanged_bulk_history_state(before_state, after_state):
         normalized_after,
         "vendor_codes_used_entries",
     )
+    normalized_before, normalized_after = _compact_bulk_history_row_patches(
+        normalized_before,
+        normalized_after,
+    )
+    optional_keys = (
+        "inventory_lookup",
+        "inventory_lookup_entries",
+        "qoh_adjustments",
+        "qoh_adjustments_entries",
+        "order_rules",
+        "order_rules_entries",
+        "vendor_codes_used",
+        "vendor_codes_used_entries",
+        "filtered_items_row_patches",
+        "last_removed_bulk_items",
+    )
     for key in optional_keys:
         if key in normalized_before and key in normalized_after and normalized_before[key] == normalized_after[key]:
             normalized_before.pop(key, None)
             normalized_after.pop(key, None)
     return normalized_before, normalized_after
+
+
+def compact_bulk_history_state_pair(before_state, after_state):
+    return _prune_unchanged_bulk_history_state(before_state, after_state)
 
 
 def finalize_bulk_history_action(app, label, before_state, max_bulk_history, *, coalesce_key=None, capture_spec=None):
@@ -236,7 +245,7 @@ def finalize_bulk_history_action(app, label, before_state, max_bulk_history, *, 
 
 
 def restore_bulk_history_state(app, state, *, capture_spec=None):
-    row_scoped_restore = "filtered_items_rows" in state
+    row_scoped_restore = "filtered_items_rows" in state or "filtered_items_row_patches" in state
     touched_row_ids = []
     vendor_codes_changed = False
     if "filtered_items_rows" in state:
@@ -255,6 +264,12 @@ def restore_bulk_history_state(app, state, *, capture_spec=None):
                 item=current_item,
             )
             touched_row_ids.append(str(row_id))
+        ui_bulk.invalidate_bulk_row_render_entries(app, touched_row_ids)
+    elif "filtered_items_row_patches" in state:
+        touched_row_ids = _restore_bulk_history_row_patches_in_place(
+            app,
+            state.get("filtered_items_row_patches", []),
+        )
         ui_bulk.invalidate_bulk_row_render_entries(app, touched_row_ids)
     else:
         ui_bulk.replace_filtered_items(app, _copy_bulk_history_items(state.get("filtered_items", [])))
@@ -395,6 +410,57 @@ def _prune_unchanged_bulk_history_entries(before_state, after_state, key):
     return before_state, after_state
 
 
+def _compact_bulk_history_row_patches(before_state, after_state):
+    if "filtered_items_rows" not in before_state or "filtered_items_rows" not in after_state:
+        return before_state, after_state
+    before_rows = list(before_state.get("filtered_items_rows", ()))
+    after_rows = list(after_state.get("filtered_items_rows", ()))
+    if not before_rows or not after_rows:
+        return before_state, after_state
+    before_by_id = {row_id: item for row_id, item in before_rows}
+    after_by_id = {row_id: item for row_id, item in after_rows}
+    if tuple(before_by_id.keys()) != tuple(after_by_id.keys()):
+        return before_state, after_state
+    before_patches = []
+    after_patches = []
+    for row_id, before_item in before_rows:
+        after_item = after_by_id.get(row_id)
+        if after_item is None:
+            return before_state, after_state
+        before_patch, after_patch = _build_bulk_history_item_patch_pair(before_item, after_item)
+        before_patches.append((row_id, before_patch))
+        after_patches.append((row_id, after_patch))
+    before_state.pop("filtered_items_rows", None)
+    after_state.pop("filtered_items_rows", None)
+    if before_patches:
+        before_state["filtered_items_row_patches"] = before_patches
+    if after_patches:
+        after_state["filtered_items_row_patches"] = after_patches
+    return before_state, after_state
+
+
+def _build_bulk_history_item_patch_pair(before_item, after_item):
+    before_patch = []
+    after_patch = []
+    ordered_keys = []
+    seen = set()
+    for key in list(before_item.keys()) + list(after_item.keys()):
+        if key in seen:
+            continue
+        seen.add(key)
+        ordered_keys.append(key)
+    for key in ordered_keys:
+        before_present = key in before_item
+        after_present = key in after_item
+        before_value = before_item.get(key)
+        after_value = after_item.get(key)
+        if before_present == after_present and before_value == after_value:
+            continue
+        before_patch.append((key, before_present, copy.deepcopy(before_value) if before_present else None))
+        after_patch.append((key, after_present, copy.deepcopy(after_value) if after_present else None))
+    return before_patch, after_patch
+
+
 def _restore_bulk_history_mapping_entries(current_mapping, entries):
     restored = copy.deepcopy(current_mapping)
     for key, present, value in entries:
@@ -439,3 +505,25 @@ def _restore_bulk_history_vendor_code_entries_in_place(current_vendor_codes, ent
             current_vendor_codes.pop(current_index)
             changed = True
     return changed
+
+
+def _restore_bulk_history_row_patches_in_place(app, row_patches):
+    touched_row_ids = []
+    for row_id, patch_entries in row_patches:
+        _idx, current_item = ui_bulk.resolve_bulk_row_id(app, row_id)
+        if current_item is None:
+            continue
+        before_summary_item = ui_bulk.bulk_filter_bucket_snapshot(current_item)
+        for field_name, present, value in patch_entries:
+            if present:
+                current_item[field_name] = copy.deepcopy(value)
+            else:
+                current_item.pop(field_name, None)
+        ui_bulk.adjust_bulk_summary_for_item_change(
+            app,
+            before_summary_item,
+            ui_bulk.bulk_filter_bucket_snapshot(current_item),
+            item=current_item,
+        )
+        touched_row_ids.append(str(row_id))
+    return touched_row_ids

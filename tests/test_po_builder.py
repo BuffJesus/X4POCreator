@@ -410,6 +410,56 @@ class POBuilderTests(unittest.TestCase):
 
         self.assertEqual(restore_specs, [({"filtered_items_rows": [("0", {"vendor": ""})]}, capture_spec)])
 
+    def test_bulk_undo_compacts_redo_entry_row_state(self):
+        capture_spec = {"changed_columns": ("vendor",)}
+        fake_app = SimpleNamespace(
+            bulk_undo_stack=[{
+                "label": "edit:vendor",
+                "before": {"filtered_items_rows": [("0", {"vendor": ""})]},
+                "after": {"filtered_items_rows": [("0", {"vendor": "MOTION"})]},
+                "_capture_spec": capture_spec,
+            }],
+            bulk_redo_stack=[],
+            _capture_bulk_history_state=lambda capture_spec=None: {"filtered_items_rows": [("0", {"vendor": "LIVE", "why": "keep"})]},
+            _restore_bulk_history_state=lambda state, capture_spec=None: None,
+        )
+
+        po_builder.POBuilderApp._bulk_undo(fake_app)
+
+        self.assertEqual(
+            fake_app.bulk_redo_stack[0]["before"],
+            {"filtered_items_row_patches": [("0", [("vendor", True, ""), ("why", False, None)])]},
+        )
+        self.assertEqual(
+            fake_app.bulk_redo_stack[0]["after"],
+            {"filtered_items_row_patches": [("0", [("vendor", True, "LIVE"), ("why", True, "keep")])]},
+        )
+
+    def test_bulk_redo_compacts_undo_entry_row_state(self):
+        capture_spec = {"changed_columns": ("vendor",)}
+        fake_app = SimpleNamespace(
+            bulk_undo_stack=[],
+            bulk_redo_stack=[{
+                "label": "edit:vendor",
+                "before": {"filtered_items_rows": [("0", {"vendor": ""})]},
+                "after": {"filtered_items_rows": [("0", {"vendor": "MOTION"})]},
+                "_capture_spec": capture_spec,
+            }],
+            _capture_bulk_history_state=lambda capture_spec=None: {"filtered_items_rows": [("0", {"vendor": "", "why": "keep"})]},
+            _restore_bulk_history_state=lambda state, capture_spec=None: None,
+        )
+
+        po_builder.POBuilderApp._bulk_redo(fake_app)
+
+        self.assertEqual(
+            fake_app.bulk_undo_stack[0]["before"],
+            {"filtered_items_row_patches": [("0", [("vendor", True, ""), ("why", True, "keep")])]},
+        )
+        self.assertEqual(
+            fake_app.bulk_undo_stack[0]["after"],
+            {"filtered_items_row_patches": [("0", [("vendor", True, "MOTION"), ("why", False, None)])]},
+        )
+
     def test_refresh_active_data_state_without_session_only_reloads_persistent_state(self):
         events = []
         fake_app = SimpleNamespace(

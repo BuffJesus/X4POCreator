@@ -168,8 +168,8 @@ class SessionStateFlowTests(unittest.TestCase):
         )
 
         self.assertTrue(changed)
-        self.assertEqual(fake_app.bulk_undo_stack[0]["before"]["filtered_items_rows"], [("0", {"vendor": ""})])
-        self.assertEqual(fake_app.bulk_undo_stack[0]["after"]["filtered_items_rows"], [("0", {"vendor": "MOTION"})])
+        self.assertEqual(fake_app.bulk_undo_stack[0]["before"]["filtered_items_row_patches"], [("0", [("vendor", True, "")])])
+        self.assertEqual(fake_app.bulk_undo_stack[0]["after"]["filtered_items_row_patches"], [("0", [("vendor", True, "MOTION")])])
 
     def test_finalize_bulk_history_action_prunes_only_unchanged_vendor_code_entries(self):
         capture_spec = session_state_flow.bulk_history_capture_spec_for_columns(("vendor",), row_ids=("0", "1"), include_vendor_codes=True)
@@ -208,8 +208,8 @@ class SessionStateFlowTests(unittest.TestCase):
         self.assertTrue(changed)
         self.assertEqual(fake_app.bulk_undo_stack[0]["before"]["vendor_codes_used_entries"], [("MOTION", False, None)])
         self.assertEqual(fake_app.bulk_undo_stack[0]["after"]["vendor_codes_used_entries"], [("MOTION", True, 0)])
-        self.assertEqual(fake_app.bulk_undo_stack[0]["before"]["filtered_items_rows"], [("0", {"vendor": ""})])
-        self.assertEqual(fake_app.bulk_undo_stack[0]["after"]["filtered_items_rows"], [("0", {"vendor": "MOTION"})])
+        self.assertEqual(fake_app.bulk_undo_stack[0]["before"]["filtered_items_row_patches"], [("0", [("vendor", True, "")])])
+        self.assertEqual(fake_app.bulk_undo_stack[0]["after"]["filtered_items_row_patches"], [("0", [("vendor", True, "MOTION")])])
 
     def test_finalize_bulk_history_action_prunes_only_unchanged_mapping_entries(self):
         capture_spec = session_state_flow.bulk_history_capture_spec_for_columns(("qoh",), row_ids=("0", "1"))
@@ -258,6 +258,14 @@ class SessionStateFlowTests(unittest.TestCase):
         self.assertEqual(fake_app.bulk_undo_stack[0]["after"]["inventory_lookup_entries"], [(("AER-", "A"), True, {"qoh": 7})])
         self.assertEqual(fake_app.bulk_undo_stack[0]["before"]["qoh_adjustments_entries"], [(("AER-", "A"), True, {"new": 5})])
         self.assertEqual(fake_app.bulk_undo_stack[0]["after"]["qoh_adjustments_entries"], [(("AER-", "A"), True, {"new": 7})])
+        self.assertEqual(
+            fake_app.bulk_undo_stack[0]["before"]["filtered_items_row_patches"],
+            [("0", [("qoh", True, 5)])],
+        )
+        self.assertEqual(
+            fake_app.bulk_undo_stack[0]["after"]["filtered_items_row_patches"],
+            [("0", [("qoh", True, 7)])],
+        )
 
     def test_capture_bulk_history_state_respects_column_capture_spec(self):
         fake_app = SimpleNamespace(
@@ -479,6 +487,46 @@ class SessionStateFlowTests(unittest.TestCase):
 
         self.assertIs(fake_app.filtered_items, filtered_items)
         self.assertEqual(fake_app.filtered_items, [item_a, {"line_code": "MOT-", "item_code": "B", "vendor": "MOTION"}])
+        self.assertEqual(list(fake_app._bulk_row_render_cache.keys()), [ui_bulk.bulk_row_id(item_a)])
+        self.assertEqual(events, ["summary", "status"])
+
+    def test_restore_bulk_history_state_applies_row_scoped_filtered_item_patches(self):
+        events = []
+        item_a = {"line_code": "AER-", "item_code": "A", "vendor": ""}
+        item_b = {"line_code": "MOT-", "item_code": "B", "vendor": "SOURCE", "why": "Old"}
+        filtered_items = [item_a, item_b]
+        fake_app = SimpleNamespace(
+            filtered_items=filtered_items,
+            inventory_lookup={},
+            qoh_adjustments={},
+            order_rules={},
+            vendor_codes_used=[],
+            _loaded_order_rules={},
+            _loaded_vendor_codes=[],
+            last_removed_bulk_items=[],
+            _bulk_row_render_cache={
+                ui_bulk.bulk_row_id(item_a): (("sig-a",), ("row-a",)),
+                ui_bulk.bulk_row_id(item_b): (("sig-b",), ("row-b",)),
+            },
+            bulk_sheet=None,
+            _refresh_vendor_inputs=lambda: events.append("vendors"),
+            _apply_bulk_filter=lambda: events.append("bulk"),
+            _update_bulk_summary=lambda: events.append("summary"),
+            _update_bulk_cell_status=lambda: events.append("status"),
+        )
+
+        session_state_flow.restore_bulk_history_state(
+            fake_app,
+            {
+                "filtered_items_row_patches": [
+                    (ui_bulk.bulk_row_id(item_b), [("vendor", True, "MOTION"), ("why", False, None)])
+                ],
+            },
+        )
+
+        self.assertIs(fake_app.filtered_items, filtered_items)
+        self.assertEqual(fake_app.filtered_items[1]["vendor"], "MOTION")
+        self.assertNotIn("why", fake_app.filtered_items[1])
         self.assertEqual(list(fake_app._bulk_row_render_cache.keys()), [ui_bulk.bulk_row_id(item_a)])
         self.assertEqual(events, ["summary", "status"])
 

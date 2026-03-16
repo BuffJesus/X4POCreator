@@ -1258,10 +1258,14 @@ class POBuilderApp:
             self._restore_bulk_history_state(entry["before"], capture_spec=capture_spec)
         except TypeError:
             self._restore_bulk_history_state(entry["before"])
+        redo_before, redo_after = session_state_flow.compact_bulk_history_state_pair(
+            copy.deepcopy(entry["before"]),
+            current_state,
+        )
         self.bulk_redo_stack.append({
             "label": entry.get("label", ""),
-            "before": copy.deepcopy(entry["before"]),
-            "after": current_state,
+            "before": redo_before,
+            "after": redo_after,
             "_coalesce_key": copy.deepcopy(entry.get("_coalesce_key")),
             "_capture_spec": capture_spec,
         })
@@ -1280,10 +1284,14 @@ class POBuilderApp:
             self._restore_bulk_history_state(entry["after"], capture_spec=capture_spec)
         except TypeError:
             self._restore_bulk_history_state(entry["after"])
+        undo_before, undo_after = session_state_flow.compact_bulk_history_state_pair(
+            current_state,
+            copy.deepcopy(entry["after"]),
+        )
         self.bulk_undo_stack.append({
             "label": entry.get("label", ""),
-            "before": current_state,
-            "after": copy.deepcopy(entry["after"]),
+            "before": undo_before,
+            "after": undo_after,
             "_coalesce_key": copy.deepcopy(entry.get("_coalesce_key")),
             "_capture_spec": capture_spec,
         })
