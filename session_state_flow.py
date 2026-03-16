@@ -151,6 +151,26 @@ def _merge_bulk_history_entry(app, label, before_state, after_state, coalesce_ke
     return True
 
 
+def _prune_unchanged_bulk_history_state(before_state, after_state):
+    optional_keys = (
+        "inventory_lookup",
+        "inventory_lookup_entries",
+        "qoh_adjustments",
+        "qoh_adjustments_entries",
+        "order_rules",
+        "order_rules_entries",
+        "vendor_codes_used",
+        "last_removed_bulk_items",
+    )
+    normalized_before = copy.deepcopy(before_state)
+    normalized_after = copy.deepcopy(after_state)
+    for key in optional_keys:
+        if key in normalized_before and key in normalized_after and normalized_before[key] == normalized_after[key]:
+            normalized_before.pop(key, None)
+            normalized_after.pop(key, None)
+    return normalized_before, normalized_after
+
+
 def finalize_bulk_history_action(app, label, before_state, max_bulk_history, *, coalesce_key=None, capture_spec=None):
     if before_state is None:
         return False
@@ -165,6 +185,7 @@ def finalize_bulk_history_action(app, label, before_state, max_bulk_history, *, 
                 after_state = capture()
     else:
         after_state = capture_bulk_history_state(app, capture_spec=capture_spec)
+    before_state, after_state = _prune_unchanged_bulk_history_state(before_state, after_state)
     if after_state == before_state:
         return False
     normalized_coalesce_key = _normalize_bulk_history_coalesce_key(coalesce_key)
