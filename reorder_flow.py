@@ -3,6 +3,7 @@ import math
 import item_workflow
 import performance_flow
 import storage
+from rules import looks_like_hardware_pack_item, looks_like_reel_item
 
 
 def _recalculate_item(app, item, *, annotate_release):
@@ -171,6 +172,19 @@ def receipt_history_for_key(app, key):
     return dict((getattr(app, "receipt_history_lookup", {}) or {}).get(key, {}) or {})
 
 
+def _description_for_key(app, key):
+    inv = (getattr(app, "inventory_lookup", {}) or {}).get(key, {}) or {}
+    description = str(inv.get("description", "") or "").strip()
+    if description:
+        return description
+    for item in getattr(app, "sales_items", []) or []:
+        if (item.get("line_code", ""), item.get("item_code", "")) == key:
+            description = str(item.get("description", "") or "").strip()
+            if description:
+                return description
+    return ""
+
+
 def receipt_vendor_evidence(app, key):
     history = receipt_history_for_key(app, key)
     candidates = receipt_vendor_candidates(app, key)
@@ -209,6 +223,18 @@ def receipt_pack_size_for_key(app, key, *, minimum_confidence="high"):
     if minimum_confidence == "high" and confidence != "high":
         return None
     if minimum_confidence == "medium" and confidence not in ("high", "medium"):
+        return None
+    description = _description_for_key(app, key)
+    inv = dict((getattr(app, "inventory_lookup", {}) or {}).get(key, {}) or {})
+    item_context = {
+        "line_code": key[0],
+        "item_code": key[1],
+        "description": description,
+    }
+    if not (
+        looks_like_reel_item(item_context, inv)
+        or looks_like_hardware_pack_item(item_context, inv)
+    ):
         return None
     return candidate
 
@@ -266,10 +292,8 @@ def receipt_vendor_candidates(app, key):
 
 def default_vendor_for_key(app, key):
     evidence = receipt_vendor_evidence(app, key)
-    if evidence["primary_vendor"] and evidence["vendor_confidence"] == "high":
+    if evidence["primary_vendor"]:
         return evidence["primary_vendor"]
-    if evidence["vendor_candidates"]:
-        return ""
     inv = app.inventory_lookup.get(key, {})
     supplier = (inv.get("supplier", "") or "").strip().upper()
     return supplier or ""

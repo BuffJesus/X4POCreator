@@ -53,10 +53,8 @@ def suggested_vendor_for_item(app, item, inventory):
         return current_vendor, "current assignment"
     key = (item.get("line_code", ""), item.get("item_code", ""))
     receipt_evidence = reorder_flow.receipt_vendor_evidence(app, key)
-    if receipt_evidence["primary_vendor"] and receipt_evidence["vendor_confidence"] == "high":
+    if receipt_evidence["primary_vendor"]:
         return receipt_evidence["primary_vendor"], "receipt history"
-    if receipt_evidence["vendor_candidates"]:
-        return "", ""
     supplier = str(inventory.get("supplier", "") or "").strip().upper()
     if supplier:
         return supplier, "report supplier"

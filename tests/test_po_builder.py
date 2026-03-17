@@ -80,6 +80,8 @@ class POBuilderTests(unittest.TestCase):
         fake_app = SimpleNamespace(
             pack_size_lookup={},
             pack_size_by_item={},
+            inventory_lookup={("AER-", "GH781-4"): {"description": '1/4" 2WIRE 6500PSI HOSE'}},
+            sales_items=[],
             receipt_history_lookup={
                 ("AER-", "GH781-4"): {
                     "receipt_pack_candidate": 25,
@@ -294,7 +296,7 @@ class POBuilderTests(unittest.TestCase):
 
         self.assertEqual(result, "SOURCE")
 
-    def test_default_vendor_for_key_returns_blank_without_receipt_vendor_or_supplier(self):
+    def test_default_vendor_for_key_uses_top_receipt_vendor_without_supplier(self):
         fake_app = SimpleNamespace(
             inventory_lookup={("AER-", "GH781-4"): {"supplier": ""}},
             receipt_history_lookup={("AER-", "GH781-4"): {"vendor_candidates": ["MOTION", "SOURCE"], "primary_vendor": "MOTION"}},
@@ -302,7 +304,7 @@ class POBuilderTests(unittest.TestCase):
 
         result = po_builder.POBuilderApp._default_vendor_for_key(fake_app, ("AER-", "GH781-4"))
 
-        self.assertEqual(result, "")
+        self.assertEqual(result, "MOTION")
 
     def test_suggest_min_max_skips_sparse_history(self):
         fake_app = SimpleNamespace(

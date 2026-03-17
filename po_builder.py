@@ -849,7 +849,14 @@ class POBuilderApp:
                 self._export_startup_warnings_csv()
 
         # Status summary
+        source_mode = result.get("sales_source_mode", "none")
+        source_label = {
+            "detailed_pair": "Detailed sales + receiving",
+            "legacy_combined": "Legacy combined sales/receipts",
+        }.get(source_mode, "")
         status_parts = [f"{len(self.sales_items)} items loaded"]
+        if source_label:
+            status_parts.append(source_label)
         if self.po_items:
             status_parts.append(f"{len(self.po_items)} open PO lines")
         if self.suspended_set:
@@ -860,6 +867,10 @@ class POBuilderApp:
             status_parts.append(f"{len(self.pack_size_lookup)} order multiples")
         if self.pack_size_by_item:
             status_parts.append(f"{len(self.pack_size_by_item)} item-level pack fallbacks")
+        detailed_resolution = result.get("detailed_sales_resolution", {}) or {}
+        unresolved_detailed_rows = int(detailed_resolution.get("row_count", 0) or 0)
+        if unresolved_detailed_rows:
+            status_parts.append(f"{unresolved_detailed_rows} unresolved detailed sales rows")
         status_parts.append(f"{len(self.all_line_codes)} line codes found")
         self.lbl_load_status.config(text="✓  " + "  ·  ".join(status_parts))
 

@@ -77,7 +77,7 @@ class UIIndividualTests(unittest.TestCase):
             ("MOTION", "recent local order history"),
         )
 
-    def test_suggested_vendor_for_item_does_not_autofill_supplier_when_receipt_history_is_mixed(self):
+    def test_suggested_vendor_for_item_prefers_top_receipt_vendor_when_history_is_mixed(self):
         app = SimpleNamespace(
             receipt_history_lookup={
                 ("AER-", "GH781-4"): {"vendor_candidates": ["source", "motion"], "primary_vendor": "source", "vendor_confidence": "medium"}
@@ -91,7 +91,7 @@ class UIIndividualTests(unittest.TestCase):
             {"supplier": "gregdist"},
         )
 
-        self.assertEqual(result, ("", ""))
+        self.assertEqual(result, ("SOURCE", "receipt history"))
 
     def test_populate_assign_item_autofills_receipt_vendor_and_prioritizes_choices(self):
         app = SimpleNamespace(
@@ -245,7 +245,7 @@ class UIIndividualTests(unittest.TestCase):
         self.assertEqual(app.assign_detail_vars["Receipt Confidence:"].get(), "high")
         self.assertTrue(app._focused)
 
-    def test_populate_assign_item_leaves_blank_when_receipt_history_is_mixed(self):
+    def test_populate_assign_item_autofills_top_receipt_vendor_when_history_is_mixed(self):
         app = SimpleNamespace(
             assign_index=0,
             individual_items=[{
@@ -298,8 +298,8 @@ class UIIndividualTests(unittest.TestCase):
 
         ui_individual.populate_assign_item(app)
 
-        self.assertEqual(app.var_vendor_input.get(), "")
-        self.assertIn("Receipt vendor history is mixed", app._vendor_hint)
+        self.assertEqual(app.var_vendor_input.get(), "MOTION")
+        self.assertIn("receipt history", app._vendor_hint.lower())
         self.assertEqual(app._combo_values[:2], ["MOTION", "SOURCE"])
         self.assertEqual(app.assign_detail_vars["Receipt Vendor:"].get(), "MOTION")
         self.assertEqual(app.assign_detail_vars["Receipt Confidence:"].get(), "medium")

@@ -60,6 +60,41 @@ def _normalize_detailed_sales_keys(sales_items, detailed_sales_stats_lookup, *, 
     return list(normalized_items.values()), normalized_stats
 
 
+def _summarize_unresolved_detailed_sales_rows(detailed_sales_rows, *, inventory_lookup, receipt_history_lookup):
+    unresolved_by_item = {}
+    unresolved_row_count = 0
+    for row in detailed_sales_rows or []:
+        line_code = str(row.get("line_code", "") or "").strip()
+        item_code = str(row.get("item_code", "") or "").strip()
+        if not item_code or line_code:
+            continue
+        resolved_line_code = _resolve_sales_line_code(
+            item_code,
+            inventory_lookup=inventory_lookup,
+            receipt_history_lookup=receipt_history_lookup,
+        )
+        if resolved_line_code:
+            continue
+        unresolved_row_count += 1
+        entry = unresolved_by_item.setdefault(item_code, {
+            "item_code": item_code,
+            "description": str(row.get("description", "") or "").strip(),
+            "row_count": 0,
+            "qty_sold": 0,
+        })
+        entry["row_count"] += 1
+        entry["qty_sold"] += max(0, int(row.get("qty_sold", 0) or 0))
+    unresolved_items = sorted(
+        unresolved_by_item.values(),
+        key=lambda item: (-item["row_count"], -item["qty_sold"], item["item_code"]),
+    )
+    return {
+        "row_count": unresolved_row_count,
+        "item_count": len(unresolved_items),
+        "items": unresolved_items,
+    }
+
+
 def _parse_sales_inputs(paths):
     sales_path = str(paths.get("sales", "") or "").strip()
     detailed_sales_path = str(paths.get("detailedsales", "") or "").strip()
@@ -69,6 +104,8 @@ def _parse_sales_inputs(paths):
         detailed_sales_rows = parsers.parse_detailed_part_sales_csv(detailed_sales_path)
         received_rows = parsers.parse_received_parts_detail_csv(received_parts_path)
         return {
+            "sales_source_mode": "detailed_pair",
+            "detailed_sales_rows": detailed_sales_rows,
             "sales_items": parsers.build_sales_receipt_summary(detailed_sales_rows, received_rows),
             "sales_window": parsers.parse_detailed_sales_date_range(detailed_sales_rows),
             "receipt_history_lookup": parsers.build_receipt_history_lookup(received_rows),
@@ -77,6 +114,8 @@ def _parse_sales_inputs(paths):
 
     if sales_path:
         return {
+            "sales_source_mode": "legacy_combined",
+            "detailed_sales_rows": [],
             "sales_items": parsers.parse_part_sales_csv(sales_path),
             "sales_window": parsers.parse_sales_date_range(sales_path),
             "receipt_history_lookup": {},
@@ -84,6 +123,8 @@ def _parse_sales_inputs(paths):
         }
 
     return {
+        "sales_source_mode": "none",
+        "detailed_sales_rows": [],
         "sales_items": [],
         "sales_window": (None, None),
         "receipt_history_lookup": {},
@@ -98,6 +139,8 @@ def parse_all_files(paths, *, old_po_warning_days, short_sales_window_days, now=
     result = {"warnings": warnings, "startup_warning_rows": startup_warning_rows}
 
     sales_inputs = _parse_sales_inputs(paths)
+    result["sales_source_mode"] = sales_inputs.get("sales_source_mode", "none")
+    result["detailed_sales_resolution"] = {"row_count": 0, "item_count": 0, "items": []}
     result["sales_items"] = sales_inputs["sales_items"]
     result["receipt_history_lookup"] = sales_inputs.get("receipt_history_lookup", {})
     result["detailed_sales_stats_lookup"] = sales_inputs.get("detailed_sales_stats_lookup", {})
@@ -137,6 +180,16 @@ def parse_all_files(paths, *, old_po_warning_days, short_sales_window_days, now=
                 "po_reference": "",
                 "details": f"Sales window is {span_days} day(s), below recommended {short_sales_window_days}+.",
             })
+
+    if result["sales_source_mode"] == "legacy_combined":
+        warnings.append((
+            "Legacy Sales Source",
+            (
+                "Using the legacy Part Sales & Receipts report as a compatibility fallback.\n\n"
+                "The preferred workflow is Detailed Part Sales + Received Parts Detail, which provides "
+                "stronger vendor, receipt, and demand-shape evidence."
+            ),
+        ))
 
     all_line_codes = sorted(set(item["line_code"] for item in result["sales_items"]))
 
@@ -273,6 +326,39 @@ def parse_all_files(paths, *, old_po_warning_days, short_sales_window_days, now=
         inventory_lookup=inventory_lookup,
         receipt_history_lookup=result["receipt_history_lookup"],
     )
+    if result["sales_source_mode"] == "detailed_pair":
+        result["detailed_sales_resolution"] = _summarize_unresolved_detailed_sales_rows(
+            sales_inputs.get("detailed_sales_rows", []),
+            inventory_lookup=inventory_lookup,
+            receipt_history_lookup=result["receipt_history_lookup"],
+        )
+        unresolved = result["detailed_sales_resolution"]
+        if unresolved["row_count"] > 0:
+            sample = ", ".join(item["item_code"] for item in unresolved["items"][:8])
+            extra = "..." if unresolved["item_count"] > 8 else ""
+            warnings.append((
+                "Detailed Sales Resolution Warning",
+                (
+                    f"{unresolved['row_count']} detailed sales row(s) across {unresolved['item_count']} item code(s) "
+                    "could not be matched to a line code after inventory and receipt-history resolution.\n\n"
+                    "These rows remain excluded from line-code-specific downstream logic until they can be matched.\n\n"
+                    f"Examples: {sample}{extra}"
+                ),
+            ))
+            startup_warning_rows.append({
+                "warning_type": "Detailed Sales Resolution Warning",
+                "severity": "warning",
+                "line_code": "",
+                "item_code": "",
+                "description": "",
+                "reference_date": "",
+                "qty": str(unresolved["row_count"]),
+                "po_reference": "",
+                "details": (
+                    f"{unresolved['item_count']} unresolved item code(s). "
+                    f"Examples: {sample}{extra}"
+                ),
+            })
     sales_history_flow.annotate_sales_items(
         result["sales_items"],
         inventory_lookup=inventory_lookup,

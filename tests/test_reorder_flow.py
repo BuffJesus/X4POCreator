@@ -53,7 +53,7 @@ class ReorderFlowTests(unittest.TestCase):
 
         self.assertEqual(result, "MOTION")
 
-    def test_default_vendor_for_key_returns_blank_when_receipt_history_is_mixed(self):
+    def test_default_vendor_for_key_uses_top_receipt_vendor_when_history_is_mixed(self):
         fake_app = SimpleNamespace(
             inventory_lookup={("AER-", "GH781-4"): {"supplier": " source "}},
             receipt_history_lookup={("AER-", "GH781-4"): {"vendor_candidates": ["MOTION", "GREGDIST"], "primary_vendor": "MOTION", "vendor_confidence": "medium"}},
@@ -61,7 +61,49 @@ class ReorderFlowTests(unittest.TestCase):
 
         result = reorder_flow.default_vendor_for_key(fake_app, ("AER-", "GH781-4"))
 
-        self.assertEqual(result, "")
+        self.assertEqual(result, "MOTION")
+
+    def test_receipt_pack_size_for_key_allows_hose_pack_inference(self):
+        fake_app = SimpleNamespace(
+            inventory_lookup={("AER-", "GH781-4"): {"description": '1/4" 2WIRE 6500PSI HOSE'}},
+            receipt_history_lookup={("AER-", "GH781-4"): {
+                "receipt_pack_candidate": 25,
+                "receipt_pack_confidence": "high",
+            }},
+            sales_items=[],
+        )
+
+        result = reorder_flow.receipt_pack_size_for_key(fake_app, ("AER-", "GH781-4"))
+
+        self.assertEqual(result, 25)
+
+    def test_receipt_pack_size_for_key_allows_hardware_pack_inference(self):
+        fake_app = SimpleNamespace(
+            inventory_lookup={("AER-", "GH781-4"): {"description": "1/4 X 1 ELEVATOR BOLT"}},
+            receipt_history_lookup={("AER-", "GH781-4"): {
+                "receipt_pack_candidate": 100,
+                "receipt_pack_confidence": "high",
+            }},
+            sales_items=[],
+        )
+
+        result = reorder_flow.receipt_pack_size_for_key(fake_app, ("AER-", "GH781-4"))
+
+        self.assertEqual(result, 100)
+
+    def test_receipt_pack_size_for_key_rejects_generic_part_inference(self):
+        fake_app = SimpleNamespace(
+            inventory_lookup={("AER-", "GH781-4"): {"description": "HYDRAULIC PUMP"}},
+            receipt_history_lookup={("AER-", "GH781-4"): {
+                "receipt_pack_candidate": 12,
+                "receipt_pack_confidence": "high",
+            }},
+            sales_items=[],
+        )
+
+        result = reorder_flow.receipt_pack_size_for_key(fake_app, ("AER-", "GH781-4"))
+
+        self.assertIsNone(result)
 
     def test_suggest_min_max_uses_detailed_sales_stats_when_mo12_sales_missing(self):
         fake_app = SimpleNamespace(

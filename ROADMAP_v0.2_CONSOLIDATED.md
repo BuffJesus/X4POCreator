@@ -2,7 +2,7 @@
 
 Status: reconciled against the current workspace and test-covered behavior
 
-Current app version: `0.1.16`
+Current app version: `0.1.17`
 
 This file consolidates:
 
@@ -91,10 +91,10 @@ The goal is to keep one phased checklist that reflects what is actually done in 
   - lumpy demand
   - suggestion gaps
   - receipt-heavy vs sales
-- [ ] Make the detailed file pair the default/required load path and move the legacy combined `Part Sales & Receipts` report to compatibility-only status in the UI and docs.
+- [x] Make the detailed file pair the default/required load path and move the legacy combined `Part Sales & Receipts` report to compatibility-only status in the UI and docs.
 - [ ] Decide whether to fully remove the legacy combined `Part Sales & Receipts` path after live-file coverage is proven.
 - [ ] Tighten live `DETAILED PART SALES.csv` parsing for edge cases where the first hyphen in the combined code token may not be the true PG/item boundary.
-- [ ] Measure real-world line-code resolution coverage after live parsing and add diagnostics for unresolved detailed-sales rows.
+- [x] Measure real-world line-code resolution coverage after live parsing and add diagnostics for unresolved detailed-sales rows.
 - [ ] Decide how receipt activity should influence target-stock / reorder suppression beyond review/confidence handling.
 - [ ] Decide whether any detailed-sales suggestion cases should replace the active suggestion by default instead of remaining compare/review signals only.
 
