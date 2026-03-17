@@ -119,6 +119,7 @@ class UIIndividualTests(unittest.TestCase):
                 "avg_days_between_receipts": 9.0,
                 "detailed_sales_shape": "steady_repeat",
                 "detailed_sales_shape_confidence": "high",
+                "suggested_source_label": "Detailed sales fallback",
                 "detailed_suggested_min": 3,
                 "detailed_suggested_max": 6,
                 "detailed_suggestion_compare_label": "Detailed only",
@@ -128,7 +129,7 @@ class UIIndividualTests(unittest.TestCase):
             assign_detail_vars={label: DummyVar() for label in (
                 "Line Code:", "Item Code:", "Description:", "Source:", "Qty Sold:", "Qty Suspended:",
                 "Qty Received:", "Order Qty:", "Pack Size:", "QOH:", "On PO:", "Min:", "Max:",
-                "Sug Min:", "Sug Max:", "Dtl Sug Min:", "Dtl Sug Max:", "Sug Compare:", "YTD Sales:", "12 Mo Sales:", "Supplier:", "Receipt Vendor:",
+                "Sug Min:", "Sug Max:", "Sug Source:", "Dtl Sug Min:", "Dtl Sug Max:", "Sug Compare:", "YTD Sales:", "12 Mo Sales:", "Supplier:", "Receipt Vendor:",
                 "Potential Vendor:", "Receipt Confidence:", "Receipt Count:", "Receipt vs Sales:", "Pack Source:", "Potential Pack:", "Pack Confidence:", "Avg Units / Receipt:", "Median Units / Receipt:", "Avg Days Between Receipts:", "Demand Shape:", "Shape Confidence:", "Last Receipt:", "Last Sale:"
             )},
             inventory_lookup={("AER-", "GH781-4"): {"supplier": "gregdist", "qoh": 2, "min": 1, "max": 4}},
@@ -174,6 +175,7 @@ class UIIndividualTests(unittest.TestCase):
         self.assertEqual(app.assign_detail_vars["Avg Units / Receipt:"].get(), "7.50")
         self.assertEqual(app.assign_detail_vars["Median Units / Receipt:"].get(), "6.00")
         self.assertEqual(app.assign_detail_vars["Avg Days Between Receipts:"].get(), "9.00")
+        self.assertEqual(app.assign_detail_vars["Sug Source:"].get(), "Detailed sales fallback")
         self.assertEqual(app.assign_detail_vars["Dtl Sug Min:"].get(), "3")
         self.assertEqual(app.assign_detail_vars["Dtl Sug Max:"].get(), "6")
         self.assertEqual(app.assign_detail_vars["Sug Compare:"].get(), "Detailed only")
@@ -202,7 +204,7 @@ class UIIndividualTests(unittest.TestCase):
             assign_detail_vars={label: DummyVar() for label in (
                 "Line Code:", "Item Code:", "Description:", "Source:", "Qty Sold:", "Qty Suspended:",
                 "Qty Received:", "Order Qty:", "Pack Size:", "QOH:", "On PO:", "Min:", "Max:",
-                "Sug Min:", "Sug Max:", "Dtl Sug Min:", "Dtl Sug Max:", "Sug Compare:", "YTD Sales:", "12 Mo Sales:", "Supplier:", "Receipt Vendor:",
+                "Sug Min:", "Sug Max:", "Sug Source:", "Dtl Sug Min:", "Dtl Sug Max:", "Sug Compare:", "YTD Sales:", "12 Mo Sales:", "Supplier:", "Receipt Vendor:",
                 "Potential Vendor:", "Receipt Confidence:", "Receipt Count:", "Receipt vs Sales:", "Pack Source:", "Potential Pack:", "Pack Confidence:", "Avg Units / Receipt:", "Median Units / Receipt:", "Avg Days Between Receipts:", "Demand Shape:", "Shape Confidence:", "Last Receipt:", "Last Sale:"
             )},
             inventory_lookup={("AER-", "GH781-4"): {"supplier": "source", "qoh": 2, "min": 1, "max": 4}},
@@ -266,7 +268,7 @@ class UIIndividualTests(unittest.TestCase):
             assign_detail_vars={label: DummyVar() for label in (
                 "Line Code:", "Item Code:", "Description:", "Source:", "Qty Sold:", "Qty Suspended:",
                 "Qty Received:", "Order Qty:", "Pack Size:", "QOH:", "On PO:", "Min:", "Max:",
-                "Sug Min:", "Sug Max:", "Dtl Sug Min:", "Dtl Sug Max:", "Sug Compare:", "YTD Sales:", "12 Mo Sales:", "Supplier:", "Receipt Vendor:",
+                "Sug Min:", "Sug Max:", "Sug Source:", "Dtl Sug Min:", "Dtl Sug Max:", "Sug Compare:", "YTD Sales:", "12 Mo Sales:", "Supplier:", "Receipt Vendor:",
                 "Potential Vendor:", "Receipt Confidence:", "Receipt Count:", "Receipt vs Sales:", "Pack Source:", "Potential Pack:", "Pack Confidence:", "Avg Units / Receipt:", "Median Units / Receipt:", "Avg Days Between Receipts:", "Demand Shape:", "Shape Confidence:", "Last Receipt:", "Last Sale:"
             )},
             inventory_lookup={("AER-", "GH781-4"): {"qoh": 2, "min": 1, "max": 4}},

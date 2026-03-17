@@ -34,6 +34,15 @@ def min_annual_sales_threshold(app, default=3):
         return default
 
 
+def suggestion_source_label(source_code):
+    return {
+        "none": "No suggestion",
+        "x4_mo12_sales": "X4 12-month sales",
+        "detailed_sales_fallback": "Detailed sales fallback",
+        "provided": "Provided",
+    }.get(source_code or "none", source_code or "none")
+
+
 def tune_detailed_sales_fallback_suggestion(stats, sug_min, sug_max):
     shape = performance_flow.classify_detailed_sales_shape(stats).get("detailed_sales_shape", "")
     if shape in ("sparse_transactions", "lumpy_bulk"):
@@ -64,6 +73,31 @@ def detailed_sales_suggest_min_max(app, key, min_annual_sales_for_suggestions=No
     weeks = get_cycle() if callable(get_cycle) else get_cycle_weeks(app)
     sug_min, sug_max = base_suggest_min_max_from_annual_sales(annual_sales, weeks)
     return tune_detailed_sales_fallback_suggestion(stats, sug_min, sug_max)
+
+
+def suggest_min_max_with_source(app, key, min_annual_sales_for_suggestions):
+    inv = app.inventory_lookup.get(key, {})
+    annual_sales = inv.get("mo12_sales", 0)
+    source = "x4_mo12_sales"
+    use_detailed_fallback = False
+    stats = {}
+    if not annual_sales or annual_sales <= 0:
+        stats = (getattr(app, "detailed_sales_stats_lookup", {}) or {}).get(key, {})
+        annual_sales = stats.get("annualized_qty_sold", 0) or 0
+        use_detailed_fallback = bool(annual_sales and annual_sales > 0)
+        source = "detailed_sales_fallback" if use_detailed_fallback else "none"
+    if not annual_sales or annual_sales <= 0:
+        return None, None, "none"
+    if annual_sales < min_annual_sales_for_suggestions:
+        return None, None, "none"
+    get_cycle = getattr(app, "_get_cycle_weeks", None)
+    weeks = get_cycle() if callable(get_cycle) else get_cycle_weeks(app)
+    sug_min, sug_max = base_suggest_min_max_from_annual_sales(annual_sales, weeks)
+    if use_detailed_fallback:
+        sug_min, sug_max = tune_detailed_sales_fallback_suggestion(stats, sug_min, sug_max)
+        if sug_min is None and sug_max is None:
+            return None, None, "none"
+    return sug_min, sug_max, source
 
 
 def compare_suggestion_pairs(active_pair, detailed_pair):
@@ -99,14 +133,17 @@ def suggestion_compare_label(compare_code):
     }.get(compare_code, compare_code or "")
 
 
-def apply_suggestion_context(app, item, key, active_pair=None, min_annual_sales_for_suggestions=None):
+def apply_suggestion_context(app, item, key, active_pair=None, min_annual_sales_for_suggestions=None, active_source=None):
     if active_pair is None:
-        active_pair = suggest_min_max(
+        active_min, active_max, active_source = suggest_min_max_with_source(
             app,
             key,
             min_annual_sales_for_suggestions or min_annual_sales_threshold(app),
         )
-    active_min, active_max = active_pair
+    else:
+        active_min, active_max = active_pair
+    if not active_source:
+        active_source = "provided" if active_pair is not None else "none"
     detailed_min, detailed_max = detailed_sales_suggest_min_max(
         app,
         key,
@@ -114,6 +151,8 @@ def apply_suggestion_context(app, item, key, active_pair=None, min_annual_sales_
     )
     item["suggested_min"] = active_min
     item["suggested_max"] = active_max
+    item["suggested_source"] = active_source
+    item["suggested_source_label"] = suggestion_source_label(active_source)
     item["detailed_suggested_min"] = detailed_min
     item["detailed_suggested_max"] = detailed_max
     compare_code = compare_suggestion_pairs((active_min, active_max), (detailed_min, detailed_max))
@@ -149,22 +188,7 @@ def append_suggestion_comparison_reason(item):
 
 
 def suggest_min_max(app, key, min_annual_sales_for_suggestions):
-    inv = app.inventory_lookup.get(key, {})
-    annual_sales = inv.get("mo12_sales", 0)
-    use_detailed_fallback = False
-    stats = {}
-    if not annual_sales or annual_sales <= 0:
-        stats = (getattr(app, "detailed_sales_stats_lookup", {}) or {}).get(key, {})
-        annual_sales = stats.get("annualized_qty_sold", 0) or 0
-        use_detailed_fallback = bool(annual_sales and annual_sales > 0)
-    if not annual_sales or annual_sales <= 0:
-        return None, None
-    if annual_sales < min_annual_sales_for_suggestions:
-        return None, None
-    weeks = app._get_cycle_weeks()
-    sug_min, sug_max = base_suggest_min_max_from_annual_sales(annual_sales, weeks)
-    if use_detailed_fallback:
-        sug_min, sug_max = tune_detailed_sales_fallback_suggestion(stats, sug_min, sug_max)
+    sug_min, sug_max, _source = suggest_min_max_with_source(app, key, min_annual_sales_for_suggestions)
     return sug_min, sug_max
 
 

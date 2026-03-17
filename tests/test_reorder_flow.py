@@ -116,6 +116,21 @@ class ReorderFlowTests(unittest.TestCase):
 
         self.assertEqual(result, (4, 8))
 
+    def test_suggest_min_max_with_source_marks_detailed_sales_fallback(self):
+        fake_app = SimpleNamespace(
+            inventory_lookup={("AER-", "GH781-4"): {"mo12_sales": 0}},
+            detailed_sales_stats_lookup={("AER-", "GH781-4"): {"annualized_qty_sold": 104}},
+            _get_cycle_weeks=lambda: 2,
+        )
+
+        result = reorder_flow.suggest_min_max_with_source(
+            fake_app,
+            ("AER-", "GH781-4"),
+            min_annual_sales_for_suggestions=12,
+        )
+
+        self.assertEqual(result, (4, 8, "detailed_sales_fallback"))
+
     def test_suggest_min_max_prefers_mo12_sales_over_detailed_sales_stats(self):
         fake_app = SimpleNamespace(
             inventory_lookup={("AER-", "GH781-4"): {"mo12_sales": 52}},
@@ -126,6 +141,21 @@ class ReorderFlowTests(unittest.TestCase):
         result = reorder_flow.suggest_min_max(fake_app, ("AER-", "GH781-4"), min_annual_sales_for_suggestions=12)
 
         self.assertEqual(result, (2, 4))
+
+    def test_suggest_min_max_with_source_marks_x4_mo12_sales_when_available(self):
+        fake_app = SimpleNamespace(
+            inventory_lookup={("AER-", "GH781-4"): {"mo12_sales": 52}},
+            detailed_sales_stats_lookup={("AER-", "GH781-4"): {"annualized_qty_sold": 104}},
+            _get_cycle_weeks=lambda: 2,
+        )
+
+        result = reorder_flow.suggest_min_max_with_source(
+            fake_app,
+            ("AER-", "GH781-4"),
+            min_annual_sales_for_suggestions=12,
+        )
+
+        self.assertEqual(result, (2, 4, "x4_mo12_sales"))
 
     def test_suggest_min_max_suppresses_sparse_detailed_sales_fallback(self):
         fake_app = SimpleNamespace(

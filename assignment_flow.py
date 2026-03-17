@@ -153,8 +153,12 @@ def prepare_assignment_session(
     for item in session.filtered_items:
         key = (item["line_code"], item["item_code"])
         inv = session.inventory_lookup.get(key, {})
-        sug_min, sug_max = suggest_min_max(key)
-        reorder_flow.apply_suggestion_context(session, item, key, (sug_min, sug_max))
+        sug_min, sug_max, sug_source = reorder_flow.suggest_min_max_with_source(
+            session,
+            key,
+            reorder_flow.min_annual_sales_threshold(session),
+        )
+        reorder_flow.apply_suggestion_context(session, item, key, (sug_min, sug_max), active_source=sug_source)
         apply_recent_order_context(item, session.recent_orders.get(key, []))
         rule_key = get_rule_key(item["line_code"], item["item_code"])
         rule = session.order_rules.get(rule_key)

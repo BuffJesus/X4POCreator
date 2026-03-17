@@ -87,9 +87,23 @@ def recalculate_item(item, inventory_lookup, order_rules, suggest_min_max, get_r
     key = (item["line_code"], item["item_code"])
     rule_key = get_rule_key(item["line_code"], item["item_code"])
     rule = effective_order_rule(item, order_rules.get(rule_key), inventory_lookup)
-    sug_min, sug_max = suggest_min_max(key)
+    sug_source = ""
     if suggestion_context_app is not None:
-        reorder_flow.apply_suggestion_context(suggestion_context_app, item, key, (sug_min, sug_max))
+        sug_min, sug_max, sug_source = reorder_flow.suggest_min_max_with_source(
+            suggestion_context_app,
+            key,
+            reorder_flow.min_annual_sales_threshold(suggestion_context_app),
+        )
+    else:
+        sug_min, sug_max = suggest_min_max(key)
+    if suggestion_context_app is not None:
+        reorder_flow.apply_suggestion_context(
+            suggestion_context_app,
+            item,
+            key,
+            (sug_min, sug_max),
+            active_source=sug_source,
+        )
     else:
         item["suggested_min"] = sug_min
         item["suggested_max"] = sug_max
@@ -191,6 +205,8 @@ def sync_review_item_to_filtered(
     review_item["order_policy"] = filtered.get("order_policy", review_item.get("order_policy", ""))
     review_item["suggested_min"] = filtered.get("suggested_min")
     review_item["suggested_max"] = filtered.get("suggested_max")
+    review_item["suggested_source"] = filtered.get("suggested_source", "")
+    review_item["suggested_source_label"] = filtered.get("suggested_source_label", "")
     review_item["detailed_suggested_min"] = filtered.get("detailed_suggested_min")
     review_item["detailed_suggested_max"] = filtered.get("detailed_suggested_max")
     review_item["detailed_suggestion_compare"] = filtered.get("detailed_suggestion_compare", "")

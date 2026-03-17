@@ -245,10 +245,12 @@ class AssignmentFlowTests(unittest.TestCase):
 
         self.assertTrue(result)
         item = session.filtered_items[0]
-        self.assertEqual(item["detailed_suggestion_compare"], "detailed_only")
-        self.assertTrue(item["review_required"])
-        self.assertEqual(item["status"], "review")
-        self.assertIn("suggestion_gap_detailed_only", item["data_flags"])
+        self.assertEqual(item["suggested_source"], "detailed_sales_fallback")
+        self.assertEqual(item["suggested_source_label"], "Detailed sales fallback")
+        self.assertEqual(item["suggested_min"], 3)
+        self.assertEqual(item["suggested_max"], 6)
+        self.assertEqual(item["detailed_suggestion_compare"], "aligned")
+        self.assertNotIn("suggestion_gap_detailed_only", item["data_flags"])
 
     def test_prepare_assignment_session_returns_false_when_no_items_remain(self):
         session = AppSessionState(

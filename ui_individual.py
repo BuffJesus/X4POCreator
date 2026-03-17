@@ -152,6 +152,7 @@ def build_individual_tab(app):
         "Max:",
         "Sug Min:",
         "Sug Max:",
+        "Sug Source:",
         "Dtl Sug Min:",
         "Dtl Sug Max:",
         "Sug Compare:",
@@ -272,6 +273,7 @@ def populate_assign_item(app):
         sug_min, sug_max = app._suggest_min_max(key)
         app.assign_detail_vars["Sug Min:"].set(str(sug_min) if sug_min is not None else "-")
         app.assign_detail_vars["Sug Max:"].set(str(sug_max) if sug_max is not None else "-")
+        app.assign_detail_vars["Sug Source:"].set(item.get("suggested_source_label", "") or "-")
         app.assign_detail_vars["Dtl Sug Min:"].set(str(item.get("detailed_suggested_min")) if item.get("detailed_suggested_min") is not None else "-")
         app.assign_detail_vars["Dtl Sug Max:"].set(str(item.get("detailed_suggested_max")) if item.get("detailed_suggested_max") is not None else "-")
         app.assign_detail_vars["Sug Compare:"].set(item.get("detailed_suggestion_compare_label", "") or "-")

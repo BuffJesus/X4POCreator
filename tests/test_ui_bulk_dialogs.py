@@ -799,6 +799,7 @@ class BulkDialogTests(unittest.TestCase):
             "data_flags": [],
             "detailed_sales_shape": "lumpy_bulk",
             "detailed_sales_shape_confidence": "medium",
+            "suggested_source_label": "Detailed sales fallback",
             "detailed_suggested_min": 3,
             "detailed_suggested_max": 6,
             "detailed_suggestion_compare_label": "Detailed higher",
@@ -810,6 +811,7 @@ class BulkDialogTests(unittest.TestCase):
 
         self.assertEqual(row_lookup["Demand Shape"], "lumpy_bulk")
         self.assertEqual(row_lookup["Shape Confidence"], "medium")
+        self.assertEqual(row_lookup["Sug Source"], "Detailed sales fallback")
         self.assertEqual(row_lookup["Dtl Sug Min / Max"], "3 / 6")
         self.assertEqual(row_lookup["Sug Compare"], "Detailed higher")
 
@@ -850,6 +852,8 @@ class BulkDialogTests(unittest.TestCase):
                 "receipt_primary_vendor": "MOTION",
                 "receipt_vendor_confidence": "high",
                 "receipt_vendor_candidates": ["MOTION"],
+                "suggested_source": "detailed_sales_fallback",
+                "suggested_source_label": "Detailed sales fallback",
                 "detailed_suggested_min": 3,
                 "detailed_suggested_max": 6,
                 "detailed_suggestion_compare": "detailed_only",
@@ -870,6 +874,8 @@ class BulkDialogTests(unittest.TestCase):
         self.assertEqual(assigned["recent_local_order_qty"], 2)
         self.assertEqual(assigned["receipt_primary_vendor"], "MOTION")
         self.assertEqual(assigned["receipt_vendor_confidence"], "high")
+        self.assertEqual(assigned["suggested_source"], "detailed_sales_fallback")
+        self.assertEqual(assigned["suggested_source_label"], "Detailed sales fallback")
         self.assertEqual(assigned["detailed_suggested_min"], 3)
         self.assertEqual(assigned["detailed_suggestion_compare_label"], "Detailed only")
         self.assertEqual(assigned["final_qty"], 2)
