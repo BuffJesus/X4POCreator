@@ -42,6 +42,16 @@ def _normalize_vendor_code(value):
     return str(value or "").strip().upper()
 
 
+def _split_line_code_item_token(value):
+    token = str(value or "").strip()
+    if not token or "-" not in token:
+        return "", token
+    line_code, item_code = token.split("-", 1)
+    if not line_code or not item_code:
+        return "", token
+    return f"{line_code}-", item_code.strip()
+
+
 def _match_header_columns(rows, required_fields, optional_fields=()):
     for row_index, row in enumerate(rows):
         normalized = [_normalize_header_label(cell) for cell in row]
@@ -314,9 +324,10 @@ def _parse_x4_detailed_part_sales_rows(rows):
     for row in _dedupe_detail_rows(rows):
         if not _looks_like_x4_detailed_part_sales_row(row):
             continue
+        line_code, item_code = _split_line_code_item_token(_safe_cell(row, 24))
         items.append({
-            "line_code": "",
-            "item_code": _safe_cell(row, 24),
+            "line_code": line_code,
+            "item_code": item_code,
             "description": _clean_item_description(_safe_cell(row, 25)),
             "qty_sold": _coerce_int(_safe_cell(row, 26)),
             "sale_date": _safe_cell(row, 31),

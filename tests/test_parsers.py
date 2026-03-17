@@ -185,8 +185,8 @@ class ParserSmokeTests(unittest.TestCase):
             rows = parsers.parse_detailed_part_sales_csv(str(path))
 
         self.assertEqual(rows, [{
-            "line_code": "",
-            "item_code": "010-00055062",
+            "line_code": "010-",
+            "item_code": "00055062",
             "description": "GLOBAL STRIPE",
             "qty_sold": 3,
             "sale_date": "20-Nov-2019",

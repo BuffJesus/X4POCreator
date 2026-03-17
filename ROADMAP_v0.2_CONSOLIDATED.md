@@ -70,23 +70,33 @@ The goal is to keep one phased checklist that reflects what is actually done in 
 
 ## Phase 2A. Detailed Sales and Receiving Evidence
 
-- [ ] Replace the legacy combined `Part Sales & Receipts` dependency with first-class support for:
+- [x] Add first-class support for:
   - `DETAILEDPARTSALES.csv`
   - `ReceivedPartsDetail.csv`
-- [ ] Keep the current downstream assignment/reorder session shape stable while building it from the two detailed files.
-- [ ] Derive the active sales window from detailed sales rows when the combined report is not used.
-- [ ] Carry receipt-history metadata into session state for later vendor-ranking and review flows.
-- [ ] Use receiving detail as the primary vendor-evidence source ahead of stale X4 supplier defaults.
-- [ ] Add receipt-derived vendor confidence / ambiguity handling instead of blindly trusting one receipt row.
-- [ ] Factor loaded receipt activity into reorder-confidence handling so recent receipts protect items even when open-PO evidence is missing.
-- [ ] Decide how receipt activity should influence target-stock / reorder suppression beyond recency protection.
-- [ ] Add detailed-sales transaction-shape metrics:
+- [x] Keep the downstream assignment/reorder session shape stable while building it from the two detailed files.
+- [x] Derive the active sales window from detailed sales rows when the combined report is not used.
+- [x] Carry receipt-history metadata into session state for vendor-ranking, review, and item-detail flows.
+- [x] Use receiving detail as the primary vendor-evidence source ahead of stale X4 supplier defaults.
+- [x] Add receipt-derived vendor confidence / ambiguity handling instead of blindly trusting one receipt row.
+- [x] Factor loaded receipt activity into reorder-confidence handling so recent receipts protect items when open-PO evidence is missing.
+- [x] Add receipt-vs-sales balance guardrails so receipt-heavy history does not automatically legitimize demand.
+- [x] Add detailed-sales transaction-shape metrics:
   - units per transaction
   - sale-day frequency
   - inter-sale cadence
   - burstiness / lumpy-demand signals
-- [ ] Surface receipt-history and detailed-sales evidence in item detail and assignment UI before making it authoritative for automation.
-- [ ] Compare detailed-sales-driven min/max suggestions against current X4 / heuristic suggestions before changing default reorder behavior.
+- [x] Surface receipt-history and detailed-sales evidence in item detail and assignment UI before making it authoritative for automation.
+- [x] Compare detailed-sales-driven min/max suggestions against current X4 / heuristic suggestions before changing default reorder behavior.
+- [x] Surface meaningful detailed-sales / receipt exceptions in Review:
+  - lumpy demand
+  - suggestion gaps
+  - receipt-heavy vs sales
+- [ ] Make the detailed file pair the default/required load path and move the legacy combined `Part Sales & Receipts` report to compatibility-only status in the UI and docs.
+- [ ] Decide whether to fully remove the legacy combined `Part Sales & Receipts` path after live-file coverage is proven.
+- [ ] Tighten live `DETAILED PART SALES.csv` parsing for edge cases where the first hyphen in the combined code token may not be the true PG/item boundary.
+- [ ] Measure real-world line-code resolution coverage after live parsing and add diagnostics for unresolved detailed-sales rows.
+- [ ] Decide how receipt activity should influence target-stock / reorder suppression beyond review/confidence handling.
+- [ ] Decide whether any detailed-sales suggestion cases should replace the active suggestion by default instead of remaining compare/review signals only.
 
 ## Phase 3. Rule Model Expansion and Pack-Trigger Behavior
 
