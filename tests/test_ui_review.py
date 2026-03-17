@@ -220,6 +220,20 @@ class UIReviewTests(unittest.TestCase):
         self.assertIn("1 receipt-heavy / sales-unverified", text)
         self.assertIn("1 critical / explicit min rule", text)
 
+    def test_update_review_summary_includes_receipt_pack_mismatch_count(self):
+        captured = {}
+        fake_app = SimpleNamespace(
+            assigned_items=[
+                {"vendor": "MOTION", "release_decision": "release_now", "receipt_pack_mismatch": True},
+                {"vendor": "SOURCE", "release_decision": "release_now"},
+            ],
+            lbl_review_summary=SimpleNamespace(config=lambda **kwargs: captured.update(kwargs)),
+        )
+
+        ui_review.update_review_summary(fake_app)
+
+        self.assertIn("Receipt pack mismatch: 1", captured["text"])
+
     def test_is_review_exception_detects_review_relevant_items(self):
         self.assertTrue(ui_review.is_review_exception({"release_decision": "hold_for_threshold"}))
         self.assertTrue(ui_review.is_review_exception({"status": "warning"}))
@@ -228,6 +242,7 @@ class UIReviewTests(unittest.TestCase):
         self.assertTrue(ui_review.is_review_exception({"vendor_value_coverage": "partial"}))
         self.assertTrue(ui_review.is_review_exception({"reorder_attention_signal": "review_lumpy_demand"}))
         self.assertTrue(ui_review.is_review_exception({"reorder_attention_signal": "review_receipt_heavy"}))
+        self.assertTrue(ui_review.is_review_exception({"receipt_pack_mismatch": True}))
         self.assertTrue(ui_review.is_review_exception({"receipt_vendor_ambiguous": True}))
         self.assertTrue(ui_review.is_review_exception({"detailed_suggestion_compare": "detailed_only"}))
         self.assertFalse(ui_review.is_review_exception({"release_decision": "release_now", "status": "ok"}))
@@ -330,6 +345,60 @@ class UIReviewTests(unittest.TestCase):
             var_vendor_filter=SimpleNamespace(get=lambda: "ALL"),
             var_review_performance_filter=SimpleNamespace(get=lambda: "ALL"),
             var_review_attention_filter=SimpleNamespace(get=lambda: "Receipt Heavy"),
+            var_review_recency_filter=SimpleNamespace(get=lambda: "ALL"),
+            var_review_suggestion_filter=SimpleNamespace(get=lambda: "ALL"),
+            var_review_release_filter=SimpleNamespace(get=lambda: "ALL"),
+            var_review_focus_filter=SimpleNamespace(get=lambda: "All Items"),
+        )
+
+        ui_review.apply_review_filter(fake_app)
+
+        inserts = [event for event in events if event[0] == "insert"]
+        self.assertEqual(len(inserts), 1)
+        self.assertEqual(inserts[0][2][2], "A")
+
+    def test_apply_review_filter_can_isolate_receipt_pack_mismatch_attention(self):
+        events = []
+
+        class Tree:
+            def get_children(self):
+                return ("old",)
+            def delete(self, item_id):
+                events.append(("delete", item_id))
+            def insert(self, parent, where, iid, values):
+                events.append(("insert", iid, values))
+
+        fake_app = SimpleNamespace(
+            bulk_sheet=SimpleNamespace(flush_pending_edit=lambda: events.append(("flush",))),
+            tree=Tree(),
+            assigned_items=[
+                {
+                    "vendor": "MOTION",
+                    "line_code": "AER-",
+                    "item_code": "A",
+                    "description": "Mismatch",
+                    "order_qty": 1,
+                    "status": "ok",
+                    "why": "",
+                    "pack_size": 6,
+                    "release_decision": "release_now",
+                    "receipt_pack_mismatch": True,
+                },
+                {
+                    "vendor": "MOTION",
+                    "line_code": "AER-",
+                    "item_code": "B",
+                    "description": "Normal",
+                    "order_qty": 1,
+                    "status": "ok",
+                    "why": "",
+                    "pack_size": 6,
+                    "release_decision": "release_now",
+                },
+            ],
+            var_vendor_filter=SimpleNamespace(get=lambda: "ALL"),
+            var_review_performance_filter=SimpleNamespace(get=lambda: "ALL"),
+            var_review_attention_filter=SimpleNamespace(get=lambda: "Pack Mismatch"),
             var_review_recency_filter=SimpleNamespace(get=lambda: "ALL"),
             var_review_suggestion_filter=SimpleNamespace(get=lambda: "ALL"),
             var_review_release_filter=SimpleNamespace(get=lambda: "ALL"),

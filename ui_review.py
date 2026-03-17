@@ -51,6 +51,8 @@ def is_review_exception(item):
         return True
     if str(item.get("reorder_attention_signal", "") or "").strip().lower() == "review_receipt_heavy":
         return True
+    if bool(item.get("receipt_pack_mismatch")):
+        return True
     if bool(item.get("receipt_vendor_ambiguous")):
         return True
     if has_suggestion_gap(item):
@@ -567,7 +569,7 @@ def build_review_tab(app):
         textvariable=app.var_review_attention_filter,
         state="readonly",
         width=14,
-        values=["ALL", "Normal", "Missed Reorder", "Lumpy Demand", "Receipt Heavy"],
+        values=["ALL", "Normal", "Missed Reorder", "Lumpy Demand", "Receipt Heavy", "Pack Mismatch"],
     )
     app.combo_review_attention.pack(side=tk.LEFT)
     app.combo_review_attention.bind("<<ComboboxSelected>>", lambda e: app._apply_review_filter())
@@ -753,6 +755,7 @@ def update_review_summary(app):
     ambiguous_receipt_vendor_count = 0
     lumpy_demand_count = 0
     receipt_heavy_count = 0
+    pack_mismatch_count = 0
     suggestion_gap_count = 0
     suggestion_gap_breakdown = {}
     for item in app.assigned_items:
@@ -765,6 +768,8 @@ def update_review_summary(app):
             lumpy_demand_count += 1
         if str(item.get("reorder_attention_signal", "") or "").strip().lower() == "review_receipt_heavy":
             receipt_heavy_count += 1
+        if item.get("receipt_pack_mismatch"):
+            pack_mismatch_count += 1
         if has_suggestion_gap(item):
             suggestion_gap_count += 1
             code = str(item.get("detailed_suggestion_compare", "") or "").strip().lower()
@@ -784,6 +789,8 @@ def update_review_summary(app):
         hold_summary += f" | Lumpy demand: {lumpy_demand_count}"
     if receipt_heavy_count:
         hold_summary += f" | Receipt-heavy vs sales: {receipt_heavy_count}"
+    if pack_mismatch_count:
+        hold_summary += f" | Receipt pack mismatch: {pack_mismatch_count}"
     if suggestion_gap_count:
         hold_summary += f" | Suggestion gaps: {suggestion_gap_count}"
         gap_parts = []
@@ -848,11 +855,16 @@ def apply_review_filter(app):
                 continue
         if attention_filter != "ALL":
             attention = (item.get("reorder_attention_signal", "") or "").lower()
+            if attention_filter == "Pack Mismatch":
+                if not item.get("receipt_pack_mismatch"):
+                    continue
+                attention = "review_receipt_pack_mismatch"
             expected_attention = {
                 "Normal": "normal",
                 "Missed Reorder": "review_missed_reorder",
                 "Lumpy Demand": "review_lumpy_demand",
                 "Receipt Heavy": "review_receipt_heavy",
+                "Pack Mismatch": "review_receipt_pack_mismatch",
             }.get(attention_filter, "")
             if attention != expected_attention:
                 continue

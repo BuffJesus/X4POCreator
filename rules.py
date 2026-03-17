@@ -970,6 +970,23 @@ def enrich_item(item, inv, pack_qty, rule):
     receipt_sales_balance = str(item.get("receipt_sales_balance", "") or "").strip().lower()
     if receipt_sales_balance:
         reason_codes.append(f"receipt_sales_{receipt_sales_balance}")
+    receipt_pack_confidence = str(item.get("potential_pack_confidence", "") or "").strip().lower()
+    receipt_pack_candidate = item.get("potential_pack_size")
+    active_pack_source = str(item.get("pack_size_source", "") or "").strip().lower()
+    receipt_pack_mismatch = (
+        receipt_pack_confidence == "high"
+        and isinstance(receipt_pack_candidate, (int, float))
+        and receipt_pack_candidate > 0
+        and isinstance(pack_qty, (int, float))
+        and pack_qty > 0
+        and active_pack_source != "receipt_history"
+        and not math.isclose(float(pack_qty), float(receipt_pack_candidate))
+    )
+    item["receipt_pack_mismatch"] = receipt_pack_mismatch
+    if receipt_pack_mismatch:
+        reason_codes.append("receipt_pack_mismatch")
+        if str(item.get("reorder_attention_signal", "") or "").strip().lower() in ("", "normal"):
+            item["reorder_attention_signal"] = "review_receipt_pack_mismatch"
 
     detail_parts = [f"Stock after open POs: {inventory_position:g}", f"Target stock: {target_stock:g}"]
     if item.get("package_profile"):
@@ -1047,6 +1064,11 @@ def enrich_item(item, inv, pack_qty, rule):
         receipt_candidates = list(item.get("receipt_vendor_candidates", []) or [])
         if receipt_candidates:
             detail_parts.append(f"Receipt vendor history is mixed: {', '.join(receipt_candidates[:3])}")
+    if receipt_pack_mismatch:
+        detail_parts.append(
+            f"Receipt pack evidence suggests {receipt_pack_candidate:g}, "
+            f"but active pack is {pack_qty:g}"
+        )
     if acceptable_overstock > 0:
         overstock_basis = item.get("acceptable_overstock_basis")
         basis_label = {

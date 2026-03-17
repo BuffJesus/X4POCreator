@@ -1128,6 +1128,28 @@ class RulesTests(unittest.TestCase):
         self.assertIn("receipt_vendor_ambiguous", item["reason_codes"])
         self.assertIn("receipt_sales_receipt_led", item["reason_codes"])
 
+    def test_enrich_item_flags_high_confidence_receipt_pack_mismatch(self):
+        item = {
+            "description": "HOSE",
+            "qty_sold": 2,
+            "qty_suspended": 0,
+            "qty_received": 5,
+            "qty_on_po": 0,
+            "pack_size": 10,
+            "pack_size_source": "x4_exact",
+            "demand_signal": 2,
+            "potential_pack_size": 25,
+            "potential_pack_confidence": "high",
+            "reorder_attention_signal": "normal",
+        }
+
+        enrich_item(item, {"qoh": 0, "max": 2, "last_sale": "05-Mar-2026", "last_receipt": "01-Mar-2026"}, 10, None)
+
+        self.assertTrue(item["receipt_pack_mismatch"])
+        self.assertEqual(item["reorder_attention_signal"], "review_receipt_pack_mismatch")
+        self.assertIn("Receipt pack evidence suggests 25", item["why"])
+        self.assertIn("receipt_pack_mismatch", item["reason_codes"])
+
 
 if __name__ == "__main__":
     unittest.main()
