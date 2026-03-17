@@ -81,6 +81,14 @@ SUGGESTION_FILTER_LABELS = {
 }
 
 
+SUGGESTION_SOURCE_FILTER_LABELS = {
+    "x4_mo12_sales": "X4 12-month sales",
+    "detailed_sales_fallback": "Detailed sales fallback",
+    "none": "No suggestion",
+    "provided": "Provided",
+}
+
+
 def recency_filter_label(item):
     bucket = item.get("recency_review_bucket")
     if not bucket:
@@ -93,6 +101,13 @@ def suggestion_filter_label(item):
     if not code:
         return "None"
     return SUGGESTION_FILTER_LABELS.get(code, str(item.get("detailed_suggestion_compare_label", "") or code))
+
+
+def suggestion_source_filter_label(item):
+    code = str(item.get("suggested_source", "") or "").strip().lower()
+    if not code:
+        return "None"
+    return SUGGESTION_SOURCE_FILTER_LABELS.get(code, str(item.get("suggested_source_label", "") or code))
 
 
 def review_focus_label_for_setting(setting):
@@ -218,6 +233,8 @@ def apply_release_plan_view(app, vendor, *, focus="Exceptions Only", release="AL
         app.var_review_recency_filter.set("ALL")
     if hasattr(app, "var_review_suggestion_filter"):
         app.var_review_suggestion_filter.set("ALL")
+    if hasattr(app, "var_review_suggestion_source_filter"):
+        app.var_review_suggestion_source_filter.set("ALL")
     if hasattr(app, "var_review_release_filter"):
         app.var_review_release_filter.set(release)
     if hasattr(app, "var_review_focus_filter"):
@@ -616,6 +633,18 @@ def build_review_tab(app):
     app.combo_review_suggestion.pack(side=tk.LEFT)
     app.combo_review_suggestion.bind("<<ComboboxSelected>>", lambda e: app._apply_review_filter())
 
+    ttk.Label(filter_frame, text="Sug Source:").pack(side=tk.LEFT, padx=(12, 6))
+    app.var_review_suggestion_source_filter = tk.StringVar(value="ALL")
+    app.combo_review_suggestion_source = ttk.Combobox(
+        filter_frame,
+        textvariable=app.var_review_suggestion_source_filter,
+        state="readonly",
+        width=20,
+        values=["ALL"] + list(SUGGESTION_SOURCE_FILTER_LABELS.values()),
+    )
+    app.combo_review_suggestion_source.pack(side=tk.LEFT)
+    app.combo_review_suggestion_source.bind("<<ComboboxSelected>>", lambda e: app._apply_review_filter())
+
     ttk.Label(filter_frame, text="Release:").pack(side=tk.LEFT, padx=(12, 6))
     app.var_review_release_filter = tk.StringVar(value="ALL")
     app.combo_review_release = ttk.Combobox(
@@ -752,6 +781,8 @@ def populate_review_tab(app):
     app.var_review_attention_filter.set("ALL")
     app.var_review_recency_filter.set("ALL")
     app.var_review_suggestion_filter.set("ALL")
+    if hasattr(app, "var_review_suggestion_source_filter"):
+        app.var_review_suggestion_source_filter.set("ALL")
     app.var_review_release_filter.set("ALL")
     focus = "All Items"
     current_focus_var = getattr(app, "var_review_focus_filter", None)
@@ -780,6 +811,7 @@ def update_review_summary(app):
     pack_mismatch_count = 0
     suggestion_gap_count = 0
     suggestion_gap_breakdown = {}
+    suggestion_source_counts = {}
     for item in app.assigned_items:
         bucket = item.get("recency_review_bucket")
         if bucket:
@@ -797,6 +829,9 @@ def update_review_summary(app):
             code = str(item.get("detailed_suggestion_compare", "") or "").strip().lower()
             if code:
                 suggestion_gap_breakdown[code] = suggestion_gap_breakdown.get(code, 0) + 1
+        source_code = str(item.get("suggested_source", "") or "").strip().lower()
+        if source_code:
+            suggestion_source_counts[source_code] = suggestion_source_counts.get(source_code, 0) + 1
     exportable_count = immediate_count + planned_count
     hold_summary = f" | Exportable now: {exportable_count} | Immediate: {immediate_count} | Exceptions: {exception_count}"
     if planned_count:
@@ -822,6 +857,14 @@ def update_review_summary(app):
                 gap_parts.append(f"{count} {SUGGESTION_FILTER_LABELS.get(code, code).lower()}")
         if gap_parts:
             hold_summary += f" ({', '.join(gap_parts)})"
+    if suggestion_source_counts:
+        source_parts = []
+        for code in ("detailed_sales_fallback", "x4_mo12_sales", "provided"):
+            count = suggestion_source_counts.get(code)
+            if count:
+                source_parts.append(f"{count} {SUGGESTION_SOURCE_FILTER_LABELS.get(code, code).lower()}")
+        if source_parts:
+            hold_summary += f" | Suggestion sources: {', '.join(source_parts)}"
     if low_recency_counts:
         parts = []
         for bucket in (
@@ -856,6 +899,12 @@ def apply_review_filter(app):
     recency_filter = app.var_review_recency_filter.get()
     suggestion_filter_var = getattr(app, "var_review_suggestion_filter", None)
     suggestion_filter = suggestion_filter_var.get() if suggestion_filter_var and hasattr(suggestion_filter_var, "get") else "ALL"
+    suggestion_source_filter_var = getattr(app, "var_review_suggestion_source_filter", None)
+    suggestion_source_filter = (
+        suggestion_source_filter_var.get()
+        if suggestion_source_filter_var and hasattr(suggestion_source_filter_var, "get")
+        else "ALL"
+    )
     release_filter = app.var_review_release_filter.get()
     focus_filter = app.var_review_focus_filter.get()
     for item_id in app.tree.get_children():
@@ -893,6 +942,8 @@ def apply_review_filter(app):
         if recency_filter != "ALL" and recency_filter_label(item) != recency_filter:
             continue
         if suggestion_filter != "ALL" and suggestion_filter_label(item) != suggestion_filter:
+            continue
+        if suggestion_source_filter != "ALL" and suggestion_source_filter_label(item) != suggestion_source_filter:
             continue
         if release_filter != "ALL":
             if release_filter == "Critical Held":

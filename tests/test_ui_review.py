@@ -111,6 +111,7 @@ class UIReviewTests(unittest.TestCase):
             var_review_attention_filter=SimpleNamespace(get=lambda: "Missed Reorder"),
             var_review_recency_filter=SimpleNamespace(get=lambda: "Stale / Likely Dead"),
             var_review_suggestion_filter=SimpleNamespace(get=lambda: "ALL"),
+            var_review_suggestion_source_filter=SimpleNamespace(get=lambda: "ALL"),
             var_review_release_filter=SimpleNamespace(get=lambda: "Planned Today"),
             var_review_focus_filter=SimpleNamespace(get=lambda: "Exceptions Only"),
         )
@@ -165,6 +166,7 @@ class UIReviewTests(unittest.TestCase):
             var_review_attention_filter=Var(),
             var_review_recency_filter=Var(),
             var_review_suggestion_filter=Var(),
+            var_review_suggestion_source_filter=Var(),
             var_review_release_filter=Var(),
             var_review_focus_filter=Var(),
             _get_review_export_focus=lambda: "all_items",
@@ -219,6 +221,7 @@ class UIReviewTests(unittest.TestCase):
             var_review_attention_filter=Var(),
             var_review_recency_filter=Var(),
             var_review_suggestion_filter=Var(),
+            var_review_suggestion_source_filter=Var(),
             var_review_release_filter=Var(),
             var_review_focus_filter=Var("All Items"),
             _get_review_export_focus=lambda: "exceptions_only",
@@ -241,6 +244,7 @@ class UIReviewTests(unittest.TestCase):
                     "recency_review_bucket": "new_or_sparse",
                     "receipt_vendor_ambiguous": True,
                     "reorder_attention_signal": "review_lumpy_demand",
+                    "suggested_source": "detailed_sales_fallback",
                     "detailed_suggestion_compare": "detailed_only",
                 },
                 {
@@ -248,6 +252,7 @@ class UIReviewTests(unittest.TestCase):
                     "release_decision": "hold_for_threshold",
                     "recency_review_bucket": "receipt_heavy_unverified",
                     "reorder_attention_signal": "review_receipt_heavy",
+                    "suggested_source": "x4_mo12_sales",
                     "status": "review",
                 },
                 {"vendor": "SOURCE", "release_decision": ""},
@@ -268,6 +273,7 @@ class UIReviewTests(unittest.TestCase):
         self.assertIn("Lumpy demand: 1", text)
         self.assertIn("Receipt-heavy vs sales: 1", text)
         self.assertIn("Suggestion gaps: 1 (1 detailed only)", text)
+        self.assertIn("Suggestion sources: 1 detailed sales fallback, 1 x4 12-month sales", text)
         self.assertIn("Low-confidence recency: 3", text)
         self.assertIn("1 new / sparse", text)
         self.assertIn("1 receipt-heavy / sales-unverified", text)
@@ -345,6 +351,7 @@ class UIReviewTests(unittest.TestCase):
             var_review_attention_filter=SimpleNamespace(get=lambda: "ALL"),
             var_review_recency_filter=SimpleNamespace(get=lambda: "ALL"),
             var_review_suggestion_filter=SimpleNamespace(get=lambda: "Detailed Higher"),
+            var_review_suggestion_source_filter=SimpleNamespace(get=lambda: "ALL"),
             var_review_release_filter=SimpleNamespace(get=lambda: "ALL"),
             var_review_focus_filter=SimpleNamespace(get=lambda: "All Items"),
         )
@@ -354,6 +361,62 @@ class UIReviewTests(unittest.TestCase):
         inserts = [event for event in events if event[0] == "insert"]
         self.assertEqual(len(inserts), 1)
         self.assertEqual(inserts[0][2][2], "B")
+
+    def test_apply_review_filter_can_isolate_suggestion_source(self):
+        events = []
+
+        class Tree:
+            def get_children(self):
+                return ("old",)
+            def delete(self, item_id):
+                events.append(("delete", item_id))
+            def insert(self, parent, where, iid, values):
+                events.append(("insert", iid, values))
+
+        fake_app = SimpleNamespace(
+            bulk_sheet=SimpleNamespace(flush_pending_edit=lambda: events.append(("flush",))),
+            tree=Tree(),
+            assigned_items=[
+                {
+                    "vendor": "MOTION",
+                    "line_code": "AER-",
+                    "item_code": "A",
+                    "description": "Detailed fallback",
+                    "order_qty": 1,
+                    "status": "ok",
+                    "why": "",
+                    "pack_size": 6,
+                    "release_decision": "release_now",
+                    "suggested_source": "detailed_sales_fallback",
+                },
+                {
+                    "vendor": "MOTION",
+                    "line_code": "AER-",
+                    "item_code": "B",
+                    "description": "X4 source",
+                    "order_qty": 1,
+                    "status": "ok",
+                    "why": "",
+                    "pack_size": 6,
+                    "release_decision": "release_now",
+                    "suggested_source": "x4_mo12_sales",
+                },
+            ],
+            var_vendor_filter=SimpleNamespace(get=lambda: "ALL"),
+            var_review_performance_filter=SimpleNamespace(get=lambda: "ALL"),
+            var_review_attention_filter=SimpleNamespace(get=lambda: "ALL"),
+            var_review_recency_filter=SimpleNamespace(get=lambda: "ALL"),
+            var_review_suggestion_filter=SimpleNamespace(get=lambda: "ALL"),
+            var_review_suggestion_source_filter=SimpleNamespace(get=lambda: "Detailed sales fallback"),
+            var_review_release_filter=SimpleNamespace(get=lambda: "ALL"),
+            var_review_focus_filter=SimpleNamespace(get=lambda: "All Items"),
+        )
+
+        ui_review.apply_review_filter(fake_app)
+
+        inserts = [event for event in events if event[0] == "insert"]
+        self.assertEqual(len(inserts), 1)
+        self.assertEqual(inserts[0][2][2], "A")
 
     def test_apply_review_filter_can_isolate_receipt_heavy_attention(self):
         events = []
@@ -400,6 +463,7 @@ class UIReviewTests(unittest.TestCase):
             var_review_attention_filter=SimpleNamespace(get=lambda: "Receipt Heavy"),
             var_review_recency_filter=SimpleNamespace(get=lambda: "ALL"),
             var_review_suggestion_filter=SimpleNamespace(get=lambda: "ALL"),
+            var_review_suggestion_source_filter=SimpleNamespace(get=lambda: "ALL"),
             var_review_release_filter=SimpleNamespace(get=lambda: "ALL"),
             var_review_focus_filter=SimpleNamespace(get=lambda: "All Items"),
         )
@@ -454,6 +518,7 @@ class UIReviewTests(unittest.TestCase):
             var_review_attention_filter=SimpleNamespace(get=lambda: "Pack Mismatch"),
             var_review_recency_filter=SimpleNamespace(get=lambda: "ALL"),
             var_review_suggestion_filter=SimpleNamespace(get=lambda: "ALL"),
+            var_review_suggestion_source_filter=SimpleNamespace(get=lambda: "ALL"),
             var_review_release_filter=SimpleNamespace(get=lambda: "ALL"),
             var_review_focus_filter=SimpleNamespace(get=lambda: "All Items"),
         )
@@ -513,6 +578,7 @@ class UIReviewTests(unittest.TestCase):
             var_review_attention_filter=SimpleNamespace(get=lambda: "ALL"),
             var_review_recency_filter=SimpleNamespace(get=lambda: "ALL"),
             var_review_suggestion_filter=SimpleNamespace(get=lambda: "ALL"),
+            var_review_suggestion_source_filter=SimpleNamespace(get=lambda: "ALL"),
             var_review_release_filter=SimpleNamespace(get=lambda: "ALL"),
             var_review_focus_filter=SimpleNamespace(get=lambda: "Exceptions Only"),
         )
@@ -566,6 +632,8 @@ class UIReviewTests(unittest.TestCase):
             var_review_performance_filter=SimpleNamespace(get=lambda: "ALL"),
             var_review_attention_filter=SimpleNamespace(get=lambda: "ALL"),
             var_review_recency_filter=SimpleNamespace(get=lambda: "ALL"),
+            var_review_suggestion_filter=SimpleNamespace(get=lambda: "ALL"),
+            var_review_suggestion_source_filter=SimpleNamespace(get=lambda: "ALL"),
             var_review_release_filter=SimpleNamespace(get=lambda: "ALL"),
             var_review_focus_filter=SimpleNamespace(get=lambda: "Exceptions Only"),
         )
@@ -633,6 +701,7 @@ class UIReviewTests(unittest.TestCase):
             var_review_attention_filter=SimpleNamespace(get=lambda: "ALL"),
             var_review_recency_filter=SimpleNamespace(get=lambda: "ALL"),
             var_review_suggestion_filter=SimpleNamespace(get=lambda: "ALL"),
+            var_review_suggestion_source_filter=SimpleNamespace(get=lambda: "ALL"),
             var_review_release_filter=SimpleNamespace(get=lambda: "Critical Held"),
             var_review_focus_filter=SimpleNamespace(get=lambda: "All Items"),
         )
