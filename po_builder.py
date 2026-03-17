@@ -871,6 +871,10 @@ class POBuilderApp:
         unresolved_detailed_rows = int(detailed_resolution.get("row_count", 0) or 0)
         if unresolved_detailed_rows:
             status_parts.append(f"{unresolved_detailed_rows} unresolved detailed sales rows")
+        detailed_conflicts = result.get("detailed_sales_conflicts", {}) or {}
+        conflicting_detailed_rows = int(detailed_conflicts.get("row_count", 0) or 0)
+        if conflicting_detailed_rows:
+            status_parts.append(f"{conflicting_detailed_rows} suspicious detailed sales rows")
         status_parts.append(f"{len(self.all_line_codes)} line codes found")
         self.lbl_load_status.config(text="✓  " + "  ·  ".join(status_parts))
 

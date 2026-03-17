@@ -375,6 +375,65 @@ class LoadFlowTests(unittest.TestCase):
         self.assertEqual(len(startup_rows), 1)
         self.assertEqual(startup_rows[0]["qty"], "2")
 
+    def test_parse_all_files_warns_when_parsed_detailed_sales_line_code_conflicts_with_known_data(self):
+        with patch("load_flow.parsers.parse_detailed_part_sales_csv", return_value=[
+            {
+                "line_code": "WRONG-",
+                "item_code": "GH781-4",
+                "description": "HOSE",
+                "qty_sold": 4,
+                "sale_date": "01-Mar-2026",
+            },
+        ]), patch("load_flow.parsers.parse_received_parts_detail_csv", return_value=[]), patch(
+            "load_flow.parsers.build_sales_receipt_summary",
+            return_value=[{
+                "line_code": "WRONG-",
+                "item_code": "GH781-4",
+                "description": "HOSE",
+                "qty_received": 0,
+                "qty_sold": 4,
+            }],
+        ), patch(
+            "load_flow.parsers.parse_detailed_sales_date_range",
+            return_value=(datetime(2026, 3, 1), datetime(2026, 3, 10)),
+        ), patch(
+            "load_flow.parsers.build_receipt_history_lookup",
+            return_value={},
+        ), patch(
+            "load_flow.parsers.build_detailed_sales_stats_lookup",
+            return_value={("WRONG-", "GH781-4"): {"transaction_count": 1, "qty_sold_total": 4}},
+        ), patch(
+            "load_flow.parsers.parse_on_hand_report",
+            return_value={("AER-", "GH781-4"): {"qoh": 5.0, "repl_cost": 12.5}},
+        ):
+            result = load_flow.parse_all_files(
+                {
+                    "sales": "",
+                    "detailedsales": "detailed.csv",
+                    "receivedparts": "received.csv",
+                    "po": "",
+                    "susp": "",
+                    "onhand": "onhand.csv",
+                    "minmax": "",
+                    "packsize": "",
+                },
+                old_po_warning_days=90,
+                short_sales_window_days=7,
+            )
+
+        self.assertEqual(result["detailed_sales_conflicts"]["row_count"], 1)
+        self.assertEqual(result["detailed_sales_conflicts"]["item_count"], 1)
+        self.assertEqual(result["detailed_sales_conflicts"]["items"][0]["line_code"], "WRONG-")
+        self.assertEqual(result["detailed_sales_conflicts"]["items"][0]["known_line_codes"], ["AER-"])
+        warning_titles = [title for title, _message in result["warnings"]]
+        self.assertIn("Detailed Sales Line-Code Conflict Warning", warning_titles)
+        startup_rows = [
+            row for row in result["startup_warning_rows"]
+            if row["warning_type"] == "Detailed Sales Line-Code Conflict Warning"
+        ]
+        self.assertEqual(len(startup_rows), 1)
+        self.assertEqual(startup_rows[0]["qty"], "1")
+
     def test_parse_all_files_old_po_warning_includes_po_reference(self):
         with patch("load_flow.parsers.parse_part_sales_csv", return_value=[{
             "line_code": "AER-",

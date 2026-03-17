@@ -95,6 +95,49 @@ def _summarize_unresolved_detailed_sales_rows(detailed_sales_rows, *, inventory_
     }
 
 
+def _summarize_conflicting_detailed_sales_rows(detailed_sales_rows, *, inventory_lookup, receipt_history_lookup):
+    conflicting_by_item = {}
+    conflicting_row_count = 0
+    inventory_lookup = inventory_lookup or {}
+    receipt_history_lookup = receipt_history_lookup or {}
+    for row in detailed_sales_rows or []:
+        parsed_line_code = str(row.get("line_code", "") or "").strip()
+        item_code = str(row.get("item_code", "") or "").strip()
+        if not item_code or not parsed_line_code:
+            continue
+        known_candidates = sorted({
+            line_code
+            for (line_code, current_item_code) in inventory_lookup
+            if current_item_code == item_code and line_code
+        } | {
+            line_code
+            for (line_code, current_item_code) in receipt_history_lookup
+            if current_item_code == item_code and line_code
+        })
+        if not known_candidates or parsed_line_code in known_candidates:
+            continue
+        conflicting_row_count += 1
+        entry = conflicting_by_item.setdefault((parsed_line_code, item_code), {
+            "line_code": parsed_line_code,
+            "item_code": item_code,
+            "description": str(row.get("description", "") or "").strip(),
+            "row_count": 0,
+            "qty_sold": 0,
+            "known_line_codes": known_candidates,
+        })
+        entry["row_count"] += 1
+        entry["qty_sold"] += max(0, int(row.get("qty_sold", 0) or 0))
+    conflicting_items = sorted(
+        conflicting_by_item.values(),
+        key=lambda item: (-item["row_count"], -item["qty_sold"], item["line_code"], item["item_code"]),
+    )
+    return {
+        "row_count": conflicting_row_count,
+        "item_count": len(conflicting_items),
+        "items": conflicting_items,
+    }
+
+
 def _parse_sales_inputs(paths):
     sales_path = str(paths.get("sales", "") or "").strip()
     detailed_sales_path = str(paths.get("detailedsales", "") or "").strip()
@@ -141,6 +184,7 @@ def parse_all_files(paths, *, old_po_warning_days, short_sales_window_days, now=
     sales_inputs = _parse_sales_inputs(paths)
     result["sales_source_mode"] = sales_inputs.get("sales_source_mode", "none")
     result["detailed_sales_resolution"] = {"row_count": 0, "item_count": 0, "items": []}
+    result["detailed_sales_conflicts"] = {"row_count": 0, "item_count": 0, "items": []}
     result["sales_items"] = sales_inputs["sales_items"]
     result["receipt_history_lookup"] = sales_inputs.get("receipt_history_lookup", {})
     result["detailed_sales_stats_lookup"] = sales_inputs.get("detailed_sales_stats_lookup", {})
@@ -332,6 +376,11 @@ def parse_all_files(paths, *, old_po_warning_days, short_sales_window_days, now=
             inventory_lookup=inventory_lookup,
             receipt_history_lookup=result["receipt_history_lookup"],
         )
+        result["detailed_sales_conflicts"] = _summarize_conflicting_detailed_sales_rows(
+            sales_inputs.get("detailed_sales_rows", []),
+            inventory_lookup=inventory_lookup,
+            receipt_history_lookup=result["receipt_history_lookup"],
+        )
         unresolved = result["detailed_sales_resolution"]
         if unresolved["row_count"] > 0:
             sample = ", ".join(item["item_code"] for item in unresolved["items"][:8])
@@ -356,6 +405,36 @@ def parse_all_files(paths, *, old_po_warning_days, short_sales_window_days, now=
                 "po_reference": "",
                 "details": (
                     f"{unresolved['item_count']} unresolved item code(s). "
+                    f"Examples: {sample}{extra}"
+                ),
+            })
+        conflicts = result["detailed_sales_conflicts"]
+        if conflicts["row_count"] > 0:
+            sample = ", ".join(
+                f"{item['line_code']}/{item['item_code']}"
+                for item in conflicts["items"][:8]
+            )
+            extra = "..." if conflicts["item_count"] > 8 else ""
+            warnings.append((
+                "Detailed Sales Line-Code Conflict Warning",
+                (
+                    f"{conflicts['row_count']} detailed sales row(s) across {conflicts['item_count']} parsed item key(s) "
+                    "disagree with known inventory or receipt-history line codes for the same item code.\n\n"
+                    "This suggests the combined detailed-sales token may not always split cleanly at the first hyphen.\n\n"
+                    f"Examples: {sample}{extra}"
+                ),
+            ))
+            startup_warning_rows.append({
+                "warning_type": "Detailed Sales Line-Code Conflict Warning",
+                "severity": "warning",
+                "line_code": "",
+                "item_code": "",
+                "description": "",
+                "reference_date": "",
+                "qty": str(conflicts["row_count"]),
+                "po_reference": "",
+                "details": (
+                    f"{conflicts['item_count']} conflicting parsed item key(s). "
                     f"Examples: {sample}{extra}"
                 ),
             })
