@@ -4,6 +4,80 @@ from tkinter import ttk
 from ui_scroll import attach_vertical_mousewheel, sync_canvas_window
 
 
+LOAD_FILE_SECTIONS = (
+    {
+        "title": "Core Files",
+        "summary": "Preferred daily workflow. These files should cover the main assignment and reorder path.",
+        "rows": (
+            {
+                "label": "Detailed Part Sales CSV",
+                "attr_name": "var_detailed_sales_path",
+                "browse_key": "detailedsales",
+                "hint": "Preferred sales source. Use with Received Parts Detail.",
+            },
+            {
+                "label": "Received Parts Detail CSV",
+                "attr_name": "var_received_parts_path",
+                "browse_key": "receivedparts",
+                "hint": "Preferred receiving source. Use with Detailed Part Sales.",
+            },
+            {
+                "label": "On Hand Min/Max Sales CSV",
+                "attr_name": "var_minmax_path",
+                "browse_key": "minmax",
+                "hint": "Primary inventory/min-max source for reorder decisions.",
+            },
+            {
+                "label": "Order Multiples / Pack Sizes CSV",
+                "attr_name": "var_packsize_path",
+                "browse_key": "packsize",
+                "hint": "Pack-size source for ordering behavior.",
+            },
+        ),
+    },
+    {
+        "title": "Optional Support Files",
+        "summary": "Useful when available, but not required to load the core workflow.",
+        "rows": (
+            {
+                "label": "On Hand Report CSV",
+                "attr_name": "var_onhand_path",
+                "browse_key": "onhand",
+                "hint": "Adds inventory cost/QOH coverage where needed.",
+            },
+            {
+                "label": "Open PO Listing CSV",
+                "attr_name": "var_po_path",
+                "browse_key": "po",
+                "hint": "Adds open-PO protection and review context.",
+            },
+            {
+                "label": "Suspended Items CSV",
+                "attr_name": "var_susp_path",
+                "browse_key": "susp",
+                "hint": "Adds suspense demand and review context.",
+            },
+        ),
+    },
+    {
+        "title": "Legacy Compatibility",
+        "summary": "Keep only for fallback use while older workflows are still supported.",
+        "rows": (
+            {
+                "label": "Part Sales & Receipts CSV (Legacy / Compatibility)",
+                "attr_name": "var_sales_path",
+                "browse_key": "sales",
+                "hint": "Legacy combined report. Use only when the detailed pair is unavailable.",
+            },
+        ),
+    },
+)
+
+
+def load_file_sections():
+    return LOAD_FILE_SECTIONS
+
+
 def build_load_tab(app):
     frame = ttk.Frame(app.notebook, padding=0)
     app.notebook.add(frame, text="  1. Load Files  ")
@@ -78,83 +152,14 @@ def build_load_tab(app):
 
     ttk.Label(
         file_frame,
-        text="Preferred: load Detailed Part Sales + Received Parts Detail. The legacy Part Sales & Receipts report is compatibility-only.",
+        text="Use the core files first. Optional files add context; legacy files are fallback-only.",
         style="Info.TLabel",
         wraplength=900,
     ).grid(row=0, column=0, columnspan=3, sticky="w", padx=4, pady=(0, 8))
 
-    _add_file_row(
-        app,
-        file_frame,
-        row=1,
-        label="Order Multiples / Pack Sizes CSV",
-        attr_name="var_packsize_path",
-        browse_key="packsize",
-        hint="Standard -> Inventory -> Items With Order Multiple",
-    )
-    _add_file_row(
-        app,
-        file_frame,
-        row=2,
-        label="On Hand Min/Max Sales CSV",
-        attr_name="var_minmax_path",
-        browse_key="minmax",
-        hint="Standard -> Inventory -> On Hand Min Max Sales",
-    )
-    _add_file_row(
-        app,
-        file_frame,
-        row=3,
-        label="On Hand Report CSV",
-        attr_name="var_onhand_path",
-        browse_key="onhand",
-        hint="Standard -> Inventory -> On Hand Report",
-    )
-    _add_file_row(
-        app,
-        file_frame,
-        row=4,
-        label="Open PO Listing CSV",
-        attr_name="var_po_path",
-        browse_key="po",
-        hint="Standard -> Purchase Order -> POs by PG",
-    )
-    _add_file_row(
-        app,
-        file_frame,
-        row=5,
-        label="Part Sales & Receipts CSV (Legacy / Compatibility)",
-        attr_name="var_sales_path",
-        browse_key="sales",
-        hint="Legacy combined report. Use only when the detailed pair is unavailable.",
-    )
-    _add_file_row(
-        app,
-        file_frame,
-        row=6,
-        label="Detailed Part Sales CSV",
-        attr_name="var_detailed_sales_path",
-        browse_key="detailedsales",
-        hint="Preferred sales source. Use with Received Parts Detail.",
-    )
-    _add_file_row(
-        app,
-        file_frame,
-        row=7,
-        label="Received Parts Detail CSV",
-        attr_name="var_received_parts_path",
-        browse_key="receivedparts",
-        hint="Preferred receiving source. Use with Detailed Part Sales.",
-    )
-    _add_file_row(
-        app,
-        file_frame,
-        row=8,
-        label="Suspended Items CSV",
-        attr_name="var_susp_path",
-        browse_key="susp",
-        hint="Standard -> Sales -> Suspended Items",
-    )
+    next_row = 1
+    for section in load_file_sections():
+        next_row = _add_file_section(app, file_frame, start_row=next_row, section=section)
 
     file_frame.columnconfigure(1, weight=1)
 
@@ -186,3 +191,26 @@ def _add_file_row(app, parent, row, label, attr_name, browse_key, hint):
     ttk.Label(parent, text=hint, style="Path.TLabel").grid(
         row=base_row + 1, column=1, columnspan=2, sticky="w", padx=4, pady=(0, 4)
     )
+
+
+def _add_file_section(app, parent, *, start_row, section):
+    section_row = start_row * 2
+    ttk.Label(parent, text=section["title"], style="Header.TLabel").grid(
+        row=section_row, column=0, columnspan=3, sticky="w", padx=4, pady=(8, 2)
+    )
+    ttk.Label(parent, text=section["summary"], style="Info.TLabel", wraplength=900).grid(
+        row=section_row + 1, column=0, columnspan=3, sticky="w", padx=4, pady=(0, 6)
+    )
+    next_row = start_row + 1
+    for row in section["rows"]:
+        _add_file_row(
+            app,
+            parent,
+            row=next_row,
+            label=row["label"],
+            attr_name=row["attr_name"],
+            browse_key=row["browse_key"],
+            hint=row["hint"],
+        )
+        next_row += 1
+    return next_row
