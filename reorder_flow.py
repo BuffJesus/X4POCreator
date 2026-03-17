@@ -182,6 +182,14 @@ def receipt_vendor_evidence(app, key):
         "vendor_ambiguous": bool(history.get("vendor_ambiguous")),
         "primary_vendor_qty_share": float(history.get("primary_vendor_qty_share", 0.0) or 0.0),
         "primary_vendor_receipt_share": float(history.get("primary_vendor_receipt_share", 0.0) or 0.0),
+        "receipt_count": int(history.get("receipt_count", 0) or 0),
+        "qty_received_total": int(history.get("qty_received_total", 0) or 0),
+        "first_receipt_date": str(history.get("first_receipt_date", "") or "").strip(),
+        "last_receipt_date": str(history.get("last_receipt_date", "") or "").strip(),
+        "avg_units_per_receipt": history.get("avg_units_per_receipt"),
+        "median_units_per_receipt": history.get("median_units_per_receipt"),
+        "max_units_per_receipt": history.get("max_units_per_receipt"),
+        "avg_days_between_receipts": history.get("avg_days_between_receipts"),
         "vendor_candidates": candidates,
     }
 
@@ -195,6 +203,14 @@ def apply_receipt_vendor_context(app, item, key):
     item["receipt_vendor_ambiguous"] = evidence["vendor_ambiguous"]
     item["receipt_vendor_qty_share"] = evidence["primary_vendor_qty_share"]
     item["receipt_vendor_receipt_share"] = evidence["primary_vendor_receipt_share"]
+    item["receipt_count"] = evidence["receipt_count"]
+    item["receipt_qty_total"] = evidence["qty_received_total"]
+    item["first_receipt_date"] = evidence["first_receipt_date"]
+    item["last_receipt_date_loaded"] = evidence["last_receipt_date"]
+    item["avg_units_per_receipt"] = evidence["avg_units_per_receipt"]
+    item["median_units_per_receipt"] = evidence["median_units_per_receipt"]
+    item["max_units_per_receipt"] = evidence["max_units_per_receipt"]
+    item["avg_days_between_receipts"] = evidence["avg_days_between_receipts"]
     item["receipt_vendor_candidates"] = list(evidence["vendor_candidates"])
     return evidence
 

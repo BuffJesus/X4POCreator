@@ -162,6 +162,10 @@ def build_individual_tab(app):
         "Supplier:",
         "Receipt Vendor:",
         "Receipt Confidence:",
+        "Receipt Count:",
+        "Avg Units / Receipt:",
+        "Median Units / Receipt:",
+        "Avg Days Between Receipts:",
         "Demand Shape:",
         "Shape Confidence:",
         "Last Receipt:",
@@ -275,6 +279,20 @@ def populate_assign_item(app):
         receipt_confidence = item.get("receipt_vendor_confidence", "") or "-"
         app.assign_detail_vars["Receipt Vendor:"].set(receipt_vendor)
         app.assign_detail_vars["Receipt Confidence:"].set(receipt_confidence)
+        receipt_count = item.get("receipt_count")
+        app.assign_detail_vars["Receipt Count:"].set(str(receipt_count) if receipt_count else "-")
+        avg_units_receipt = item.get("avg_units_per_receipt")
+        app.assign_detail_vars["Avg Units / Receipt:"].set(
+            f"{float(avg_units_receipt):.2f}" if avg_units_receipt is not None else "-"
+        )
+        median_units_receipt = item.get("median_units_per_receipt")
+        app.assign_detail_vars["Median Units / Receipt:"].set(
+            f"{float(median_units_receipt):.2f}" if median_units_receipt is not None else "-"
+        )
+        avg_days_receipts = item.get("avg_days_between_receipts")
+        app.assign_detail_vars["Avg Days Between Receipts:"].set(
+            f"{float(avg_days_receipts):.2f}" if avg_days_receipts is not None else "-"
+        )
         app.assign_detail_vars["Demand Shape:"].set(item.get("detailed_sales_shape", "") or "-")
         app.assign_detail_vars["Shape Confidence:"].set(item.get("detailed_sales_shape_confidence", "") or "-")
         app.assign_detail_vars["Last Receipt:"].set(inventory.get("last_receipt", "") or "-")
@@ -295,6 +313,10 @@ def populate_assign_item(app):
             "Supplier:",
             "Receipt Vendor:",
             "Receipt Confidence:",
+            "Receipt Count:",
+            "Avg Units / Receipt:",
+            "Median Units / Receipt:",
+            "Avg Days Between Receipts:",
             "Demand Shape:",
             "Shape Confidence:",
             "Last Receipt:",

@@ -339,10 +339,25 @@ def build_receipt_history_lookup(receipt_rows, *, parse_date=None):
             "vendor_ambiguous": False,
             "primary_vendor_qty_share": 0.0,
             "primary_vendor_receipt_share": 0.0,
+            "receipt_count": 0,
+            "qty_received_total": 0,
+            "first_receipt_date": "",
+            "avg_units_per_receipt": None,
+            "median_units_per_receipt": None,
+            "max_units_per_receipt": None,
+            "avg_days_between_receipts": None,
             "vendors": {},
+            "receipt_quantities": [],
+            "receipt_dates": [],
         })
+        entry["receipt_count"] += 1
+        entry["qty_received_total"] += qty_received
+        entry["receipt_quantities"].append(qty_received)
         if receipt_dt is not None:
             iso_date = receipt_dt.date().isoformat()
+            entry["receipt_dates"].append(receipt_dt.date())
+            if not entry["first_receipt_date"] or iso_date < entry["first_receipt_date"]:
+                entry["first_receipt_date"] = iso_date
             if iso_date > entry["last_receipt_date"]:
                 entry["last_receipt_date"] = iso_date
                 entry["most_recent_vendor"] = vendor
@@ -398,6 +413,23 @@ def build_receipt_history_lookup(receipt_rows, *, parse_date=None):
                 entry["vendor_confidence"] = "low"
                 entry["vendor_confidence_reason"] = "mixed_vendor_history"
             entry["vendor_ambiguous"] = vendor_count > 1 and entry["vendor_confidence"] != "high"
+        quantities = [max(0, _coerce_int(qty)) for qty in entry.pop("receipt_quantities", [])]
+        unique_dates = sorted(set(entry.pop("receipt_dates", [])))
+        entry["avg_units_per_receipt"] = (
+            float(entry["qty_received_total"]) / float(entry["receipt_count"])
+            if entry["receipt_count"] > 0 else None
+        )
+        entry["median_units_per_receipt"] = median(quantities) if quantities else None
+        entry["max_units_per_receipt"] = max(quantities) if quantities else None
+        if len(unique_dates) >= 2:
+            gaps = []
+            for idx in range(1, len(unique_dates)):
+                gap_days = (unique_dates[idx] - unique_dates[idx - 1]).days
+                if gap_days >= 0:
+                    gaps.append(gap_days)
+            entry["avg_days_between_receipts"] = (
+                float(sum(gaps)) / float(len(gaps)) if gaps else None
+            )
     return history
 
 
