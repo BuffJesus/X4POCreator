@@ -65,14 +65,6 @@ def _parse_sales_inputs(paths):
     detailed_sales_path = str(paths.get("detailedsales", "") or "").strip()
     received_parts_path = str(paths.get("receivedparts", "") or "").strip()
 
-    if sales_path:
-        return {
-            "sales_items": parsers.parse_part_sales_csv(sales_path),
-            "sales_window": parsers.parse_sales_date_range(sales_path),
-            "receipt_history_lookup": {},
-            "detailed_sales_stats_lookup": {},
-        }
-
     if detailed_sales_path and received_parts_path:
         detailed_sales_rows = parsers.parse_detailed_part_sales_csv(detailed_sales_path)
         received_rows = parsers.parse_received_parts_detail_csv(received_parts_path)
@@ -81,6 +73,14 @@ def _parse_sales_inputs(paths):
             "sales_window": parsers.parse_detailed_sales_date_range(detailed_sales_rows),
             "receipt_history_lookup": parsers.build_receipt_history_lookup(received_rows),
             "detailed_sales_stats_lookup": parsers.build_detailed_sales_stats_lookup(detailed_sales_rows),
+        }
+
+    if sales_path:
+        return {
+            "sales_items": parsers.parse_part_sales_csv(sales_path),
+            "sales_window": parsers.parse_sales_date_range(sales_path),
+            "receipt_history_lookup": {},
+            "detailed_sales_stats_lookup": {},
         }
 
     return {

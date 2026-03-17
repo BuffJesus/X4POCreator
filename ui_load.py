@@ -78,7 +78,7 @@ def build_load_tab(app):
 
     ttk.Label(
         file_frame,
-        text="Load either the legacy combined Part Sales & Receipts report, or the Detailed Part Sales + Received Parts Detail pair.",
+        text="Preferred: load Detailed Part Sales + Received Parts Detail. The legacy Part Sales & Receipts report is compatibility-only.",
         style="Info.TLabel",
         wraplength=900,
     ).grid(row=0, column=0, columnspan=3, sticky="w", padx=4, pady=(0, 8))
@@ -123,10 +123,10 @@ def build_load_tab(app):
         app,
         file_frame,
         row=5,
-        label="Part Sales & Receipts CSV",
+        label="Part Sales & Receipts CSV (Legacy / Compatibility)",
         attr_name="var_sales_path",
         browse_key="sales",
-        hint="Standard -> Sales -> Part Sales & Receipts",
+        hint="Legacy combined report. Use only when the detailed pair is unavailable.",
     )
     _add_file_row(
         app,
@@ -135,7 +135,7 @@ def build_load_tab(app):
         label="Detailed Part Sales CSV",
         attr_name="var_detailed_sales_path",
         browse_key="detailedsales",
-        hint="Detailed sales export used with Received Parts Detail",
+        hint="Preferred sales source. Use with Received Parts Detail.",
     )
     _add_file_row(
         app,
@@ -144,7 +144,7 @@ def build_load_tab(app):
         label="Received Parts Detail CSV",
         attr_name="var_received_parts_path",
         browse_key="receivedparts",
-        hint="Receiving detail export used with Detailed Part Sales",
+        hint="Preferred receiving source. Use with Detailed Part Sales.",
     )
     _add_file_row(
         app,

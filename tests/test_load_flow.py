@@ -164,6 +164,73 @@ class LoadFlowTests(unittest.TestCase):
         self.assertAlmostEqual(result["detailed_sales_stats_lookup"][("AER-", "GH781-4")]["annualized_qty_sold"], 146.1, places=3)
         self.assertEqual(result["sales_items"][0]["transaction_count"], 2)
 
+    def test_parse_all_files_prefers_detailed_pair_when_both_detailed_and_legacy_sales_are_present(self):
+        with patch("load_flow.parsers.parse_part_sales_csv", return_value=[{
+            "line_code": "LEG-",
+            "item_code": "OLD1",
+            "description": "LEGACY",
+            "qty_received": 9,
+            "qty_sold": 9,
+        }]), patch(
+            "load_flow.parsers.parse_sales_date_range",
+            return_value=(datetime(2026, 1, 1), datetime(2026, 1, 31)),
+        ), patch("load_flow.parsers.parse_detailed_part_sales_csv", return_value=[
+            {
+                "line_code": "AER-",
+                "item_code": "GH781-4",
+                "description": "HOSE",
+                "qty_sold": 4,
+                "sale_date": "01-Mar-2026",
+            },
+        ]), patch("load_flow.parsers.parse_received_parts_detail_csv", return_value=[
+            {
+                "line_code": "AER-",
+                "item_code": "GH781-4",
+                "description": "HOSE",
+                "qty_received": 3,
+                "vendor": "MOTION",
+                "receipt_date": "02-Mar-2026",
+            },
+        ]), patch("load_flow.parsers.build_sales_receipt_summary", return_value=[{
+            "line_code": "AER-",
+            "item_code": "GH781-4",
+            "description": "HOSE",
+            "qty_received": 3,
+            "qty_sold": 4,
+        }]), patch(
+            "load_flow.parsers.parse_detailed_sales_date_range",
+            return_value=(datetime(2026, 3, 1), datetime(2026, 3, 10)),
+        ), patch(
+            "load_flow.parsers.build_receipt_history_lookup",
+            return_value={("AER-", "GH781-4"): {"primary_vendor": "MOTION"}},
+        ), patch(
+            "load_flow.parsers.build_detailed_sales_stats_lookup",
+            return_value={("AER-", "GH781-4"): {"transaction_count": 2, "qty_sold_total": 4}},
+        ):
+            result = load_flow.parse_all_files(
+                {
+                    "sales": "legacy.csv",
+                    "detailedsales": "detailed.csv",
+                    "receivedparts": "received.csv",
+                    "po": "",
+                    "susp": "",
+                    "onhand": "",
+                    "minmax": "",
+                    "packsize": "",
+                },
+                old_po_warning_days=90,
+                short_sales_window_days=7,
+            )
+
+        item = result["sales_items"][0]
+        self.assertEqual(item["line_code"], "AER-")
+        self.assertEqual(item["item_code"], "GH781-4")
+        self.assertEqual(item["qty_received"], 3)
+        self.assertEqual(item["qty_sold"], 4)
+        self.assertEqual(item["transaction_count"], 2)
+        self.assertAlmostEqual(item["annualized_qty_sold"], 146.1, places=3)
+        self.assertEqual(result["sales_window_start"], "2026-03-01")
+
     def test_parse_all_files_resolves_blank_detailed_sales_line_code_from_inventory(self):
         with patch("load_flow.parsers.parse_detailed_part_sales_csv", return_value=[
             {

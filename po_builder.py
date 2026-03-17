@@ -764,7 +764,7 @@ class POBuilderApp:
         if not sales_path and not (detailed_sales_path and received_parts_path):
             messagebox.showerror(
                 "Missing File",
-                "Load either the Part Sales & Receipts CSV, or both Detailed Part Sales and Received Parts Detail CSVs.",
+                "Load both Detailed Part Sales and Received Parts Detail CSVs. Use Part Sales & Receipts only as a legacy fallback.",
             )
             return
 
@@ -795,7 +795,7 @@ class POBuilderApp:
         if not self.sales_items:
             messagebox.showwarning(
                 "No Data",
-                "No items found in the loaded sales/receipt files. Check the file format.",
+                "No items found in the loaded detailed sales/receiving files. Check the file format.",
             )
             return
 
