@@ -871,6 +871,10 @@ class POBuilderApp:
         unresolved_detailed_rows = int(detailed_resolution.get("row_count", 0) or 0)
         if unresolved_detailed_rows:
             status_parts.append(f"{unresolved_detailed_rows} unresolved detailed sales rows")
+        detailed_corrections = result.get("detailed_sales_corrections", {}) or {}
+        corrected_detailed_rows = int(detailed_corrections.get("row_count", 0) or 0)
+        if corrected_detailed_rows:
+            status_parts.append(f"{corrected_detailed_rows} corrected detailed sales rows")
         detailed_conflicts = result.get("detailed_sales_conflicts", {}) or {}
         conflicting_detailed_rows = int(detailed_conflicts.get("row_count", 0) or 0)
         if conflicting_detailed_rows:

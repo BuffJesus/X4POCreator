@@ -7,35 +7,48 @@ import performance_flow
 import sales_history_flow
 
 
-def _resolve_sales_line_code(item_code, *, inventory_lookup, receipt_history_lookup):
-    candidates = {
+def _sales_line_code_candidates(item_code, *, inventory_lookup, receipt_history_lookup):
+    return sorted({
         line_code
         for (line_code, current_item_code) in (inventory_lookup or {})
         if current_item_code == item_code and line_code
-    }
-    if len(candidates) == 1:
-        return next(iter(candidates))
-    receipt_candidates = {
+    } | {
         line_code
         for (line_code, current_item_code) in (receipt_history_lookup or {})
         if current_item_code == item_code and line_code
-    }
-    if len(receipt_candidates) == 1:
-        return next(iter(receipt_candidates))
+    })
+
+
+def _resolve_sales_line_code(item_code, *, inventory_lookup, receipt_history_lookup):
+    candidates = _sales_line_code_candidates(
+        item_code,
+        inventory_lookup=inventory_lookup,
+        receipt_history_lookup=receipt_history_lookup,
+    )
+    if len(candidates) == 1:
+        return candidates[0]
     return ""
 
 
 def _normalize_detailed_sales_keys(sales_items, detailed_sales_stats_lookup, *, inventory_lookup, receipt_history_lookup):
     normalized_items = {}
+    corrected_rows = 0
+    corrected_items = set()
     for item in sales_items or []:
         line_code = item.get("line_code", "") or ""
         item_code = item.get("item_code", "") or ""
-        if item_code and not line_code:
-            line_code = _resolve_sales_line_code(
+        if item_code:
+            resolved_line_code = _resolve_sales_line_code(
                 item_code,
                 inventory_lookup=inventory_lookup,
                 receipt_history_lookup=receipt_history_lookup,
             )
+            if not line_code:
+                line_code = resolved_line_code
+            elif resolved_line_code and line_code != resolved_line_code:
+                line_code = resolved_line_code
+                corrected_rows += 1
+                corrected_items.add(item_code)
         key = (line_code, item_code)
         entry = normalized_items.setdefault(key, {
             "line_code": line_code,
@@ -51,13 +64,20 @@ def _normalize_detailed_sales_keys(sales_items, detailed_sales_stats_lookup, *, 
 
     normalized_stats = {}
     for (line_code, item_code), stats in (detailed_sales_stats_lookup or {}).items():
-        resolved_line_code = line_code or _resolve_sales_line_code(
+        resolved_line_code = _resolve_sales_line_code(
             item_code,
             inventory_lookup=inventory_lookup,
             receipt_history_lookup=receipt_history_lookup,
         )
-        normalized_stats[(resolved_line_code, item_code)] = stats
-    return list(normalized_items.values()), normalized_stats
+        target_line_code = line_code or resolved_line_code
+        if line_code and resolved_line_code and line_code != resolved_line_code:
+            target_line_code = resolved_line_code
+        normalized_stats[(target_line_code, item_code)] = stats
+    return list(normalized_items.values()), normalized_stats, {
+        "row_count": corrected_rows,
+        "item_count": len(corrected_items),
+        "item_codes": sorted(corrected_items),
+    }
 
 
 def _summarize_unresolved_detailed_sales_rows(detailed_sales_rows, *, inventory_lookup, receipt_history_lookup):
@@ -105,16 +125,14 @@ def _summarize_conflicting_detailed_sales_rows(detailed_sales_rows, *, inventory
         item_code = str(row.get("item_code", "") or "").strip()
         if not item_code or not parsed_line_code:
             continue
-        known_candidates = sorted({
-            line_code
-            for (line_code, current_item_code) in inventory_lookup
-            if current_item_code == item_code and line_code
-        } | {
-            line_code
-            for (line_code, current_item_code) in receipt_history_lookup
-            if current_item_code == item_code and line_code
-        })
+        known_candidates = _sales_line_code_candidates(
+            item_code,
+            inventory_lookup=inventory_lookup,
+            receipt_history_lookup=receipt_history_lookup,
+        )
         if not known_candidates or parsed_line_code in known_candidates:
+            continue
+        if len(known_candidates) == 1:
             continue
         conflicting_row_count += 1
         entry = conflicting_by_item.setdefault((parsed_line_code, item_code), {
@@ -184,6 +202,7 @@ def parse_all_files(paths, *, old_po_warning_days, short_sales_window_days, now=
     sales_inputs = _parse_sales_inputs(paths)
     result["sales_source_mode"] = sales_inputs.get("sales_source_mode", "none")
     result["detailed_sales_resolution"] = {"row_count": 0, "item_count": 0, "items": []}
+    result["detailed_sales_corrections"] = {"row_count": 0, "item_count": 0, "item_codes": []}
     result["detailed_sales_conflicts"] = {"row_count": 0, "item_count": 0, "items": []}
     result["sales_items"] = sales_inputs["sales_items"]
     result["receipt_history_lookup"] = sales_inputs.get("receipt_history_lookup", {})
@@ -364,13 +383,25 @@ def parse_all_files(paths, *, old_po_warning_days, short_sales_window_days, now=
             warnings.append(("Min/Max Parse Warning", f"Could not parse Min/Max report:\n{exc}\nContinuing without it."))
 
     result["inventory_lookup"] = inventory_lookup
-    result["sales_items"], result["detailed_sales_stats_lookup"] = _normalize_detailed_sales_keys(
+    result["sales_items"], result["detailed_sales_stats_lookup"], result["detailed_sales_corrections"] = _normalize_detailed_sales_keys(
         result["sales_items"],
         result["detailed_sales_stats_lookup"],
         inventory_lookup=inventory_lookup,
         receipt_history_lookup=result["receipt_history_lookup"],
     )
     if result["sales_source_mode"] == "detailed_pair":
+        corrections = result["detailed_sales_corrections"]
+        if corrections["row_count"] > 0:
+            sample = ", ".join(corrections["item_codes"][:8])
+            extra = "..." if corrections["item_count"] > 8 else ""
+            warnings.append((
+                "Detailed Sales Line-Code Correction",
+                (
+                    f"{corrections['row_count']} detailed sales row(s) across {corrections['item_count']} item code(s) "
+                    "were auto-corrected to a uniquely supported line code using inventory/receipt-history evidence.\n\n"
+                    f"Examples: {sample}{extra}"
+                ),
+            ))
         result["detailed_sales_resolution"] = _summarize_unresolved_detailed_sales_rows(
             sales_inputs.get("detailed_sales_rows", []),
             inventory_lookup=inventory_lookup,
