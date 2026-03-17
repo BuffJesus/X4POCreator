@@ -176,6 +176,59 @@ class UIReviewTests(unittest.TestCase):
         self.assertEqual(events[0], ("flush",))
         self.assertEqual(events[1], ("delete", "old"))
         self.assertTrue(any(event[0] == "insert" for event in events))
+        self.assertIn(("set", "All Items"), events)
+
+    def test_populate_review_tab_preserves_existing_focus_selection(self):
+        events = []
+
+        class Tree:
+            def get_children(self):
+                return ("old",)
+            def delete(self, item_id):
+                events.append(("delete", item_id))
+            def insert(self, parent, where, iid, values):
+                events.append(("insert", iid, values))
+
+        class Var:
+            def __init__(self, value=None):
+                self.value = value
+            def set(self, value):
+                self.value = value
+                events.append(("set", value))
+            def get(self):
+                return self.value
+
+        fake_app = SimpleNamespace(
+            bulk_sheet=SimpleNamespace(flush_pending_edit=lambda: events.append(("flush",))),
+            tree=Tree(),
+            assigned_items=[
+                {
+                    "vendor": "MOTION",
+                    "line_code": "AER-",
+                    "item_code": "A",
+                    "description": "Item A",
+                    "order_qty": 1,
+                    "status": "ok",
+                    "why": "",
+                    "pack_size": 6,
+                },
+            ],
+            combo_vendor_filter={},
+            var_vendor_filter=Var(),
+            var_review_performance_filter=Var(),
+            var_review_attention_filter=Var(),
+            var_review_recency_filter=Var(),
+            var_review_suggestion_filter=Var(),
+            var_review_release_filter=Var(),
+            var_review_focus_filter=Var("All Items"),
+            _get_review_export_focus=lambda: "exceptions_only",
+            lbl_review_summary=SimpleNamespace(config=lambda **kwargs: events.append(("summary", kwargs.get("text", "")))),
+        )
+
+        ui_review.populate_review_tab(fake_app)
+
+        self.assertEqual(fake_app.var_review_focus_filter.get(), "All Items")
+        self.assertIn(("set", "All Items"), events)
 
     def test_update_review_summary_includes_immediate_planned_and_held_counts(self):
         captured = {}

@@ -161,6 +161,7 @@ class POBuilderTests(unittest.TestCase):
             po_builder.POBuilderApp._get_review_export_focus(fake_app),
             po_builder.DEFAULT_REVIEW_EXPORT_FOCUS,
         )
+        self.assertEqual(po_builder.DEFAULT_REVIEW_EXPORT_FOCUS, "all_items")
 
         po_builder.POBuilderApp._set_review_export_focus(fake_app, "all_items")
 

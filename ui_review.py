@@ -95,6 +95,24 @@ def suggestion_filter_label(item):
     return SUGGESTION_FILTER_LABELS.get(code, str(item.get("detailed_suggestion_compare_label", "") or code))
 
 
+def review_focus_label_for_setting(setting):
+    return "Exceptions Only" if str(setting or "").strip() == "exceptions_only" else "All Items"
+
+
+def review_focus_setting_for_label(label):
+    return "exceptions_only" if str(label or "").strip() == "Exceptions Only" else "all_items"
+
+
+def on_review_focus_changed(app):
+    focus_var = getattr(app, "var_review_focus_filter", None)
+    focus_label = focus_var.get() if focus_var and hasattr(focus_var, "get") else "All Items"
+    setter = getattr(app, "_set_review_export_focus", None)
+    if callable(setter):
+        setter(review_focus_setting_for_label(focus_label))
+    if hasattr(app, "_apply_review_filter"):
+        app._apply_review_filter()
+
+
 def build_vendor_release_plan_rows(app):
     return shipping_flow.build_vendor_release_plan(getattr(app, "assigned_items", []))
 
@@ -611,7 +629,7 @@ def build_review_tab(app):
     app.combo_review_release.bind("<<ComboboxSelected>>", lambda e: app._apply_review_filter())
 
     ttk.Label(filter_frame, text="Focus:").pack(side=tk.LEFT, padx=(12, 6))
-    app.var_review_focus_filter = tk.StringVar(value="Exceptions Only")
+    app.var_review_focus_filter = tk.StringVar(value="All Items")
     app.combo_review_focus = ttk.Combobox(
         filter_frame,
         textvariable=app.var_review_focus_filter,
@@ -620,7 +638,7 @@ def build_review_tab(app):
         values=["All Items", "Exceptions Only"],
     )
     app.combo_review_focus.pack(side=tk.LEFT)
-    app.combo_review_focus.bind("<<ComboboxSelected>>", lambda e: app._apply_review_filter())
+    app.combo_review_focus.bind("<<ComboboxSelected>>", lambda e: on_review_focus_changed(app))
 
     tree_frame = ttk.Frame(frame)
     tree_frame.pack(fill=tk.BOTH, expand=True, pady=4)
@@ -735,10 +753,14 @@ def populate_review_tab(app):
     app.var_review_recency_filter.set("ALL")
     app.var_review_suggestion_filter.set("ALL")
     app.var_review_release_filter.set("ALL")
-    focus = "Exceptions Only"
+    focus = "All Items"
+    current_focus_var = getattr(app, "var_review_focus_filter", None)
+    current_focus = current_focus_var.get() if current_focus_var and hasattr(current_focus_var, "get") else ""
+    if current_focus in ("All Items", "Exceptions Only"):
+        focus = current_focus
     get_focus = getattr(app, "_get_review_export_focus", None)
-    if callable(get_focus):
-        focus = "Exceptions Only" if get_focus() == "exceptions_only" else "All Items"
+    if callable(get_focus) and not current_focus:
+        focus = review_focus_label_for_setting(get_focus())
     app.var_review_focus_filter.set(focus)
     apply_review_filter(app)
     update_review_summary(app)
