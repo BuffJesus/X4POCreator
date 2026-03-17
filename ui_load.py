@@ -74,8 +74,25 @@ LOAD_FILE_SECTIONS = (
 )
 
 
-def load_file_sections():
-    return LOAD_FILE_SECTIONS
+def load_file_sections(*, include_legacy=False):
+    if include_legacy:
+        return LOAD_FILE_SECTIONS
+    return tuple(
+        section for section in LOAD_FILE_SECTIONS
+        if section["title"] != "Legacy Compatibility"
+    )
+
+
+def refresh_load_file_sections(app):
+    host = getattr(app, "_load_sections_host", None)
+    if host is None:
+        return
+    for child in host.winfo_children():
+        child.destroy()
+    next_row = 0
+    for section in load_file_sections(include_legacy=bool(app.var_show_legacy_inputs.get())):
+        next_row = _add_file_section(app, host, start_row=next_row, section=section)
+    host.columnconfigure(1, weight=1)
 
 
 def build_load_tab(app):
@@ -157,9 +174,17 @@ def build_load_tab(app):
         wraplength=900,
     ).grid(row=0, column=0, columnspan=3, sticky="w", padx=4, pady=(0, 8))
 
-    next_row = 1
-    for section in load_file_sections():
-        next_row = _add_file_section(app, file_frame, start_row=next_row, section=section)
+    app.var_show_legacy_inputs = tk.BooleanVar(value=False)
+    ttk.Checkbutton(
+        file_frame,
+        text="Show legacy compatibility input (Part Sales & Receipts)",
+        variable=app.var_show_legacy_inputs,
+        command=lambda: refresh_load_file_sections(app),
+    ).grid(row=1, column=0, columnspan=3, sticky="w", padx=4, pady=(0, 8))
+
+    app._load_sections_host = ttk.Frame(file_frame)
+    app._load_sections_host.grid(row=2, column=0, columnspan=3, sticky="ew")
+    refresh_load_file_sections(app)
 
     file_frame.columnconfigure(1, weight=1)
 

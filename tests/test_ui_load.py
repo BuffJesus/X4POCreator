@@ -10,13 +10,12 @@ import ui_load
 
 
 class UILoadTests(unittest.TestCase):
-    def test_load_file_sections_prioritize_core_pair_and_demote_legacy(self):
+    def test_load_file_sections_hide_legacy_by_default(self):
         sections = ui_load.load_file_sections()
 
         self.assertEqual([section["title"] for section in sections], [
             "Core Files",
             "Optional Support Files",
-            "Legacy Compatibility",
         ])
         self.assertEqual(
             [row["browse_key"] for row in sections[0]["rows"]],
@@ -26,6 +25,15 @@ class UILoadTests(unittest.TestCase):
             [row["browse_key"] for row in sections[1]["rows"]],
             ["onhand", "po", "susp"],
         )
+
+    def test_load_file_sections_include_legacy_when_requested(self):
+        sections = ui_load.load_file_sections(include_legacy=True)
+
+        self.assertEqual([section["title"] for section in sections], [
+            "Core Files",
+            "Optional Support Files",
+            "Legacy Compatibility",
+        ])
         self.assertEqual(
             [row["browse_key"] for row in sections[2]["rows"]],
             ["sales"],

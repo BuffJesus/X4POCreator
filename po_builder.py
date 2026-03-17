@@ -703,6 +703,18 @@ class POBuilderApp:
             return
 
         found = parsers.scan_directory_for_reports(folder)
+        found_detailed_pair = bool(found.get("detailedsales") and found.get("receivedparts"))
+        found_legacy_sales = bool(found.get("sales"))
+        legacy_toggle = getattr(self, "var_show_legacy_inputs", None)
+        legacy_visible = bool(legacy_toggle and legacy_toggle.get())
+        auto_enabled_legacy = False
+        hidden_legacy_sales = False
+
+        if found_legacy_sales and not found_detailed_pair and legacy_toggle and not legacy_visible:
+            legacy_toggle.set(True)
+            ui_load.refresh_load_file_sections(self)
+            legacy_visible = True
+            auto_enabled_legacy = True
 
         var_map = {
             "sales": self.var_sales_path,
@@ -728,6 +740,9 @@ class POBuilderApp:
 
         populated = []
         for rtype, filepath in found.items():
+            if rtype == "sales" and found_detailed_pair and not legacy_visible:
+                hidden_legacy_sales = True
+                continue
             if rtype in var_map:
                 var_map[rtype].set(filepath)
                 populated.append(report_names.get(rtype, rtype))
@@ -738,6 +753,16 @@ class POBuilderApp:
             )
         else:
             self.lbl_scan_status.config(text="No X4 report CSVs detected in that folder.")
+
+        if populated and (hidden_legacy_sales or auto_enabled_legacy):
+            status_suffix = ""
+            if hidden_legacy_sales:
+                status_suffix = " Legacy combined sales was detected but left hidden because the detailed pair is available."
+            elif auto_enabled_legacy:
+                status_suffix = " Legacy compatibility input was shown because only the combined sales report was found."
+            self.lbl_scan_status.config(
+                text=f"Found {len(populated)} report(s): {', '.join(populated)}{status_suffix}"
+            )
 
     def _browse(self, which):
         path = filedialog.askopenfilename(
