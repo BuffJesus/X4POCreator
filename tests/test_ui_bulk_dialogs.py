@@ -699,10 +699,14 @@ class BulkDialogTests(unittest.TestCase):
             "order_policy": "soft_pack",
             "status": "ok",
             "data_flags": [],
+            "potential_vendor": "MOTION",
             "receipt_primary_vendor": "MOTION",
             "receipt_vendor_confidence": "high",
             "receipt_count": 4,
             "receipt_sales_balance": "receipt_led",
+            "potential_pack_size": 25,
+            "potential_pack_confidence": "high",
+            "potential_pack_candidates": [25, 10],
             "avg_units_per_receipt": 6.5,
             "median_units_per_receipt": 5,
             "max_units_per_receipt": 11,
@@ -714,15 +718,19 @@ class BulkDialogTests(unittest.TestCase):
         rows = ui_bulk_dialogs.item_details_rows(app, item, inv, ("AER-", "GH781-4"))
         row_lookup = dict(row for row in rows if row[0])
 
+        self.assertEqual(row_lookup["Potential Vendor"], "MOTION")
         self.assertEqual(row_lookup["Receipt Vendor"], "MOTION")
         self.assertEqual(row_lookup["Receipt Confidence"], "high")
         self.assertEqual(row_lookup["Receipt Count"], "4")
         self.assertEqual(row_lookup["Receipt vs Sales"], "receipt_led")
+        self.assertEqual(row_lookup["Potential Pack"], "25")
+        self.assertEqual(row_lookup["Pack Confidence"], "high")
         self.assertEqual(row_lookup["Avg Units / Receipt"], "6.50")
         self.assertEqual(row_lookup["Median Units / Receipt"], "5.00")
         self.assertEqual(row_lookup["Max Units / Receipt"], "11.00")
         self.assertEqual(row_lookup["Avg Days Between Receipts"], "12.50")
         self.assertEqual(row_lookup["Receipt Vendor Candidates"], "MOTION, SOURCE")
+        self.assertEqual(row_lookup["Potential Pack Candidates"], "25, 10")
 
     def test_item_details_rows_show_detailed_sales_transaction_shape(self):
         app = SimpleNamespace(

@@ -860,10 +860,13 @@ def item_details_rows(app, item, inv, key):
         ("Dtl Sug Min / Max", f"{item.get('detailed_suggested_min', '-') if item.get('detailed_suggested_min') is not None else '-'} / {item.get('detailed_suggested_max', '-') if item.get('detailed_suggested_max') is not None else '-'}"),
         ("Sug Compare", item.get("detailed_suggestion_compare_label") or "-"),
         ("Supplier", inv.get("supplier", "-")),
+        ("Potential Vendor", item.get("potential_vendor") or "-"),
         ("Receipt Vendor", item.get("receipt_primary_vendor") or "-"),
         ("Receipt Confidence", item.get("receipt_vendor_confidence") or "-"),
         ("Receipt Count", str(item.get("receipt_count", "-") if item.get("receipt_count") is not None else "-")),
         ("Receipt vs Sales", item.get("receipt_sales_balance") or "-"),
+        ("Potential Pack", str(item.get("potential_pack_size", "-") if item.get("potential_pack_size") is not None else "-")),
+        ("Pack Confidence", item.get("potential_pack_confidence") or "-"),
         ("Avg Units / Receipt", _format_metric(item.get("avg_units_per_receipt"))),
         ("Median Units / Receipt", _format_metric(item.get("median_units_per_receipt"))),
         ("Max Units / Receipt", _format_metric(item.get("max_units_per_receipt"))),
@@ -939,6 +942,9 @@ def item_details_rows(app, item, inv, key):
     receipt_candidates = list(item.get("receipt_vendor_candidates", []) or [])
     if receipt_candidates:
         details.append(("Receipt Vendor Candidates", ", ".join(receipt_candidates[:5])))
+    pack_candidates = list(item.get("potential_pack_candidates", []) or [])
+    if pack_candidates:
+        details.append(("Potential Pack Candidates", ", ".join(str(candidate) for candidate in pack_candidates[:5])))
 
     other_lcs = app.duplicate_ic_lookup.get(item["item_code"], set())
     others = sorted(lc for lc in other_lcs if lc != item["line_code"])

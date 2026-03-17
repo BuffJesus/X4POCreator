@@ -160,10 +160,13 @@ def build_individual_tab(app):
         "YTD Sales:",
         "12 Mo Sales:",
         "Supplier:",
+        "Potential Vendor:",
         "Receipt Vendor:",
         "Receipt Confidence:",
         "Receipt Count:",
         "Receipt vs Sales:",
+        "Potential Pack:",
+        "Pack Confidence:",
         "Avg Units / Receipt:",
         "Median Units / Receipt:",
         "Avg Days Between Receipts:",
@@ -276,6 +279,7 @@ def populate_assign_item(app):
         app.assign_detail_vars["YTD Sales:"].set(str(inventory.get("ytd_sales", 0)) or "-")
         app.assign_detail_vars["12 Mo Sales:"].set(str(inventory.get("mo12_sales", 0)) or "-")
         app.assign_detail_vars["Supplier:"].set(inventory.get("supplier", "") or "-")
+        app.assign_detail_vars["Potential Vendor:"].set(item.get("potential_vendor", "") or "-")
         receipt_vendor = item.get("receipt_primary_vendor", "") or "-"
         receipt_confidence = item.get("receipt_vendor_confidence", "") or "-"
         app.assign_detail_vars["Receipt Vendor:"].set(receipt_vendor)
@@ -283,6 +287,9 @@ def populate_assign_item(app):
         receipt_count = item.get("receipt_count")
         app.assign_detail_vars["Receipt Count:"].set(str(receipt_count) if receipt_count else "-")
         app.assign_detail_vars["Receipt vs Sales:"].set(item.get("receipt_sales_balance", "") or "-")
+        potential_pack = item.get("potential_pack_size")
+        app.assign_detail_vars["Potential Pack:"].set(str(potential_pack) if potential_pack is not None else "-")
+        app.assign_detail_vars["Pack Confidence:"].set(item.get("potential_pack_confidence", "") or "-")
         avg_units_receipt = item.get("avg_units_per_receipt")
         app.assign_detail_vars["Avg Units / Receipt:"].set(
             f"{float(avg_units_receipt):.2f}" if avg_units_receipt is not None else "-"
@@ -313,10 +320,13 @@ def populate_assign_item(app):
             "YTD Sales:",
             "12 Mo Sales:",
             "Supplier:",
+            "Potential Vendor:",
             "Receipt Vendor:",
             "Receipt Confidence:",
             "Receipt Count:",
             "Receipt vs Sales:",
+            "Potential Pack:",
+            "Pack Confidence:",
             "Avg Units / Receipt:",
             "Median Units / Receipt:",
             "Avg Days Between Receipts:",

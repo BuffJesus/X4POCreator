@@ -248,6 +248,24 @@ class ParserSmokeTests(unittest.TestCase):
         self.assertEqual(history["median_units_per_receipt"], 4)
         self.assertEqual(history["max_units_per_receipt"], 8)
         self.assertEqual(history["avg_days_between_receipts"], 5.0)
+        self.assertEqual(history["receipt_pack_candidate"], 8)
+        self.assertEqual(history["receipt_pack_candidates"], [8, 4, 2])
+        self.assertEqual(history["receipt_pack_confidence"], "low")
+
+    def test_build_receipt_history_lookup_uses_repeated_receipt_lot_as_pack_candidate(self):
+        receipt_rows = [
+            {"line_code": "AER-", "item_code": "GH781-4", "qty_received": 25, "vendor": "MOTION", "receipt_date": "01-Mar-2026"},
+            {"line_code": "AER-", "item_code": "GH781-4", "qty_received": 25, "vendor": "MOTION", "receipt_date": "05-Mar-2026"},
+            {"line_code": "AER-", "item_code": "GH781-4", "qty_received": 25, "vendor": "SOURCE", "receipt_date": "11-Mar-2026"},
+            {"line_code": "AER-", "item_code": "GH781-4", "qty_received": 1, "vendor": "SOURCE", "receipt_date": "15-Mar-2026"},
+        ]
+
+        history = parsers.build_receipt_history_lookup(receipt_rows)[("AER-", "GH781-4")]
+
+        self.assertEqual(history["receipt_pack_candidate"], 25)
+        self.assertEqual(history["receipt_pack_candidates"], [25])
+        self.assertEqual(history["receipt_pack_confidence"], "high")
+        self.assertAlmostEqual(history["receipt_pack_candidate_share"], 0.75)
 
     def test_build_detailed_sales_stats_lookup_captures_transaction_shape(self):
         sales_rows = [

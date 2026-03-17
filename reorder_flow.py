@@ -190,6 +190,12 @@ def receipt_vendor_evidence(app, key):
         "median_units_per_receipt": history.get("median_units_per_receipt"),
         "max_units_per_receipt": history.get("max_units_per_receipt"),
         "avg_days_between_receipts": history.get("avg_days_between_receipts"),
+        "potential_vendor": str(history.get("primary_vendor", "") or "").strip().upper(),
+        "potential_vendor_source": "receipt_history" if history.get("primary_vendor") else "",
+        "receipt_pack_candidate": history.get("receipt_pack_candidate"),
+        "receipt_pack_candidates": list(history.get("receipt_pack_candidates", []) or []),
+        "receipt_pack_confidence": str(history.get("receipt_pack_confidence", "none") or "none").strip().lower(),
+        "receipt_pack_candidate_share": float(history.get("receipt_pack_candidate_share", 0.0) or 0.0),
         "vendor_candidates": candidates,
     }
 
@@ -211,6 +217,12 @@ def apply_receipt_vendor_context(app, item, key):
     item["median_units_per_receipt"] = evidence["median_units_per_receipt"]
     item["max_units_per_receipt"] = evidence["max_units_per_receipt"]
     item["avg_days_between_receipts"] = evidence["avg_days_between_receipts"]
+    item["potential_vendor"] = evidence["potential_vendor"]
+    item["potential_vendor_source"] = evidence["potential_vendor_source"]
+    item["potential_pack_size"] = evidence["receipt_pack_candidate"]
+    item["potential_pack_candidates"] = list(evidence["receipt_pack_candidates"])
+    item["potential_pack_confidence"] = evidence["receipt_pack_confidence"]
+    item["potential_pack_share"] = evidence["receipt_pack_candidate_share"]
     item["receipt_vendor_candidates"] = list(evidence["vendor_candidates"])
     return evidence
 

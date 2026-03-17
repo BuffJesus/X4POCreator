@@ -1,7 +1,7 @@
 import csv
 import os
 import re
-from collections import defaultdict
+from collections import Counter, defaultdict
 from statistics import median
 from datetime import datetime
 
@@ -483,6 +483,24 @@ def build_receipt_history_lookup(receipt_rows, *, parse_date=None):
         )
         entry["median_units_per_receipt"] = median(quantities) if quantities else None
         entry["max_units_per_receipt"] = max(quantities) if quantities else None
+        positive_receipt_lots = [qty for qty in quantities if qty > 1]
+        lot_counter = Counter(positive_receipt_lots)
+        ranked_lots = sorted(lot_counter.items(), key=lambda item: (-item[1], -item[0]))
+        entry["receipt_pack_candidates"] = [qty for qty, _count in ranked_lots[:3]]
+        entry["receipt_pack_candidate"] = entry["receipt_pack_candidates"][0] if entry["receipt_pack_candidates"] else None
+        if ranked_lots and entry["receipt_count"] > 0:
+            _top_qty, top_count = ranked_lots[0]
+            candidate_share = float(top_count) / float(entry["receipt_count"])
+            entry["receipt_pack_candidate_share"] = candidate_share
+            if top_count >= 2 and candidate_share >= 0.50:
+                entry["receipt_pack_confidence"] = "high"
+            elif top_count >= 2 or candidate_share >= 0.34:
+                entry["receipt_pack_confidence"] = "medium"
+            else:
+                entry["receipt_pack_confidence"] = "low"
+        else:
+            entry["receipt_pack_candidate_share"] = 0.0
+            entry["receipt_pack_confidence"] = "none"
         if len(unique_dates) >= 2:
             gaps = []
             for idx in range(1, len(unique_dates)):
