@@ -42,14 +42,23 @@ def _normalize_vendor_code(value):
     return str(value or "").strip().upper()
 
 
+def _looks_like_x4_line_code_fragment(value):
+    fragment = str(value or "").strip().upper()
+    return len(fragment) == 3 and fragment.isalnum()
+
+
 def _split_line_code_item_token(value):
     token = str(value or "").strip()
     if not token or "-" not in token:
         return "", token
-    line_code, item_code = token.split("-", 1)
-    if not line_code or not item_code:
+    match = re.search(r"([A-Za-z0-9]+)\s*-\s*(.+)", token)
+    if not match:
         return "", token
-    return f"{line_code}-", item_code.strip()
+    line_code = match.group(1).strip().upper()
+    item_code = match.group(2).strip()
+    if not _looks_like_x4_line_code_fragment(line_code) or not item_code:
+        return "", token
+    return f"{line_code}-", item_code
 
 
 def _match_header_columns(rows, required_fields, optional_fields=()):
