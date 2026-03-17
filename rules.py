@@ -331,6 +331,9 @@ def classify_recency_confidence(item, inv, rule):
     has_recent_suspense = bool(item.get("effective_qty_suspended", item.get("qty_suspended", 0)))
     has_open_po = bool(item.get("qty_on_po", 0))
     has_loaded_receipt_activity = bool(item.get("qty_received", 0))
+    receipt_sales_balance = str(item.get("receipt_sales_balance", "") or "").strip().lower()
+    receipt_heavy = has_loaded_receipt_activity and receipt_sales_balance == "receipt_heavy"
+    protective_receipt_activity = has_loaded_receipt_activity and not receipt_heavy
     has_recent_local_order = bool(item.get("has_recent_local_order"))
     has_explicit_critical_min_rule = bool(get_rule_int(rule, "min_order_qty"))
     has_other_protective_rule = bool(
@@ -344,9 +347,12 @@ def classify_recency_confidence(item, inv, rule):
     elif has_last_sale or has_last_receipt:
         item["recency_confidence"] = "medium"
         item["data_completeness"] = "partial_recency"
-    elif has_recent_suspense or has_open_po or has_loaded_receipt_activity:
+    elif has_recent_suspense or has_open_po or protective_receipt_activity:
         item["recency_confidence"] = "low"
         item["data_completeness"] = "missing_recency_activity_protected"
+    elif receipt_heavy:
+        item["recency_confidence"] = "low"
+        item["data_completeness"] = "missing_recency_receipt_heavy"
     elif has_recent_local_order:
         item["recency_confidence"] = "low"
         item["data_completeness"] = "missing_recency_local_po_protected"
@@ -381,6 +387,8 @@ def classify_low_confidence_recency(item, inv, rule):
         bucket = "critical_rule_protected"
     elif data_completeness == "missing_recency_local_po_protected":
         bucket = "recent_local_po_protected"
+    elif data_completeness == "missing_recency_receipt_heavy":
+        bucket = "receipt_heavy_unverified"
     elif (
         qty_received > 0
         and sales_health in ("", "unknown")
@@ -405,6 +413,7 @@ def recency_review_bucket_label(bucket):
         "critical_min_rule_protected": "Critical / explicit min rule",
         "critical_rule_protected": "Critical / rule-protected",
         "recent_local_po_protected": "Protected by recent local PO history",
+        "receipt_heavy_unverified": "Receipt-heavy / sales-unverified",
         "activity_protected": "Protected by other activity",
         "new_or_sparse": "New or too sparse",
         "stale_or_likely_dead": "Stale / likely dead",
@@ -428,6 +437,7 @@ def should_force_recency_review(item, inv, rule):
     if data_completeness in (
         "missing_recency_local_po_protected",
         "missing_recency_activity_protected",
+        "missing_recency_receipt_heavy",
         "missing_recency",
     ):
         return True
@@ -444,6 +454,7 @@ def should_suppress_manual_only_qty(item):
         "missing_recency",
         "missing_recency_local_po_protected",
         "missing_recency_activity_protected",
+        "missing_recency_receipt_heavy",
     )
 
 
@@ -889,6 +900,7 @@ def enrich_item(item, inv, pack_qty, rule):
         why = {
             "stale_or_likely_dead": "Manual review required before ordering (missing sale/receipt history; likely stale or dead item)",
             "new_or_sparse": "Manual review required before ordering (missing sale/receipt history; may be new or too sparse)",
+            "receipt_heavy_unverified": "Manual review required before ordering (receipts outpace sales; receiving history may reflect overstock rather than demand)",
             "missing_data_uncertain": "Manual review required before ordering (missing sale/receipt history; incomplete data makes demand uncertain)",
             "critical_min_rule_protected": "Manual review required before ordering (missing sale/receipt history; protected by explicit critical min rule)",
             "recent_local_po_protected": "Manual review required before ordering (missing sale/receipt history; protected by recent local PO history)",
@@ -898,6 +910,7 @@ def enrich_item(item, inv, pack_qty, rule):
             "missing_recency_critical_min_protected": "Manual review required before ordering (missing sale/receipt history; protected by explicit critical min rule)",
             "missing_recency_local_po_protected": "Manual review required before ordering (missing sale/receipt history; protected by recent local PO history)",
             "missing_recency_activity_protected": "Manual review required before ordering (missing sale/receipt history; protected by other evidence)",
+            "missing_recency_receipt_heavy": "Manual review required before ordering (receipts outpace sales; receiving history may reflect overstock rather than demand)",
         }.get(completeness, "Manual review required before ordering"))
         projected_overstock, overstock_within_tolerance = assess_post_receipt_overstock(item, suggested)
     reason_codes = []
@@ -954,6 +967,9 @@ def enrich_item(item, inv, pack_qty, rule):
         reason_codes.append(f"receipt_vendor_{receipt_vendor_confidence}")
     if item.get("receipt_vendor_ambiguous"):
         reason_codes.append("receipt_vendor_ambiguous")
+    receipt_sales_balance = str(item.get("receipt_sales_balance", "") or "").strip().lower()
+    if receipt_sales_balance:
+        reason_codes.append(f"receipt_sales_{receipt_sales_balance}")
 
     detail_parts = [f"Stock after open POs: {inventory_position:g}", f"Target stock: {target_stock:g}"]
     if item.get("package_profile"):
@@ -990,6 +1006,7 @@ def enrich_item(item, inv, pack_qty, rule):
             "missing_recency_local_po_protected": "No sale or receipt history, but recent local PO history exists",
             "missing_recency_rule_protected": "No sale or receipt history, but protected by an explicit stocking rule",
             "missing_recency_activity_protected": "No sale or receipt history, but protected by other evidence",
+            "missing_recency_receipt_heavy": "No trustworthy recency history; receipts appear materially heavier than sales",
         }
         detail_parts.append(completeness_labels.get(data_completeness, data_completeness))
     if recency_review_bucket:
@@ -1008,6 +1025,18 @@ def enrich_item(item, inv, pack_qty, rule):
     loaded_receipts = item.get("qty_received", 0) or 0
     if loaded_receipts > 0:
         detail_parts.append(f"Loaded receipts in selected window: {loaded_receipts:g}")
+    receipt_sales_reason = str(item.get("receipt_sales_balance_reason", "") or "").strip()
+    receipt_sales_balance_label = {
+        "balanced": "balanced with sales",
+        "receipt_led": "running ahead of sales",
+        "receipt_only": "receipt-only evidence",
+        "receipt_heavy": "receipt-heavy vs sales",
+    }.get(receipt_sales_balance, receipt_sales_balance.replace("_", " "))
+    if receipt_sales_balance:
+        receipt_sales_detail = f"Receipt vs sales: {receipt_sales_balance_label}"
+        if receipt_sales_reason:
+            receipt_sales_detail += f" ({receipt_sales_reason})"
+        detail_parts.append(receipt_sales_detail)
     receipt_primary_vendor = item.get("receipt_primary_vendor", "")
     if receipt_primary_vendor:
         receipt_vendor_detail = f"Receipt vendor evidence: {receipt_primary_vendor}"

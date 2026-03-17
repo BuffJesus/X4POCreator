@@ -109,6 +109,7 @@ class UIIndividualTests(unittest.TestCase):
                 "receipt_primary_vendor": "GREGDIST",
                 "receipt_vendor_confidence": "high",
                 "receipt_count": 3,
+                "receipt_sales_balance": "balanced",
                 "avg_units_per_receipt": 7.5,
                 "median_units_per_receipt": 6,
                 "avg_days_between_receipts": 9.0,
@@ -124,7 +125,7 @@ class UIIndividualTests(unittest.TestCase):
                 "Line Code:", "Item Code:", "Description:", "Source:", "Qty Sold:", "Qty Suspended:",
                 "Qty Received:", "Order Qty:", "Pack Size:", "QOH:", "On PO:", "Min:", "Max:",
                 "Sug Min:", "Sug Max:", "Dtl Sug Min:", "Dtl Sug Max:", "Sug Compare:", "YTD Sales:", "12 Mo Sales:", "Supplier:", "Receipt Vendor:",
-                "Receipt Confidence:", "Receipt Count:", "Avg Units / Receipt:", "Median Units / Receipt:", "Avg Days Between Receipts:", "Demand Shape:", "Shape Confidence:", "Last Receipt:", "Last Sale:"
+                "Receipt Confidence:", "Receipt Count:", "Receipt vs Sales:", "Avg Units / Receipt:", "Median Units / Receipt:", "Avg Days Between Receipts:", "Demand Shape:", "Shape Confidence:", "Last Receipt:", "Last Sale:"
             )},
             inventory_lookup={("AER-", "GH781-4"): {"supplier": "gregdist", "qoh": 2, "min": 1, "max": 4}},
             on_po_qty={("AER-", "GH781-4"): 0},
@@ -161,6 +162,7 @@ class UIIndividualTests(unittest.TestCase):
         self.assertEqual(app.assign_detail_vars["Receipt Vendor:"].get(), "GREGDIST")
         self.assertEqual(app.assign_detail_vars["Receipt Confidence:"].get(), "high")
         self.assertEqual(app.assign_detail_vars["Receipt Count:"].get(), "3")
+        self.assertEqual(app.assign_detail_vars["Receipt vs Sales:"].get(), "balanced")
         self.assertEqual(app.assign_detail_vars["Avg Units / Receipt:"].get(), "7.50")
         self.assertEqual(app.assign_detail_vars["Median Units / Receipt:"].get(), "6.00")
         self.assertEqual(app.assign_detail_vars["Avg Days Between Receipts:"].get(), "9.00")
@@ -193,7 +195,7 @@ class UIIndividualTests(unittest.TestCase):
                 "Line Code:", "Item Code:", "Description:", "Source:", "Qty Sold:", "Qty Suspended:",
                 "Qty Received:", "Order Qty:", "Pack Size:", "QOH:", "On PO:", "Min:", "Max:",
                 "Sug Min:", "Sug Max:", "Dtl Sug Min:", "Dtl Sug Max:", "Sug Compare:", "YTD Sales:", "12 Mo Sales:", "Supplier:", "Receipt Vendor:",
-                "Receipt Confidence:", "Receipt Count:", "Avg Units / Receipt:", "Median Units / Receipt:", "Avg Days Between Receipts:", "Demand Shape:", "Shape Confidence:", "Last Receipt:", "Last Sale:"
+                "Receipt Confidence:", "Receipt Count:", "Receipt vs Sales:", "Avg Units / Receipt:", "Median Units / Receipt:", "Avg Days Between Receipts:", "Demand Shape:", "Shape Confidence:", "Last Receipt:", "Last Sale:"
             )},
             inventory_lookup={("AER-", "GH781-4"): {"supplier": "source", "qoh": 2, "min": 1, "max": 4}},
             on_po_qty={("AER-", "GH781-4"): 0},
@@ -257,7 +259,7 @@ class UIIndividualTests(unittest.TestCase):
                 "Line Code:", "Item Code:", "Description:", "Source:", "Qty Sold:", "Qty Suspended:",
                 "Qty Received:", "Order Qty:", "Pack Size:", "QOH:", "On PO:", "Min:", "Max:",
                 "Sug Min:", "Sug Max:", "Dtl Sug Min:", "Dtl Sug Max:", "Sug Compare:", "YTD Sales:", "12 Mo Sales:", "Supplier:", "Receipt Vendor:",
-                "Receipt Confidence:", "Receipt Count:", "Avg Units / Receipt:", "Median Units / Receipt:", "Avg Days Between Receipts:", "Demand Shape:", "Shape Confidence:", "Last Receipt:", "Last Sale:"
+                "Receipt Confidence:", "Receipt Count:", "Receipt vs Sales:", "Avg Units / Receipt:", "Median Units / Receipt:", "Avg Days Between Receipts:", "Demand Shape:", "Shape Confidence:", "Last Receipt:", "Last Sale:"
             )},
             inventory_lookup={("AER-", "GH781-4"): {"qoh": 2, "min": 1, "max": 4}},
             on_po_qty={("AER-", "GH781-4"): 0},

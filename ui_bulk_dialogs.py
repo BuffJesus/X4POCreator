@@ -863,6 +863,7 @@ def item_details_rows(app, item, inv, key):
         ("Receipt Vendor", item.get("receipt_primary_vendor") or "-"),
         ("Receipt Confidence", item.get("receipt_vendor_confidence") or "-"),
         ("Receipt Count", str(item.get("receipt_count", "-") if item.get("receipt_count") is not None else "-")),
+        ("Receipt vs Sales", item.get("receipt_sales_balance") or "-"),
         ("Avg Units / Receipt", _format_metric(item.get("avg_units_per_receipt"))),
         ("Median Units / Receipt", _format_metric(item.get("median_units_per_receipt"))),
         ("Max Units / Receipt", _format_metric(item.get("max_units_per_receipt"))),

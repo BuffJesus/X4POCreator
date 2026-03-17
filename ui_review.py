@@ -49,6 +49,8 @@ def is_review_exception(item):
         return True
     if str(item.get("reorder_attention_signal", "") or "").strip().lower() == "review_lumpy_demand":
         return True
+    if str(item.get("reorder_attention_signal", "") or "").strip().lower() == "review_receipt_heavy":
+        return True
     if bool(item.get("receipt_vendor_ambiguous")):
         return True
     if has_suggestion_gap(item):

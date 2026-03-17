@@ -974,6 +974,9 @@ class RulesTests(unittest.TestCase):
             "qty_sold": 0,
             "qty_suspended": 0,
             "qty_received": 2,
+            "receipt_count": 2,
+            "receipt_sales_balance": "receipt_heavy",
+            "receipt_sales_balance_reason": "repeat receipts exist in the loaded window without matching sales activity",
             "qty_on_po": 0,
             "pack_size": 1,
             "demand_signal": 1,
@@ -981,12 +984,33 @@ class RulesTests(unittest.TestCase):
 
         enrich_item(item, {"qoh": 0, "min": 0, "max": 1}, 1, None)
         self.assertEqual(item["recency_confidence"], "low")
-        self.assertEqual(item["data_completeness"], "missing_recency_activity_protected")
-        self.assertEqual(item["recency_review_bucket"], "new_or_sparse")
+        self.assertEqual(item["data_completeness"], "missing_recency_receipt_heavy")
+        self.assertEqual(item["recency_review_bucket"], "receipt_heavy_unverified")
         self.assertEqual(item["order_policy"], "manual_only")
         self.assertEqual(item["suggested_qty"], 0)
-        self.assertIn("may be new or too sparse", item["why"])
+        self.assertIn("receipts outpace sales", item["why"])
         self.assertIn("Loaded receipts in selected window: 2", item["why"])
+        self.assertIn("Receipt vs sales: receipt-heavy vs sales", item["why"])
+
+    def test_missing_recency_with_balanced_receipts_still_counts_as_activity_protected(self):
+        item = {
+            "description": "SHOP FILTER",
+            "qty_sold": 4,
+            "qty_suspended": 0,
+            "qty_received": 5,
+            "receipt_count": 2,
+            "receipt_sales_balance": "balanced",
+            "receipt_sales_balance_reason": "loaded receipts and sales are in a similar range",
+            "qty_on_po": 0,
+            "pack_size": 1,
+            "demand_signal": 4,
+        }
+
+        enrich_item(item, {"qoh": 0, "min": 0, "max": 4}, 1, None)
+
+        self.assertEqual(item["data_completeness"], "missing_recency_activity_protected")
+        self.assertEqual(item["recency_review_bucket"], "new_or_sparse")
+        self.assertIn("Receipt vs sales: balanced with sales", item["why"])
 
     def test_missing_recency_with_explicit_trigger_rule_remains_orderable(self):
         item = {
@@ -1083,6 +1107,9 @@ class RulesTests(unittest.TestCase):
             "qty_sold": 2,
             "qty_suspended": 0,
             "qty_received": 5,
+            "receipt_count": 2,
+            "receipt_sales_balance": "receipt_led",
+            "receipt_sales_balance_reason": "receipts are running ahead of sales, but not enough to treat as overstock-driven",
             "qty_on_po": 0,
             "pack_size": 1,
             "demand_signal": 2,
@@ -1096,8 +1123,10 @@ class RulesTests(unittest.TestCase):
 
         self.assertIn("Receipt vendor evidence: MOTION (medium confidence)", item["why"])
         self.assertIn("Receipt vendor history is mixed: MOTION, SOURCE", item["why"])
+        self.assertIn("Receipt vs sales: running ahead of sales", item["why"])
         self.assertIn("receipt_vendor_medium", item["reason_codes"])
         self.assertIn("receipt_vendor_ambiguous", item["reason_codes"])
+        self.assertIn("receipt_sales_receipt_led", item["reason_codes"])
 
 
 if __name__ == "__main__":

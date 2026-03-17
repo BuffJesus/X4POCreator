@@ -220,6 +220,7 @@ class UIReviewTests(unittest.TestCase):
         self.assertTrue(ui_review.is_review_exception({"recency_confidence": "low"}))
         self.assertTrue(ui_review.is_review_exception({"vendor_value_coverage": "partial"}))
         self.assertTrue(ui_review.is_review_exception({"reorder_attention_signal": "review_lumpy_demand"}))
+        self.assertTrue(ui_review.is_review_exception({"reorder_attention_signal": "review_receipt_heavy"}))
         self.assertTrue(ui_review.is_review_exception({"receipt_vendor_ambiguous": True}))
         self.assertTrue(ui_review.is_review_exception({"detailed_suggestion_compare": "detailed_only"}))
         self.assertFalse(ui_review.is_review_exception({"release_decision": "release_now", "status": "ok"}))

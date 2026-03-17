@@ -77,6 +77,26 @@ class PerformanceFlowTests(unittest.TestCase):
         self.assertTrue(result["detailed_sales_review_required"])
         self.assertEqual(result["reorder_attention_signal"], "review_lumpy_demand")
 
+    def test_classify_item_flags_receipt_heavy_pattern_for_review(self):
+        item = {
+            "annualized_sales_loaded": 12,
+            "qty_sold": 2,
+            "qty_received": 12,
+            "receipt_count": 3,
+            "avg_units_per_receipt": 4.0,
+            "avg_units_per_transaction": 1.0,
+            "days_since_last_sale": 40,
+            "inventory_position": 1,
+            "qty_on_po": 0,
+        }
+        inv = {"mo12_sales": 0, "qoh": 1, "min": 0}
+
+        result = performance_flow.classify_item(item, inv)
+
+        self.assertEqual(result["receipt_sales_balance"], "receipt_heavy")
+        self.assertTrue(result["receipt_sales_review_required"])
+        self.assertEqual(result["reorder_attention_signal"], "review_receipt_heavy")
+
     def test_annotate_items_appends_detailed_sales_shape_to_why_when_present(self):
         items = [{
             "line_code": "AER-",

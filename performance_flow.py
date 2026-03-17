@@ -22,6 +22,66 @@ def detailed_sales_shape_label(shape):
     }.get(shape, shape or "")
 
 
+def classify_receipt_sales_balance(item):
+    qty_sold = _safe_float(item.get("qty_sold"))
+    qty_received = _safe_float(item.get("qty_received"))
+    receipt_count = int(_safe_float(item.get("receipt_count")))
+    avg_units_per_receipt = _safe_float(item.get("avg_units_per_receipt"))
+    avg_units_per_transaction = _safe_float(item.get("avg_units_per_transaction"))
+
+    result = {
+        "receipt_sales_balance": "",
+        "receipt_sales_balance_reason": "",
+        "receipt_sales_review_required": False,
+    }
+    if qty_received <= 0 or receipt_count <= 0:
+        return result
+    if qty_sold <= 0:
+        if receipt_count >= 2:
+            result.update({
+                "receipt_sales_balance": "receipt_heavy",
+                "receipt_sales_balance_reason": "repeat receipts exist in the loaded window without matching sales activity",
+                "receipt_sales_review_required": True,
+            })
+        else:
+            result.update({
+                "receipt_sales_balance": "receipt_only",
+                "receipt_sales_balance_reason": "receipt activity exists, but matching sales evidence is too thin",
+            })
+        return result
+
+    receipt_to_sales_ratio = qty_received / qty_sold if qty_sold > 0 else 0.0
+    if receipt_count >= 2 and receipt_to_sales_ratio >= 3.0:
+        result.update({
+            "receipt_sales_balance": "receipt_heavy",
+            "receipt_sales_balance_reason": "receipts materially outpace loaded sales in the selected window",
+            "receipt_sales_review_required": True,
+        })
+        return result
+    if (
+        receipt_count >= 2
+        and avg_units_per_transaction > 0
+        and avg_units_per_receipt >= (avg_units_per_transaction * 3.0)
+    ):
+        result.update({
+            "receipt_sales_balance": "receipt_heavy",
+            "receipt_sales_balance_reason": "typical receipt lots are much larger than actual sales transactions",
+            "receipt_sales_review_required": True,
+        })
+        return result
+    if receipt_to_sales_ratio >= 1.5:
+        result.update({
+            "receipt_sales_balance": "receipt_led",
+            "receipt_sales_balance_reason": "receipts are running ahead of sales, but not enough to treat as overstock-driven",
+        })
+        return result
+    result.update({
+        "receipt_sales_balance": "balanced",
+        "receipt_sales_balance_reason": "loaded receipts and sales are in a similar range",
+    })
+    return result
+
+
 def classify_detailed_sales_shape(item):
     transaction_count = int(_safe_float(item.get("transaction_count")))
     sale_day_count = int(_safe_float(item.get("sale_day_count")))
@@ -140,10 +200,13 @@ def classify_item(item, inv):
         and inventory_position <= min_threshold
     )
     demand_shape = classify_detailed_sales_shape(item)
+    receipt_balance = classify_receipt_sales_balance(item)
     if possible_missed_reorder:
         reorder_attention_signal = "review_missed_reorder"
     elif demand_shape.get("detailed_sales_review_required"):
         reorder_attention_signal = "review_lumpy_demand"
+    elif receipt_balance.get("receipt_sales_review_required"):
+        reorder_attention_signal = "review_receipt_heavy"
     else:
         reorder_attention_signal = "normal"
 
@@ -153,6 +216,7 @@ def classify_item(item, inv):
         "historical_rank_score": historical_rank_score,
         "possible_missed_reorder": possible_missed_reorder,
         "reorder_attention_signal": reorder_attention_signal,
+        **receipt_balance,
         **demand_shape,
     }
 

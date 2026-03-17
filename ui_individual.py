@@ -163,6 +163,7 @@ def build_individual_tab(app):
         "Receipt Vendor:",
         "Receipt Confidence:",
         "Receipt Count:",
+        "Receipt vs Sales:",
         "Avg Units / Receipt:",
         "Median Units / Receipt:",
         "Avg Days Between Receipts:",
@@ -281,6 +282,7 @@ def populate_assign_item(app):
         app.assign_detail_vars["Receipt Confidence:"].set(receipt_confidence)
         receipt_count = item.get("receipt_count")
         app.assign_detail_vars["Receipt Count:"].set(str(receipt_count) if receipt_count else "-")
+        app.assign_detail_vars["Receipt vs Sales:"].set(item.get("receipt_sales_balance", "") or "-")
         avg_units_receipt = item.get("avg_units_per_receipt")
         app.assign_detail_vars["Avg Units / Receipt:"].set(
             f"{float(avg_units_receipt):.2f}" if avg_units_receipt is not None else "-"
@@ -314,6 +316,7 @@ def populate_assign_item(app):
             "Receipt Vendor:",
             "Receipt Confidence:",
             "Receipt Count:",
+            "Receipt vs Sales:",
             "Avg Units / Receipt:",
             "Median Units / Receipt:",
             "Avg Days Between Receipts:",
