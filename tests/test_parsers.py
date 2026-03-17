@@ -139,6 +139,59 @@ class ParserSmokeTests(unittest.TestCase):
             self.assertEqual(sales_start.date().isoformat(), "2026-03-01")
             self.assertEqual(sales_end.date().isoformat(), "2026-03-05")
 
+    def test_parse_received_parts_detail_x4_layout(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "ReceivedPartsDetail.csv"
+            with open(path, "w", newline="", encoding="utf-8-sig") as f:
+                writer = csv.writer(f)
+                writer.writerow([
+                    "RECEIVED PARTS DETAIL\n\nFrom 2018-03-26 to 2026-03-16",
+                    "2026-03-16\n\n\n 6:59:01AM\n\n\nPage -1 of 1",
+                    "Date", "PG", "Item_Code", "Description", "Vendor", "Major/Minor",
+                    "Ext Cost", "Qty Rec'd", "Net\n\nPurchases", "Stock\n\nReturns",
+                    "Warranty Returns ", "Dirty Core\n\n Returns",
+                    "26-Mar-2018", "FAR-", "X107-C", "3/8 EXTRUDED STREET TEE",
+                    "UNISELE", "RR", "3", "9.84", "4.00", "9.84", "0.00", "0.00",
+                    "0.00", "15,770,378", "245,523", "23,969", "77,840",
+                ])
+
+            rows = parsers.parse_received_parts_detail_csv(str(path))
+
+        self.assertEqual(rows, [{
+            "line_code": "FAR-",
+            "item_code": "X107-C",
+            "description": "3/8 EXTRUDED STREET TEE",
+            "qty_received": 4,
+            "receipt_date": "26-Mar-2018",
+            "vendor": "UNISELE",
+        }])
+
+    def test_parse_detailed_part_sales_x4_layout(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "DETAILED PART SALES.csv"
+            with open(path, "w", newline="", encoding="utf-8-sig") as f:
+                writer = csv.writer(f)
+                writer.writerow([
+                    "Product Groups: ALL", "Branches: 1", "From: 26-Mar-2018 to 31-Mar-2026",
+                    "DETAILED PART SALES", " 8:29:38AM", "16-Mar-2026", "Sales Category: ALL",
+                    "Page -1 of 1", "Item\n\nCode", "Description", "Total\n\nQuantity", "Qty On Hand",
+                    "Extended\n\nSelling", "Extended\n\nCost", "Gross\n\nProfit", "Gross\n\nMargin",
+                    "Slmn", "BRANCH", "1", "3366629", "27,781,031.47", "18,810,903.78",
+                    "8,970,127.69", "32.29", "010-00055062", "GLOBAL STRIPE", "3", "19.29", "17.54",
+                    "1.75", "9.07", "20-Nov-2019", "harley", "527394", "BROOBEST", "19.29", "1.00",
+                    "", "19.29", "17.54", "1.75", "9.07", "27",
+                ])
+
+            rows = parsers.parse_detailed_part_sales_csv(str(path))
+
+        self.assertEqual(rows, [{
+            "line_code": "",
+            "item_code": "010-00055062",
+            "description": "GLOBAL STRIPE",
+            "qty_sold": 3,
+            "sale_date": "20-Nov-2019",
+        }])
+
     def test_build_receipt_history_lookup_ranks_vendors_by_recency_then_quantity(self):
         receipt_rows = [
             {

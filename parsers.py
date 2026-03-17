@@ -229,7 +229,7 @@ def parse_detailed_part_sales_csv(filepath):
         optional_fields=("description", "sale_date"),
     )
     if header_index is None:
-        return []
+        return _parse_x4_detailed_part_sales_rows(rows)
     items = []
     for row in _dedupe_detail_rows(rows[header_index + 1:]):
         line_code = _safe_cell(row, indexes["line_code"])
@@ -255,7 +255,7 @@ def parse_received_parts_detail_csv(filepath):
         optional_fields=("description", "receipt_date"),
     )
     if header_index is None:
-        return []
+        return _parse_x4_received_parts_detail_rows(rows)
     items = []
     for row in _dedupe_detail_rows(rows[header_index + 1:]):
         line_code = _safe_cell(row, indexes["line_code"])
@@ -269,6 +269,57 @@ def parse_received_parts_detail_csv(filepath):
             "qty_received": _coerce_int(_safe_cell(row, indexes["qty_received"])),
             "receipt_date": _safe_cell(row, indexes.get("receipt_date")),
             "vendor": _normalize_vendor_code(_safe_cell(row, indexes["vendor"])),
+        })
+    return items
+
+
+def _looks_like_x4_received_parts_detail_row(row, *, parse_date=None):
+    parse_date = parse_date or parse_x4_date
+    if len(row) < 23:
+        return False
+    if parse_date(_safe_cell(row, 14)) is None:
+        return False
+    if not _safe_cell(row, 15).endswith("-"):
+        return False
+    return bool(_safe_cell(row, 16) and _safe_cell(row, 18))
+
+
+def _parse_x4_received_parts_detail_rows(rows):
+    items = []
+    for row in _dedupe_detail_rows(rows):
+        if not _looks_like_x4_received_parts_detail_row(row):
+            continue
+        items.append({
+            "line_code": _safe_cell(row, 15),
+            "item_code": _safe_cell(row, 16),
+            "description": _clean_item_description(_safe_cell(row, 17)),
+            "qty_received": _coerce_int(_safe_cell(row, 22)),
+            "receipt_date": _safe_cell(row, 14),
+            "vendor": _normalize_vendor_code(_safe_cell(row, 18)),
+        })
+    return items
+
+
+def _looks_like_x4_detailed_part_sales_row(row, *, parse_date=None):
+    parse_date = parse_date or parse_x4_date
+    if len(row) < 32:
+        return False
+    if parse_date(_safe_cell(row, 31)) is None:
+        return False
+    return bool(_safe_cell(row, 24) and _safe_cell(row, 25))
+
+
+def _parse_x4_detailed_part_sales_rows(rows):
+    items = []
+    for row in _dedupe_detail_rows(rows):
+        if not _looks_like_x4_detailed_part_sales_row(row):
+            continue
+        items.append({
+            "line_code": "",
+            "item_code": _safe_cell(row, 24),
+            "description": _clean_item_description(_safe_cell(row, 25)),
+            "qty_sold": _coerce_int(_safe_cell(row, 26)),
+            "sale_date": _safe_cell(row, 31),
         })
     return items
 

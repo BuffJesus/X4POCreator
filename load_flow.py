@@ -7,6 +7,59 @@ import performance_flow
 import sales_history_flow
 
 
+def _resolve_sales_line_code(item_code, *, inventory_lookup, receipt_history_lookup):
+    candidates = {
+        line_code
+        for (line_code, current_item_code) in (inventory_lookup or {})
+        if current_item_code == item_code and line_code
+    }
+    if len(candidates) == 1:
+        return next(iter(candidates))
+    receipt_candidates = {
+        line_code
+        for (line_code, current_item_code) in (receipt_history_lookup or {})
+        if current_item_code == item_code and line_code
+    }
+    if len(receipt_candidates) == 1:
+        return next(iter(receipt_candidates))
+    return ""
+
+
+def _normalize_detailed_sales_keys(sales_items, detailed_sales_stats_lookup, *, inventory_lookup, receipt_history_lookup):
+    normalized_items = {}
+    for item in sales_items or []:
+        line_code = item.get("line_code", "") or ""
+        item_code = item.get("item_code", "") or ""
+        if item_code and not line_code:
+            line_code = _resolve_sales_line_code(
+                item_code,
+                inventory_lookup=inventory_lookup,
+                receipt_history_lookup=receipt_history_lookup,
+            )
+        key = (line_code, item_code)
+        entry = normalized_items.setdefault(key, {
+            "line_code": line_code,
+            "item_code": item_code,
+            "description": "",
+            "qty_received": 0,
+            "qty_sold": 0,
+        })
+        entry["qty_received"] += max(0, int(item.get("qty_received", 0) or 0))
+        entry["qty_sold"] += max(0, int(item.get("qty_sold", 0) or 0))
+        if not entry["description"] and item.get("description"):
+            entry["description"] = item.get("description", "")
+
+    normalized_stats = {}
+    for (line_code, item_code), stats in (detailed_sales_stats_lookup or {}).items():
+        resolved_line_code = line_code or _resolve_sales_line_code(
+            item_code,
+            inventory_lookup=inventory_lookup,
+            receipt_history_lookup=receipt_history_lookup,
+        )
+        normalized_stats[(resolved_line_code, item_code)] = stats
+    return list(normalized_items.values()), normalized_stats
+
+
 def _parse_sales_inputs(paths):
     sales_path = str(paths.get("sales", "") or "").strip()
     detailed_sales_path = str(paths.get("detailedsales", "") or "").strip()
@@ -214,6 +267,12 @@ def parse_all_files(paths, *, old_po_warning_days, short_sales_window_days, now=
             warnings.append(("Min/Max Parse Warning", f"Could not parse Min/Max report:\n{exc}\nContinuing without it."))
 
     result["inventory_lookup"] = inventory_lookup
+    result["sales_items"], result["detailed_sales_stats_lookup"] = _normalize_detailed_sales_keys(
+        result["sales_items"],
+        result["detailed_sales_stats_lookup"],
+        inventory_lookup=inventory_lookup,
+        receipt_history_lookup=result["receipt_history_lookup"],
+    )
     sales_history_flow.annotate_sales_items(
         result["sales_items"],
         inventory_lookup=inventory_lookup,
@@ -229,6 +288,10 @@ def parse_all_files(paths, *, old_po_warning_days, short_sales_window_days, now=
         result["sales_items"],
         inventory_lookup=inventory_lookup,
     )
+    all_line_codes = sorted(set(
+        [line_code for line_code in all_line_codes if line_code] +
+        [item.get("line_code", "") for item in result["sales_items"] if item.get("line_code", "")]
+    ))
     if inventory_lookup:
         negative_qoh = [
             ((line_code, item_code), info)

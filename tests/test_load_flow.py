@@ -164,6 +164,56 @@ class LoadFlowTests(unittest.TestCase):
         self.assertAlmostEqual(result["detailed_sales_stats_lookup"][("AER-", "GH781-4")]["annualized_qty_sold"], 146.1, places=3)
         self.assertEqual(result["sales_items"][0]["transaction_count"], 2)
 
+    def test_parse_all_files_resolves_blank_detailed_sales_line_code_from_inventory(self):
+        with patch("load_flow.parsers.parse_detailed_part_sales_csv", return_value=[
+            {
+                "line_code": "",
+                "item_code": "GH781-4",
+                "description": "HOSE",
+                "qty_sold": 4,
+                "sale_date": "01-Mar-2026",
+            },
+        ]), patch("load_flow.parsers.parse_received_parts_detail_csv", return_value=[]), patch(
+            "load_flow.parsers.build_sales_receipt_summary",
+            return_value=[{
+                "line_code": "",
+                "item_code": "GH781-4",
+                "description": "HOSE",
+                "qty_received": 0,
+                "qty_sold": 4,
+            }],
+        ), patch(
+            "load_flow.parsers.parse_detailed_sales_date_range",
+            return_value=(datetime(2026, 3, 1), datetime(2026, 3, 10)),
+        ), patch(
+            "load_flow.parsers.build_receipt_history_lookup",
+            return_value={},
+        ), patch(
+            "load_flow.parsers.build_detailed_sales_stats_lookup",
+            return_value={("", "GH781-4"): {"transaction_count": 2, "qty_sold_total": 4}},
+        ), patch(
+            "load_flow.parsers.parse_on_hand_report",
+            return_value={("AER-", "GH781-4"): {"qoh": 5.0, "repl_cost": 12.5}},
+        ):
+            result = load_flow.parse_all_files(
+                {
+                    "sales": "",
+                    "detailedsales": "detailed.csv",
+                    "receivedparts": "received.csv",
+                    "po": "",
+                    "susp": "",
+                    "onhand": "onhand.csv",
+                    "minmax": "",
+                    "packsize": "",
+                },
+                old_po_warning_days=90,
+                short_sales_window_days=7,
+            )
+
+        self.assertEqual(result["sales_items"][0]["line_code"], "AER-")
+        self.assertIn(("AER-", "GH781-4"), result["detailed_sales_stats_lookup"])
+        self.assertEqual(result["sales_items"][0]["transaction_count"], 2)
+
     def test_parse_all_files_old_po_warning_includes_po_reference(self):
         with patch("load_flow.parsers.parse_part_sales_csv", return_value=[{
             "line_code": "AER-",
