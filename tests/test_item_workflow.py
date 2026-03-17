@@ -52,6 +52,7 @@ class ItemWorkflowTests(unittest.TestCase):
 
         self.assertEqual(rule_key, "AER-:GH781-4")
         self.assertEqual(item["pack_size"], 12)
+        self.assertEqual(item["pack_size_source"], "rule")
         self.assertEqual(rule["pack_size"], 12)
         self.assertNotIn("order_policy", rule)
 

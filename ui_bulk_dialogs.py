@@ -4,6 +4,7 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 
 import bulk_remove_flow
+import reorder_flow
 import storage
 import ui_bulk
 from debug_log import write_debug
@@ -865,6 +866,7 @@ def item_details_rows(app, item, inv, key):
         ("Receipt Confidence", item.get("receipt_vendor_confidence") or "-"),
         ("Receipt Count", str(item.get("receipt_count", "-") if item.get("receipt_count") is not None else "-")),
         ("Receipt vs Sales", item.get("receipt_sales_balance") or "-"),
+        ("Pack Source", reorder_flow.pack_size_source_label(item.get("pack_size_source")) or "-"),
         ("Potential Pack", str(item.get("potential_pack_size", "-") if item.get("potential_pack_size") is not None else "-")),
         ("Pack Confidence", item.get("potential_pack_confidence") or "-"),
         ("Avg Units / Receipt", _format_metric(item.get("avg_units_per_receipt"))),

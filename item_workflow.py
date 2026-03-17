@@ -51,6 +51,7 @@ def apply_recent_order_context(item, recent_orders):
 def apply_pack_size_edit(item, raw, order_rules, get_rule_key):
     """Update an item's pack size and its persisted per-item rule."""
     item["pack_size"] = None if raw == "" else int(float(raw))
+    item["pack_size_source"] = "" if item["pack_size"] is None else "rule"
     rule_key = get_rule_key(item["line_code"], item["item_code"])
     rule = dict(order_rules.get(rule_key) or {})
     if item["pack_size"] is None:

@@ -958,13 +958,24 @@ class POBuilderApp:
 
     def _resolve_pack_size(self, key):
         """Resolve pack size with exact-key and item-code fallback."""
+        pack, _source = self._resolve_pack_size_with_source(key)
+        return pack
+
+    def _resolve_pack_size_with_source(self, key):
+        """Resolve pack size and report where it came from."""
         pack = self.pack_size_lookup.get(key)
         if pack:
-            return pack
+            return pack, "x4_exact"
         generic = self.pack_size_lookup.get(("", key[1]))
         if generic:
-            return generic
-        return self.pack_size_by_item.get(key[1])
+            return generic, "x4_item"
+        fallback = self.pack_size_by_item.get(key[1])
+        if fallback:
+            return fallback, "x4_item_fallback"
+        receipt_pack = reorder_flow.receipt_pack_size_for_key(self, key)
+        if receipt_pack:
+            return receipt_pack, "receipt_history"
+        return None, ""
 
     def _get_x4_pack_size(self, key):
         """Return the original X4 order multiple from the loaded source files."""
@@ -1009,6 +1020,7 @@ class POBuilderApp:
                 get_suspense_carry_qty=self._get_suspense_carry_qty,
                 default_vendor_for_key=self._default_vendor_for_key,
                 resolve_pack_size=self._resolve_pack_size,
+                resolve_pack_size_with_source=self._resolve_pack_size_with_source,
                 suggest_min_max=self._suggest_min_max,
                 get_cycle_weeks=self._get_cycle_weeks,
                 get_rule_key=get_rule_key,

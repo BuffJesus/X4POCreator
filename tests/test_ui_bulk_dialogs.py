@@ -704,6 +704,7 @@ class BulkDialogTests(unittest.TestCase):
             "receipt_vendor_confidence": "high",
             "receipt_count": 4,
             "receipt_sales_balance": "receipt_led",
+            "pack_size_source": "receipt_history",
             "potential_pack_size": 25,
             "potential_pack_confidence": "high",
             "potential_pack_candidates": [25, 10],
@@ -723,6 +724,7 @@ class BulkDialogTests(unittest.TestCase):
         self.assertEqual(row_lookup["Receipt Confidence"], "high")
         self.assertEqual(row_lookup["Receipt Count"], "4")
         self.assertEqual(row_lookup["Receipt vs Sales"], "receipt_led")
+        self.assertEqual(row_lookup["Pack Source"], "Receipt History")
         self.assertEqual(row_lookup["Potential Pack"], "25")
         self.assertEqual(row_lookup["Pack Confidence"], "high")
         self.assertEqual(row_lookup["Avg Units / Receipt"], "6.50")

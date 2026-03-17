@@ -165,6 +165,7 @@ def build_individual_tab(app):
         "Receipt Confidence:",
         "Receipt Count:",
         "Receipt vs Sales:",
+        "Pack Source:",
         "Potential Pack:",
         "Pack Confidence:",
         "Avg Units / Receipt:",
@@ -287,6 +288,9 @@ def populate_assign_item(app):
         receipt_count = item.get("receipt_count")
         app.assign_detail_vars["Receipt Count:"].set(str(receipt_count) if receipt_count else "-")
         app.assign_detail_vars["Receipt vs Sales:"].set(item.get("receipt_sales_balance", "") or "-")
+        app.assign_detail_vars["Pack Source:"].set(
+            reorder_flow.pack_size_source_label(item.get("pack_size_source")) or "-"
+        )
         potential_pack = item.get("potential_pack_size")
         app.assign_detail_vars["Potential Pack:"].set(str(potential_pack) if potential_pack is not None else "-")
         app.assign_detail_vars["Pack Confidence:"].set(item.get("potential_pack_confidence", "") or "-")
@@ -325,6 +329,7 @@ def populate_assign_item(app):
             "Receipt Confidence:",
             "Receipt Count:",
             "Receipt vs Sales:",
+            "Pack Source:",
             "Potential Pack:",
             "Pack Confidence:",
             "Avg Units / Receipt:",

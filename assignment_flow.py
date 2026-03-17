@@ -24,6 +24,7 @@ def prepare_assignment_session(
     get_suspense_carry_qty,
     default_vendor_for_key,
     resolve_pack_size,
+    resolve_pack_size_with_source=None,
     suggest_min_max,
     get_cycle_weeks,
     get_rule_key,
@@ -78,6 +79,11 @@ def prepare_assignment_session(
         ):
             continue
         po_qty = session.on_po_qty.get(key, 0)
+        if callable(resolve_pack_size_with_source):
+            pack_size, pack_source = resolve_pack_size_with_source(key)
+        else:
+            pack_size = resolve_pack_size(key)
+            pack_source = ""
         filtered_items.append({
             **item,
             "qty_suspended": sq,
@@ -89,7 +95,8 @@ def prepare_assignment_session(
             "gross_need": demand_signal,
             "order_qty": 0,
             "vendor": default_vendor_for_key(key),
-            "pack_size": resolve_pack_size(key),
+            "pack_size": pack_size,
+            "pack_size_source": pack_source,
             "reorder_cycle_weeks": get_cycle_weeks(),
         })
         reorder_flow.apply_receipt_vendor_context(session, filtered_items[-1], key)
@@ -109,6 +116,11 @@ def prepare_assignment_session(
             continue
         po_qty = session.on_po_qty.get(key, 0)
         first = susp_list[0]
+        if callable(resolve_pack_size_with_source):
+            pack_size, pack_source = resolve_pack_size_with_source(key)
+        else:
+            pack_size = resolve_pack_size(key)
+            pack_source = ""
         filtered_items.append({
             "line_code": key[0],
             "item_code": key[1],
@@ -124,7 +136,8 @@ def prepare_assignment_session(
             "gross_need": effective_susp,
             "order_qty": 0,
             "vendor": default_vendor_for_key(key),
-            "pack_size": resolve_pack_size(key),
+            "pack_size": pack_size,
+            "pack_size_source": pack_source,
             "reorder_cycle_weeks": get_cycle_weeks(),
         })
         reorder_flow.apply_receipt_vendor_context(session, filtered_items[-1], key)
@@ -148,6 +161,7 @@ def prepare_assignment_session(
         rule_pack = get_rule_pack_size(rule)
         if rule_pack is not None:
             item["pack_size"] = rule_pack
+            item["pack_size_source"] = "rule"
         enrich_item(item, inv, item.get("pack_size"), rule)
         reorder_flow.append_suggestion_comparison_reason(item)
         item_workflow.apply_suggestion_gap_review_state(item)

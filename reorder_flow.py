@@ -200,6 +200,30 @@ def receipt_vendor_evidence(app, key):
     }
 
 
+def receipt_pack_size_for_key(app, key, *, minimum_confidence="high"):
+    evidence = receipt_vendor_evidence(app, key)
+    confidence = evidence["receipt_pack_confidence"]
+    candidate = evidence["receipt_pack_candidate"]
+    if candidate is None:
+        return None
+    if minimum_confidence == "high" and confidence != "high":
+        return None
+    if minimum_confidence == "medium" and confidence not in ("high", "medium"):
+        return None
+    return candidate
+
+
+def pack_size_source_label(source_code):
+    return {
+        "": "",
+        "rule": "Saved Rule",
+        "x4_exact": "X4 Exact",
+        "x4_item": "X4 Item Fallback",
+        "x4_item_fallback": "X4 Generic Fallback",
+        "receipt_history": "Receipt History",
+    }.get(source_code or "", source_code or "")
+
+
 def apply_receipt_vendor_context(app, item, key):
     evidence = receipt_vendor_evidence(app, key)
     item["receipt_primary_vendor"] = evidence["primary_vendor"]

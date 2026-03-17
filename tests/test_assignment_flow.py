@@ -112,6 +112,44 @@ class AssignmentFlowTests(unittest.TestCase):
         self.assertEqual(session.filtered_items[0]["receipt_vendor_confidence"], "high")
         self.assertEqual(session.filtered_items[0]["receipt_vendor_candidates"], ["MOTION"])
 
+    def test_prepare_assignment_session_keeps_pack_source_from_resolution(self):
+        session = AppSessionState(
+            sales_items=[{
+                "line_code": "AER-",
+                "item_code": "GH781-4",
+                "description": "HOSE",
+                "qty_received": 5,
+                "qty_sold": 9,
+            }],
+            inventory_lookup={("AER-", "GH781-4"): {"qoh": 0, "max": 10}},
+            order_rules={},
+        )
+
+        with patch("assignment_flow.storage.get_recent_orders", return_value={}), \
+             patch("assignment_flow.storage.load_vendor_codes", return_value=["MOTION"]):
+            result = assignment_flow.prepare_assignment_session(
+                session,
+                excluded_line_codes=set(),
+                excluded_customers=set(),
+                dup_whitelist=set(),
+                ignored_keys=set(),
+                lookback_days=14,
+                order_history_path=str(ROOT / "test_order_history.json"),
+                vendor_codes_path=str(ROOT / "test_vendor_codes.txt"),
+                known_vendors=["MOTION"],
+                get_suspense_carry_qty=lambda key: 0,
+                default_vendor_for_key=lambda key: "MOTION",
+                resolve_pack_size=lambda key: None,
+                resolve_pack_size_with_source=lambda key: (25, "receipt_history"),
+                suggest_min_max=lambda key: (None, None),
+                get_cycle_weeks=lambda: 2,
+                get_rule_key=lambda lc, ic: f"{lc}:{ic}",
+            )
+
+        self.assertTrue(result)
+        self.assertEqual(session.filtered_items[0]["pack_size"], 25)
+        self.assertEqual(session.filtered_items[0]["pack_size_source"], "receipt_history")
+
     def test_prepare_assignment_session_carries_detailed_sales_shape_signals(self):
         session = AppSessionState(
             sales_items=[{

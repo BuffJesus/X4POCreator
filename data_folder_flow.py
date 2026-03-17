@@ -139,8 +139,12 @@ def refresh_active_data_state(app, known_vendors, get_rule_key, notify=True):
         rule_pack = get_rule_pack_size(app.order_rules.get(get_rule_key(*key)))
         if rule_pack is not None:
             item["pack_size"] = rule_pack
+            item["pack_size_source"] = "rule"
         elif not item.get("pack_size"):
-            item["pack_size"] = app._resolve_pack_size(key)
+            if hasattr(app, "_resolve_pack_size_with_source"):
+                item["pack_size"], item["pack_size_source"] = app._resolve_pack_size_with_source(key)
+            else:
+                item["pack_size"] = app._resolve_pack_size(key)
         app._recalculate_item(item)
 
     for item in app.assigned_items:

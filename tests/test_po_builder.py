@@ -76,6 +76,40 @@ class POBuilderTests(unittest.TestCase):
         self.assertIs(second, item_b)
         self.assertEqual(fake_app._bulk_row_index_cache["by_key"][("AMS-", "B")], (1, item_b))
 
+    def test_resolve_pack_size_with_source_falls_back_to_high_confidence_receipt_history(self):
+        fake_app = SimpleNamespace(
+            pack_size_lookup={},
+            pack_size_by_item={},
+            receipt_history_lookup={
+                ("AER-", "GH781-4"): {
+                    "receipt_pack_candidate": 25,
+                    "receipt_pack_confidence": "high",
+                }
+            },
+        )
+
+        pack, source = po_builder.POBuilderApp._resolve_pack_size_with_source(fake_app, ("AER-", "GH781-4"))
+
+        self.assertEqual(pack, 25)
+        self.assertEqual(source, "receipt_history")
+
+    def test_resolve_pack_size_with_source_does_not_override_x4_pack_with_receipt_history(self):
+        fake_app = SimpleNamespace(
+            pack_size_lookup={("AER-", "GH781-4"): 10},
+            pack_size_by_item={},
+            receipt_history_lookup={
+                ("AER-", "GH781-4"): {
+                    "receipt_pack_candidate": 25,
+                    "receipt_pack_confidence": "high",
+                }
+            },
+        )
+
+        pack, source = po_builder.POBuilderApp._resolve_pack_size_with_source(fake_app, ("AER-", "GH781-4"))
+
+        self.assertEqual(pack, 10)
+        self.assertEqual(source, "x4_exact")
+
     def test_set_update_check_enabled_persists_setting(self):
         saved = {}
         fake_app = SimpleNamespace(
