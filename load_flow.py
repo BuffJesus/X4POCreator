@@ -1,4 +1,5 @@
 import copy
+import os
 from collections import defaultdict
 from datetime import datetime
 
@@ -162,6 +163,16 @@ def _parse_sales_inputs(paths):
     received_parts_path = str(paths.get("receivedparts", "") or "").strip()
 
     if detailed_sales_path and received_parts_path:
+        if os.path.isfile(detailed_sales_path) and os.path.isfile(received_parts_path):
+            aggregates = parsers.parse_detailed_pair_aggregates(detailed_sales_path, received_parts_path)
+            return {
+                "sales_source_mode": "detailed_pair",
+                "detailed_sales_rows": aggregates.get("detailed_sales_rows", []),
+                "sales_items": aggregates.get("sales_items", []),
+                "sales_window": aggregates.get("sales_window", (None, None)),
+                "receipt_history_lookup": aggregates.get("receipt_history_lookup", {}),
+                "detailed_sales_stats_lookup": aggregates.get("detailed_sales_stats_lookup", {}),
+            }
         detailed_sales_rows = parsers.parse_detailed_part_sales_csv(detailed_sales_path)
         received_rows = parsers.parse_received_parts_detail_csv(received_parts_path)
         return {

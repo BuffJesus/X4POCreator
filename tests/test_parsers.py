@@ -139,6 +139,49 @@ class ParserSmokeTests(unittest.TestCase):
             self.assertEqual(sales_start.date().isoformat(), "2026-03-01")
             self.assertEqual(sales_end.date().isoformat(), "2026-03-05")
 
+    def test_parse_detailed_pair_aggregates_matches_summary_stats_and_window(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            detailed = Path(tmp) / "detailed.csv"
+            received = Path(tmp) / "received.csv"
+            with open(detailed, "w", newline="", encoding="utf-8-sig") as f:
+                writer = csv.writer(f)
+                writer.writerow(["line code", "item code", "description", "qty sold", "sale date"])
+                writer.writerow(["AER-", "GH781-4", "HOSE", "2", "01-Mar-2026"])
+                writer.writerow(["AER-", "GH781-4", "HOSE", "3", "05-Mar-2026"])
+                writer.writerow(["AER-", "GH781-4", "HOSE", "3", "05-Mar-2026"])
+            with open(received, "w", newline="", encoding="utf-8-sig") as f:
+                writer = csv.writer(f)
+                writer.writerow(["line code", "item code", "description", "qty received", "vendor", "receipt date"])
+                writer.writerow(["AER-", "GH781-4", "HOSE", "4", "motion", "02-Mar-2026"])
+                writer.writerow(["AER-", "GH781-4", "HOSE", "1", "motion", "06-Mar-2026"])
+
+            aggregates = parsers.parse_detailed_pair_aggregates(str(detailed), str(received))
+
+            self.assertEqual(aggregates["sales_items"], [{
+                "line_code": "AER-",
+                "item_code": "GH781-4",
+                "description": "HOSE",
+                "qty_received": 5,
+                "qty_sold": 5,
+            }])
+            self.assertEqual(aggregates["sales_window"][0].date().isoformat(), "2026-03-01")
+            self.assertEqual(aggregates["sales_window"][1].date().isoformat(), "2026-03-05")
+            stats = aggregates["detailed_sales_stats_lookup"][("AER-", "GH781-4")]
+            self.assertEqual(stats["transaction_count"], 2)
+            self.assertEqual(stats["qty_sold_total"], 5)
+            self.assertEqual(stats["sale_day_count"], 2)
+            receipt = aggregates["receipt_history_lookup"][("AER-", "GH781-4")]
+            self.assertEqual(receipt["primary_vendor"], "MOTION")
+            self.assertEqual(receipt["receipt_count"], 2)
+            self.assertEqual(receipt["qty_received_total"], 5)
+            self.assertEqual(aggregates["detailed_sales_rows"], [{
+                "line_code": "AER-",
+                "item_code": "GH781-4",
+                "description": "HOSE",
+                "qty_sold": 5,
+                "row_count": 2,
+            }])
+
     def test_parse_received_parts_detail_x4_layout(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "ReceivedPartsDetail.csv"
