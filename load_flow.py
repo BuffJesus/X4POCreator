@@ -224,12 +224,14 @@ def _summarize_conflicting_detailed_sales_rows(detailed_sales_rows, *, inventory
     }
 
 
-def _parse_sales_inputs(paths):
+def _parse_sales_inputs(paths, *, progress_callback=None):
     sales_path = str(paths.get("sales", "") or "").strip()
     detailed_sales_path = str(paths.get("detailedsales", "") or "").strip()
     received_parts_path = str(paths.get("receivedparts", "") or "").strip()
 
     if detailed_sales_path and received_parts_path:
+        if callable(progress_callback):
+            progress_callback("Parsing Detailed Part Sales and Received Parts Detail...")
         if os.path.isfile(detailed_sales_path) and os.path.isfile(received_parts_path):
             aggregates = parsers.parse_detailed_pair_aggregates(detailed_sales_path, received_parts_path)
             return {
@@ -240,7 +242,11 @@ def _parse_sales_inputs(paths):
                 "receipt_history_lookup": aggregates.get("receipt_history_lookup", {}),
                 "detailed_sales_stats_lookup": aggregates.get("detailed_sales_stats_lookup", {}),
             }
+        if callable(progress_callback):
+            progress_callback("Parsing detailed sales rows...")
         detailed_sales_rows = parsers.parse_detailed_part_sales_csv(detailed_sales_path)
+        if callable(progress_callback):
+            progress_callback("Parsing received parts rows...")
         received_rows = parsers.parse_received_parts_detail_csv(received_parts_path)
         return {
             "sales_source_mode": "detailed_pair",
@@ -252,6 +258,8 @@ def _parse_sales_inputs(paths):
         }
 
     if sales_path:
+        if callable(progress_callback):
+            progress_callback("Parsing legacy Part Sales & Receipts...")
         return {
             "sales_source_mode": "legacy_combined",
             "detailed_sales_rows": [],
@@ -319,7 +327,7 @@ def _normalize_inventory_min_max(inventory_lookup):
     return normalized, issues
 
 
-def parse_all_files(paths, *, old_po_warning_days, short_sales_window_days, now=None):
+def parse_all_files(paths, *, old_po_warning_days, short_sales_window_days, now=None, progress_callback=None):
     """Parse the selected input files into a single workflow result."""
     cache_signature = _build_parse_cache_signature(
         paths,
@@ -328,13 +336,17 @@ def parse_all_files(paths, *, old_po_warning_days, short_sales_window_days, now=
     )
     cached = _load_parse_cache(cache_signature)
     if cached is not None:
+        if callable(progress_callback):
+            progress_callback("Using cached parse result...")
         return cached
 
     warnings = []
     startup_warning_rows = []
     result = {"warnings": warnings, "startup_warning_rows": startup_warning_rows}
 
-    sales_inputs = _parse_sales_inputs(paths)
+    if callable(progress_callback):
+        progress_callback("Starting file load...")
+    sales_inputs = _parse_sales_inputs(paths, progress_callback=progress_callback)
     result["sales_source_mode"] = sales_inputs.get("sales_source_mode", "none")
     result["detailed_sales_resolution"] = {"row_count": 0, "item_count": 0, "items": []}
     result["detailed_sales_corrections"] = {"row_count": 0, "item_count": 0, "item_codes": []}
@@ -395,6 +407,8 @@ def parse_all_files(paths, *, old_po_warning_days, short_sales_window_days, now=
     all_line_codes = sorted(set(item["line_code"] for item in result["sales_items"]))
 
     if paths.get("po"):
+        if callable(progress_callback):
+            progress_callback("Parsing open PO listing...")
         try:
             po_items = parsers.parse_po_listing_csv(paths["po"])
             open_po_lookup = defaultdict(list)
@@ -468,6 +482,8 @@ def parse_all_files(paths, *, old_po_warning_days, short_sales_window_days, now=
             warnings.append(("PO Parse Warning", f"Could not parse PO listing:\n{exc}\nContinuing without it."))
 
     if paths.get("susp"):
+        if callable(progress_callback):
+            progress_callback("Parsing suspended items...")
         try:
             susp_items, susp_set = parsers.parse_suspended_csv(paths["susp"])
             susp_lookup = defaultdict(list)
@@ -488,6 +504,8 @@ def parse_all_files(paths, *, old_po_warning_days, short_sales_window_days, now=
 
     inventory_lookup = {}
     if paths.get("onhand"):
+        if callable(progress_callback):
+            progress_callback("Parsing on hand report...")
         try:
             oh_data = parsers.parse_on_hand_report(paths["onhand"])
             for key, info in oh_data.items():
@@ -506,6 +524,8 @@ def parse_all_files(paths, *, old_po_warning_days, short_sales_window_days, now=
             warnings.append(("On Hand Parse Warning", f"Could not parse On Hand Report:\n{exc}\nContinuing without it."))
 
     if paths.get("minmax"):
+        if callable(progress_callback):
+            progress_callback("Parsing min/max report...")
         try:
             mm_data = parsers.parse_on_hand_min_max(paths["minmax"])
             for key, info in mm_data.items():
@@ -522,6 +542,8 @@ def parse_all_files(paths, *, old_po_warning_days, short_sales_window_days, now=
 
     inventory_lookup, min_max_issues = _normalize_inventory_min_max(inventory_lookup)
     result["inventory_lookup"] = inventory_lookup
+    if callable(progress_callback):
+        progress_callback("Reconciling detailed sales and inventory...")
     if min_max_issues:
         sample = "\n".join(
             f"  {line_code}/{item_code}: {issue['old_min']}/{issue['old_max']} -> {issue['new_min']}/{issue['new_max']}"
@@ -667,6 +689,8 @@ def parse_all_files(paths, *, old_po_warning_days, short_sales_window_days, now=
         result["sales_items"],
         inventory_lookup=inventory_lookup,
     )
+    if callable(progress_callback):
+        progress_callback("Building warnings and summaries...")
     all_line_codes = sorted(set(
         [line_code for line_code in all_line_codes if line_code] +
         [item.get("line_code", "") for item in result["sales_items"] if item.get("line_code", "")]
@@ -742,12 +766,16 @@ def parse_all_files(paths, *, old_po_warning_days, short_sales_window_days, now=
                 })
 
     if paths.get("packsize"):
+        if callable(progress_callback):
+            progress_callback("Parsing pack-size report...")
         try:
             result["pack_size_lookup"] = parsers.parse_pack_sizes_csv(paths["packsize"])
         except Exception as exc:
             warnings.append(("Pack Size Parse Warning", f"Could not parse pack sizes:\n{exc}\nContinuing without it."))
 
     result["all_line_codes"] = all_line_codes
+    if callable(progress_callback):
+        progress_callback("Saving parse cache...")
     try:
         _save_parse_cache(cache_signature, result)
     except Exception:

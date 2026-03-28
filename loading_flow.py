@@ -1,5 +1,6 @@
 import math
 import os
+import inspect
 import threading
 import time
 
@@ -142,16 +143,40 @@ def hide_loading(app):
         app._loading_overlay = None
 
 
+def _apply_loading_progress(app, state):
+    text = str(state.get("text", "") or "").strip()
+    if text and hasattr(app, "_set_loading_text"):
+        app._set_loading_text(text)
+
+
+def _call_with_optional_progress(func, args, progress_callback):
+    try:
+        signature = inspect.signature(func)
+    except (TypeError, ValueError):
+        signature = None
+    if signature is not None:
+        parameters = signature.parameters
+        if "progress_callback" in parameters:
+            return func(*args, progress_callback=progress_callback)
+        if any(param.kind == inspect.Parameter.VAR_KEYWORD for param in parameters.values()):
+            return func(*args, progress_callback=progress_callback)
+    return func(*args)
+
+
 def run_with_loading(app, text, func, *args, min_seconds=0):
     app._show_loading(text)
     app.root.update()
     result_holder = {"result": None, "error": None}
+    progress_state = {"text": str(text or "Loading...")}
     start_time = time.monotonic()
     min_seconds = max(0.0, float(min_seconds or 0))
 
+    def report_progress(message):
+        progress_state["text"] = str(message or text or "Loading...")
+
     def _worker():
         try:
-            result_holder["result"] = func(*args)
+            result_holder["result"] = _call_with_optional_progress(func, args, report_progress)
         except Exception as exc:
             result_holder["error"] = exc
 
@@ -160,6 +185,7 @@ def run_with_loading(app, text, func, *args, min_seconds=0):
 
     while thread.is_alive() or (time.monotonic() - start_time) < min_seconds:
         try:
+            _apply_loading_progress(app, progress_state)
             if hasattr(app.root, "update_idletasks"):
                 app.root.update_idletasks()
             app.root.update()
@@ -172,6 +198,7 @@ def run_with_loading(app, text, func, *args, min_seconds=0):
             if remaining > 0:
                 time.sleep(min(0.016, remaining))
 
+    _apply_loading_progress(app, progress_state)
     app._hide_loading()
 
     if result_holder["error"]:

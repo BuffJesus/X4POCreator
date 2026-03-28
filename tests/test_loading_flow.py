@@ -176,6 +176,32 @@ class LoadingFlowTests(unittest.TestCase):
         self.assertNotIn(("after", 16), events)
         self.assertEqual(events[-1], ("hide", None))
 
+    def test_run_with_loading_applies_progress_text_updates(self):
+        events = []
+
+        class Root:
+            def update_idletasks(self):
+                events.append(("idle", None))
+            def update(self):
+                events.append(("update", None))
+
+        def worker(*, progress_callback=None):
+            if progress_callback is not None:
+                progress_callback("Parsing On Hand...")
+            return 9
+
+        fake_app = SimpleNamespace(
+            _show_loading=lambda text: events.append(("show", text)),
+            _hide_loading=lambda: events.append(("hide", None)),
+            _set_loading_text=lambda text: events.append(("text", text)),
+            root=Root(),
+        )
+
+        result = loading_flow.run_with_loading(fake_app, "Loading files...", worker, min_seconds=0)
+
+        self.assertEqual(result, 9)
+        self.assertIn(("text", "Parsing On Hand..."), events)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -652,6 +652,15 @@ class POBuilderApp:
         self._loading_frame_idx = 0
         self._animate_loading()
 
+    def _set_loading_text(self, text):
+        label = getattr(self, "_loading_text_label", None)
+        if label is None:
+            return
+        try:
+            label.configure(text=str(text or "Loading..."))
+        except Exception:
+            pass
+
     def _start_loading_audio(self):
         """Start looping Nyan Cat loading audio if available."""
         loading_flow.start_loading_audio(
@@ -967,13 +976,13 @@ class POBuilderApp:
         except Exception as e:
             messagebox.showerror("Export Error", f"Failed to export startup warnings CSV:\n{e}")
 
-    @staticmethod
-    def _parse_all_files(paths):
+    def _parse_all_files(self, paths, progress_callback=None):
         """Parse all CSV files (runs in background thread)."""
         return load_flow.parse_all_files(
             paths,
             old_po_warning_days=OLD_PO_WARNING_DAYS,
             short_sales_window_days=SHORT_SALES_WINDOW_DAYS,
+            progress_callback=progress_callback,
         )
 
     # ── Tab 2: Exclude Line Codes ────────────────────────────────────────
