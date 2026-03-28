@@ -102,6 +102,15 @@ def _detail_row_signature(row):
     return tuple(str(cell).strip() for cell in row)
 
 
+def _first_nonempty_csv_row(filepath):
+    with open(filepath, "r", encoding="utf-8-sig") as f:
+        reader = csv.reader(f)
+        for row_number, row in enumerate(reader):
+            if any(str(cell).strip() for cell in row):
+                return row_number, row
+    return None, None
+
+
 def _detect_detail_layout(filepath, required_fields, *, optional_fields=(), x4_row_checker=None, sample_limit=64):
     sampled_rows = []
     with open(filepath, "r", encoding="utf-8-sig") as f:
@@ -951,46 +960,42 @@ def parse_sales_date_range(filepath):
 def parse_suspended_csv(filepath):
     items = []
     seen = set()
-    with open(filepath, "r", encoding="utf-8-sig") as f:
-        reader = csv.reader(f)
-        rows = list(reader)
-    if not rows:
+    first_idx, first = _first_nonempty_csv_row(filepath)
+    if first_idx is None or first is None:
         return items, seen
-    first_idx = next((i for i, row in enumerate(rows) if any(str(c).strip() for c in row)), None)
-    if first_idx is None:
-        return items, seen
-    first = rows[first_idx]
     is_suspense_report = any("SUSPENSE REPORT" in str(c).upper() for c in first[:10])
     if is_suspense_report:
         seen_rows = set()
-        for row in rows:
-            lc_col = _find_lc_column(row)
-            if lc_col is None or lc_col + 16 >= len(row):
-                continue
-            lc = row[lc_col].strip()
-            ic = row[lc_col + 1].strip()
-            desc = _clean_item_description(row[lc_col + 2])
-            if not ic:
-                continue
-            customer_code = row[lc_col + 11].strip()
-            customer = row[lc_col + 12].strip()
-            date = row[lc_col + 10].strip()
-            cust_ref = row[lc_col + 14].strip()
-            try:
-                qty_ord = int(float(row[lc_col + 15].replace(",", "")))
-                qty_ship = int(float(row[lc_col + 16].replace(",", "")))
-            except (ValueError, IndexError):
-                qty_ord, qty_ship = 0, 0
-            dedup_key = (lc, ic, customer_code, date, cust_ref, qty_ord, qty_ship)
-            if dedup_key in seen_rows:
-                continue
-            seen_rows.add(dedup_key)
-            items.append({
-                "line_code": lc, "item_code": ic, "description": desc,
-                "qty_ordered": qty_ord, "qty_shipped": qty_ship,
-                "customer_code": customer_code, "customer": customer, "date": date,
-            })
-            seen.add((lc, ic))
+        with open(filepath, "r", encoding="utf-8-sig") as f:
+            reader = csv.reader(f)
+            for row in reader:
+                lc_col = _find_lc_column(row)
+                if lc_col is None or lc_col + 16 >= len(row):
+                    continue
+                lc = row[lc_col].strip()
+                ic = row[lc_col + 1].strip()
+                desc = _clean_item_description(row[lc_col + 2])
+                if not ic:
+                    continue
+                customer_code = row[lc_col + 11].strip()
+                customer = row[lc_col + 12].strip()
+                date = row[lc_col + 10].strip()
+                cust_ref = row[lc_col + 14].strip()
+                try:
+                    qty_ord = int(float(row[lc_col + 15].replace(",", "")))
+                    qty_ship = int(float(row[lc_col + 16].replace(",", "")))
+                except (ValueError, IndexError):
+                    qty_ord, qty_ship = 0, 0
+                dedup_key = (lc, ic, customer_code, date, cust_ref, qty_ord, qty_ship)
+                if dedup_key in seen_rows:
+                    continue
+                seen_rows.add(dedup_key)
+                items.append({
+                    "line_code": lc, "item_code": ic, "description": desc,
+                    "qty_ordered": qty_ord, "qty_shipped": qty_ship,
+                    "customer_code": customer_code, "customer": customer, "date": date,
+                })
+                seen.add((lc, ic))
         return items, seen
     header = [c.strip().lower() for c in first]
     pg_idx = None
@@ -1001,15 +1006,19 @@ def parse_suspended_csv(filepath):
         if h in ("item code", "item_code", "itemcode", "part number", "part"):
             ic_idx = i
     if ic_idx is not None:
-        for row in rows[first_idx + 1:]:
-            if len(row) > max(x for x in [pg_idx or 0, ic_idx] if x is not None):
-                lc = row[pg_idx].strip() if pg_idx is not None else ""
-                ic = row[ic_idx].strip()
-                if ic:
-                    seen.add((lc, ic))
-                    items.append({"line_code": lc, "item_code": ic,
-                                  "description": "", "qty_ordered": 0,
-                                  "qty_shipped": 0, "customer": "", "date": ""})
+        with open(filepath, "r", encoding="utf-8-sig") as f:
+            reader = csv.reader(f)
+            for row_number, row in enumerate(reader):
+                if row_number <= first_idx:
+                    continue
+                if len(row) > max(x for x in [pg_idx or 0, ic_idx] if x is not None):
+                    lc = row[pg_idx].strip() if pg_idx is not None else ""
+                    ic = row[ic_idx].strip()
+                    if ic:
+                        seen.add((lc, ic))
+                        items.append({"line_code": lc, "item_code": ic,
+                                      "description": "", "qty_ordered": 0,
+                                      "qty_shipped": 0, "customer": "", "date": ""})
     return items, seen
 
 
@@ -1072,36 +1081,30 @@ def build_pack_size_fallbacks(pack_size_lookup):
 
 def parse_pack_sizes_csv(filepath):
     lookup = {}
-    with open(filepath, "r", encoding="utf-8-sig") as f:
-        reader = csv.reader(f)
-        rows = list(reader)
-    if not rows:
+    first_idx, first = _first_nonempty_csv_row(filepath)
+    if first_idx is None or first is None:
         return lookup
-    first_idx = next((i for i, row in enumerate(rows) if any(str(c).strip() for c in row)), None)
-    if first_idx is None:
-        return lookup
-    first = rows[first_idx]
     is_x4_om = any("ORDER MULTIPLE" in str(c).upper() for c in first[:7])
     if is_x4_om:
         seen = set()
-        for row in rows:
-            lc_col = _find_lc_column(row)
-            if lc_col is None or lc_col + 3 >= len(row):
-                continue
-            lc = row[lc_col].strip()
-            ic = row[lc_col + 1].strip()
-            if not ic:
-                continue
-            try:
-                ps = int(float(row[lc_col + 3].replace(",", "")))
-            except (ValueError, IndexError):
-                continue
-            key = (lc, ic)
-            if key not in seen and ps > 0:
-                seen.add(key)
-                lookup[key] = ps
-        return lookup
-    if len(rows) < 2:
+        with open(filepath, "r", encoding="utf-8-sig") as f:
+            reader = csv.reader(f)
+            for row in reader:
+                lc_col = _find_lc_column(row)
+                if lc_col is None or lc_col + 3 >= len(row):
+                    continue
+                lc = row[lc_col].strip()
+                ic = row[lc_col + 1].strip()
+                if not ic:
+                    continue
+                try:
+                    ps = int(float(row[lc_col + 3].replace(",", "")))
+                except (ValueError, IndexError):
+                    continue
+                key = (lc, ic)
+                if key not in seen and ps > 0:
+                    seen.add(key)
+                    lookup[key] = ps
         return lookup
     header = [c.strip().lower() for c in first]
     pg_idx = None
@@ -1121,17 +1124,21 @@ def parse_pack_sizes_csv(filepath):
             f"Could not find required columns. Found headers: {first}\n"
             f"Need at least 'item code' and 'pack size' (or similar) columns."
         )
-    for row in rows[first_idx + 1:]:
-        if len(row) <= max(ic_idx, ps_idx):
-            continue
-        lc = row[pg_idx].strip() if pg_idx is not None else ""
-        ic = row[ic_idx].strip()
-        try:
-            ps = int(float(row[ps_idx].replace(",", "")))
-        except (ValueError, IndexError):
-            continue
-        if ic and ps > 0:
-            lookup[(lc, ic)] = ps
+    with open(filepath, "r", encoding="utf-8-sig") as f:
+        reader = csv.reader(f)
+        for row_number, row in enumerate(reader):
+            if row_number <= first_idx:
+                continue
+            if len(row) <= max(ic_idx, ps_idx):
+                continue
+            lc = row[pg_idx].strip() if pg_idx is not None else ""
+            ic = row[ic_idx].strip()
+            try:
+                ps = int(float(row[ps_idx].replace(",", "")))
+            except (ValueError, IndexError):
+                continue
+            if ic and ps > 0:
+                lookup[(lc, ic)] = ps
     return lookup
 
 
