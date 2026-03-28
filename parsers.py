@@ -44,14 +44,14 @@ def _normalize_vendor_code(value):
 
 def _looks_like_x4_line_code_fragment(value):
     fragment = str(value or "").strip().upper()
-    return len(fragment) == 3 and fragment.isalnum()
+    return bool(re.fullmatch(r"[A-Z0-9/]{3}", fragment))
 
 
 def _split_line_code_item_token(value):
     token = str(value or "").strip()
     if not token or "-" not in token:
         return "", token
-    match = re.search(r"([A-Za-z0-9]+)\s*-\s*(.+)", token)
+    match = re.search(r"([A-Za-z0-9/]+)\s*-\s*(.+)", token)
     if not match:
         return "", token
     line_code = match.group(1).strip().upper()
@@ -324,7 +324,7 @@ def scan_directory_for_reports(directory):
 def _find_lc_column(row):
     for i, c in enumerate(row):
         val = c.strip()
-        if val.endswith("-") and 2 <= len(val) <= 5 and val[:-1].isalnum():
+        if val.endswith("-") and 2 <= len(val) <= 5 and re.fullmatch(r"[A-Za-z0-9/]+", val[:-1]):
             return i
     return None
 

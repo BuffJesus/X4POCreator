@@ -2,7 +2,7 @@
 
 Status: reconciled against the current workspace and test-covered behavior
 
-Current app version: `0.1.22`
+Current app version: `0.1.23`
 
 This file consolidates:
 
