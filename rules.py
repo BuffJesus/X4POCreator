@@ -669,6 +669,8 @@ def calculate_inventory_position(item):
 def determine_target_stock(item):
     """Choose and persist the target stock basis for the item."""
     inv = item.get("inventory", {}) or {}
+    previous_target_stock = item.get("target_stock")
+    previous_target_basis = str(item.get("target_basis", "") or "").strip()
     current_min = inv.get("min")
     current_max = inv.get("max")
     suggested_min = item.get("suggested_min")
@@ -697,7 +699,24 @@ def determine_target_stock(item):
         else:
             item["target_basis"] = "none"
 
+    hysteresis_applied = False
+    current_basis = str(item.get("target_basis", "") or "").strip()
+    if (
+        current_basis in ("suggested_max", "suggested_min", "demand_fallback")
+        and previous_target_basis == current_basis
+        and isinstance(previous_target_stock, (int, float))
+        and previous_target_stock > 0
+        and isinstance(target_stock, (int, float))
+        and target_stock > 0
+    ):
+        gap = abs(float(target_stock) - float(previous_target_stock))
+        max_target = max(float(target_stock), float(previous_target_stock))
+        if gap <= 1.0 or (max_target > 0 and (gap / max_target) <= 0.15):
+            target_stock = previous_target_stock
+            hysteresis_applied = True
+
     item["target_stock"] = target_stock if target_stock else 0
+    item["target_stock_hysteresis_applied"] = hysteresis_applied
     return item["target_stock"]
 
 
@@ -957,6 +976,8 @@ def enrich_item(item, inv, pack_qty, rule):
     target_basis = item.get("target_basis", "")
     if target_basis:
         reason_codes.append(f"target_{target_basis}")
+    if item.get("target_stock_hysteresis_applied"):
+        reason_codes.append("target_hysteresis_applied")
     trigger_basis = item.get("reorder_trigger_basis", "")
     trigger_threshold = item.get("reorder_trigger_threshold")
     if isinstance(trigger_threshold, (int, float)) and trigger_threshold > 0:
@@ -1038,6 +1059,8 @@ def enrich_item(item, inv, pack_qty, rule):
             "none": "No target basis available",
         }
         detail_parts.append(basis_labels.get(target_basis, f"Based on {target_basis}"))
+    if item.get("target_stock_hysteresis_applied"):
+        detail_parts.append("Target hysteresis: retained prior target to avoid small recommendation churn")
     if item.get("effective_qty_suspended", 0):
         detail_parts.append(f"Suspended demand included: {item.get('effective_qty_suspended', 0):g}")
     if item.get("qty_on_po", 0):

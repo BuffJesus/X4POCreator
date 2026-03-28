@@ -422,6 +422,34 @@ class RulesTests(unittest.TestCase):
         self.assertEqual(determine_target_stock(item), 20)
         self.assertEqual(item["target_basis"], "current_max")
 
+    def test_determine_target_stock_applies_hysteresis_for_small_suggested_change(self):
+        item = {
+            "inventory": {"qoh": 2, "min": None, "max": None},
+            "qty_on_po": 0,
+            "demand_signal": 3,
+            "suggested_min": 4,
+            "suggested_max": 9,
+            "target_stock": 8,
+            "target_basis": "suggested_max",
+        }
+        self.assertEqual(determine_target_stock(item), 8)
+        self.assertTrue(item["target_stock_hysteresis_applied"])
+        self.assertEqual(item["target_basis"], "suggested_max")
+
+    def test_determine_target_stock_does_not_apply_hysteresis_to_current_max(self):
+        item = {
+            "inventory": {"qoh": 2, "min": 2, "max": 10},
+            "qty_on_po": 0,
+            "demand_signal": 3,
+            "suggested_min": 4,
+            "suggested_max": 9,
+            "target_stock": 9,
+            "target_basis": "suggested_max",
+        }
+        self.assertEqual(determine_target_stock(item), 10)
+        self.assertFalse(item["target_stock_hysteresis_applied"])
+        self.assertEqual(item["target_basis"], "current_max")
+
     def test_calculate_raw_need_returns_zero_when_qoh_and_on_po_cover_target(self):
         item = {
             "inventory": {"qoh": 12, "max": 20},
@@ -649,6 +677,24 @@ class RulesTests(unittest.TestCase):
         enrich_item(item, {"qoh": 1, "min": 2, "max": None}, 6, None)
         self.assertIn("target_suggested_max", item["reason_codes"])
         self.assertIn("Based on suggested max", item["why"])
+
+    def test_enrich_item_surfaces_target_hysteresis_reasoning(self):
+        item = {
+            "qty_sold": 3,
+            "qty_suspended": 0,
+            "qty_on_po": 0,
+            "pack_size": 6,
+            "suggested_min": 4,
+            "suggested_max": 9,
+            "demand_signal": 3,
+            "target_stock": 8,
+            "target_basis": "suggested_max",
+        }
+        enrich_item(item, {"qoh": 1, "min": 2, "max": None}, 6, None)
+        self.assertEqual(item["target_stock"], 8)
+        self.assertTrue(item["target_stock_hysteresis_applied"])
+        self.assertIn("target_hysteresis_applied", item["reason_codes"])
+        self.assertIn("Target hysteresis: retained prior target", item["why"])
 
     def test_enrich_item_copies_trigger_fields_from_rule(self):
         item = {
