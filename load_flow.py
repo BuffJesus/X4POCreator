@@ -75,7 +75,22 @@ def _save_parse_cache(signature, result):
     os.replace(temp_path, PARSE_CACHE_FILE)
 
 
-def _sales_line_code_candidates(item_code, *, inventory_lookup, receipt_history_lookup):
+def _build_line_code_candidates_by_item(*, inventory_lookup, receipt_history_lookup):
+    candidates = defaultdict(set)
+    for source in (inventory_lookup or {}, receipt_history_lookup or {}):
+        for (line_code, item_code) in source:
+            if line_code and item_code:
+                candidates[item_code].add(line_code)
+    return {
+        item_code: tuple(sorted(line_codes))
+        for item_code, line_codes in candidates.items()
+        if line_codes
+    }
+
+
+def _sales_line_code_candidates(item_code, *, inventory_lookup, receipt_history_lookup, candidates_by_item=None):
+    if candidates_by_item is not None:
+        return list(candidates_by_item.get(item_code, ()))
     return sorted({
         line_code
         for (line_code, current_item_code) in (inventory_lookup or {})
@@ -87,18 +102,26 @@ def _sales_line_code_candidates(item_code, *, inventory_lookup, receipt_history_
     })
 
 
-def _resolve_sales_line_code(item_code, *, inventory_lookup, receipt_history_lookup):
+def _resolve_sales_line_code(item_code, *, inventory_lookup, receipt_history_lookup, candidates_by_item=None):
     candidates = _sales_line_code_candidates(
         item_code,
         inventory_lookup=inventory_lookup,
         receipt_history_lookup=receipt_history_lookup,
+        candidates_by_item=candidates_by_item,
     )
     if len(candidates) == 1:
         return candidates[0]
     return ""
 
 
-def _normalize_detailed_sales_keys(sales_items, detailed_sales_stats_lookup, *, inventory_lookup, receipt_history_lookup):
+def _normalize_detailed_sales_keys(
+    sales_items,
+    detailed_sales_stats_lookup,
+    *,
+    inventory_lookup,
+    receipt_history_lookup,
+    candidates_by_item=None,
+):
     normalized_items = {}
     corrected_rows = 0
     corrected_items = set()
@@ -110,6 +133,7 @@ def _normalize_detailed_sales_keys(sales_items, detailed_sales_stats_lookup, *, 
                 item_code,
                 inventory_lookup=inventory_lookup,
                 receipt_history_lookup=receipt_history_lookup,
+                candidates_by_item=candidates_by_item,
             )
             if not line_code:
                 line_code = resolved_line_code
@@ -136,6 +160,7 @@ def _normalize_detailed_sales_keys(sales_items, detailed_sales_stats_lookup, *, 
             item_code,
             inventory_lookup=inventory_lookup,
             receipt_history_lookup=receipt_history_lookup,
+            candidates_by_item=candidates_by_item,
         )
         target_line_code = line_code or resolved_line_code
         if line_code and resolved_line_code and line_code != resolved_line_code:
@@ -148,7 +173,13 @@ def _normalize_detailed_sales_keys(sales_items, detailed_sales_stats_lookup, *, 
     }
 
 
-def _summarize_unresolved_detailed_sales_rows(detailed_sales_rows, *, inventory_lookup, receipt_history_lookup):
+def _summarize_unresolved_detailed_sales_rows(
+    detailed_sales_rows,
+    *,
+    inventory_lookup,
+    receipt_history_lookup,
+    candidates_by_item=None,
+):
     unresolved_by_item = {}
     unresolved_row_count = 0
     for row in detailed_sales_rows or []:
@@ -160,6 +191,7 @@ def _summarize_unresolved_detailed_sales_rows(detailed_sales_rows, *, inventory_
             item_code,
             inventory_lookup=inventory_lookup,
             receipt_history_lookup=receipt_history_lookup,
+            candidates_by_item=candidates_by_item,
         )
         if resolved_line_code:
             continue
@@ -183,7 +215,13 @@ def _summarize_unresolved_detailed_sales_rows(detailed_sales_rows, *, inventory_
     }
 
 
-def _summarize_conflicting_detailed_sales_rows(detailed_sales_rows, *, inventory_lookup, receipt_history_lookup):
+def _summarize_conflicting_detailed_sales_rows(
+    detailed_sales_rows,
+    *,
+    inventory_lookup,
+    receipt_history_lookup,
+    candidates_by_item=None,
+):
     conflicting_by_item = {}
     conflicting_row_count = 0
     inventory_lookup = inventory_lookup or {}
@@ -197,6 +235,7 @@ def _summarize_conflicting_detailed_sales_rows(detailed_sales_rows, *, inventory
             item_code,
             inventory_lookup=inventory_lookup,
             receipt_history_lookup=receipt_history_lookup,
+            candidates_by_item=candidates_by_item,
         )
         if not known_candidates or parsed_line_code in known_candidates:
             continue
@@ -542,6 +581,10 @@ def parse_all_files(paths, *, old_po_warning_days, short_sales_window_days, now=
 
     inventory_lookup, min_max_issues = _normalize_inventory_min_max(inventory_lookup)
     result["inventory_lookup"] = inventory_lookup
+    line_code_candidates_by_item = _build_line_code_candidates_by_item(
+        inventory_lookup=inventory_lookup,
+        receipt_history_lookup=result["receipt_history_lookup"],
+    )
     if callable(progress_callback):
         progress_callback("Reconciling detailed sales and inventory...")
     if min_max_issues:
@@ -580,6 +623,7 @@ def parse_all_files(paths, *, old_po_warning_days, short_sales_window_days, now=
         result["detailed_sales_stats_lookup"],
         inventory_lookup=inventory_lookup,
         receipt_history_lookup=result["receipt_history_lookup"],
+        candidates_by_item=line_code_candidates_by_item,
     )
     if result["sales_source_mode"] == "detailed_pair":
         corrections = result["detailed_sales_corrections"]
@@ -598,11 +642,13 @@ def parse_all_files(paths, *, old_po_warning_days, short_sales_window_days, now=
             sales_inputs.get("detailed_sales_rows", []),
             inventory_lookup=inventory_lookup,
             receipt_history_lookup=result["receipt_history_lookup"],
+            candidates_by_item=line_code_candidates_by_item,
         )
         result["detailed_sales_conflicts"] = _summarize_conflicting_detailed_sales_rows(
             sales_inputs.get("detailed_sales_rows", []),
             inventory_lookup=inventory_lookup,
             receipt_history_lookup=result["receipt_history_lookup"],
+            candidates_by_item=line_code_candidates_by_item,
         )
         unresolved = result["detailed_sales_resolution"]
         result["unresolved_detailed_item_codes"] = {
