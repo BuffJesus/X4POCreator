@@ -155,6 +155,20 @@ class RulesTests(unittest.TestCase):
         }
         self.assertEqual(infer_minimum_packs_on_hand(item, {"max": 20}, 100), 2)
 
+    def test_infer_minimum_packs_on_hand_can_raise_to_three_with_strong_long_window_evidence(self):
+        item = {
+            "description": "5/16 HEX NUT",
+            "sales_health_signal": "active",
+            "performance_profile": "top_performer",
+            "days_since_last_sale": 7,
+            "sales_span_days": 365,
+            "avg_weekly_sales_loaded": 90.0,
+            "annualized_sales_loaded": 4680.0,
+            "detailed_sales_shape": "steady_repeat",
+            "demand_signal": 90,
+        }
+        self.assertEqual(infer_minimum_packs_on_hand(item, {"max": 20}, 100), 3)
+
     def test_infer_minimum_packs_on_hand_skips_stale_hardware(self):
         item = {
             "description": "5/16 HEX NUT",
@@ -175,6 +189,21 @@ class RulesTests(unittest.TestCase):
             "demand_signal": 8,
         }
         self.assertEqual(infer_minimum_cover_cycles(item, {"max": 8}, 10), 2)
+
+    def test_infer_minimum_cover_cycles_can_raise_to_three_with_strong_long_window_evidence(self):
+        item = {
+            "description": "5/16 HEX NUT",
+            "sales_health_signal": "active",
+            "performance_profile": "top_performer",
+            "days_since_last_sale": 7,
+            "reorder_cycle_weeks": 1,
+            "sales_span_days": 365,
+            "avg_weekly_sales_loaded": 12.0,
+            "annualized_sales_loaded": 624.0,
+            "detailed_sales_shape": "steady_repeat",
+            "demand_signal": 12,
+        }
+        self.assertEqual(infer_minimum_cover_cycles(item, {"max": 4}, 10), 3)
 
     def test_infer_minimum_cover_cycles_skips_biweekly_or_slow_hardware(self):
         weekly_slow_item = {
@@ -875,6 +904,61 @@ class RulesTests(unittest.TestCase):
         self.assertEqual(item["reorder_trigger_threshold"], 200)
         self.assertEqual(item["suggested_qty"], 100)
         self.assertIn("Minimum packs on hand: 2 (inferred)", item["why"])
+
+    def test_active_hardware_pack_mismatch_can_infer_three_pack_floor_with_strong_history(self):
+        item = {
+            "description": "5/16 HEX NUT",
+            "qty_sold": 360,
+            "qty_suspended": 0,
+            "qty_on_po": 0,
+            "pack_size": 100,
+            "suggested_max": 20,
+            "demand_signal": 90,
+            "sales_health_signal": "active",
+            "performance_profile": "top_performer",
+            "days_since_last_sale": 7,
+            "sales_span_days": 365,
+            "avg_weekly_sales_loaded": 90.0,
+            "annualized_sales_loaded": 4680.0,
+            "detailed_sales_shape": "steady_repeat",
+        }
+
+        enrich_item(item, {"qoh": 250, "max": 20, "min": 5, "last_sale": "05-Mar-2026", "last_receipt": "01-Mar-2026"}, 100, None)
+        self.assertEqual(item["minimum_packs_on_hand"], 3)
+        self.assertEqual(item["minimum_packs_on_hand_source"], "heuristic")
+        self.assertEqual(item["reorder_trigger_threshold"], 300)
+        self.assertIn("Minimum packs on hand: 3 (inferred)", item["why"])
+
+    def test_enrich_item_can_infer_three_cover_cycles_for_strong_weekly_hardware(self):
+        item = {
+            "description": "5/16 HEX NUT",
+            "qty_sold": 52,
+            "qty_suspended": 0,
+            "qty_on_po": 0,
+            "pack_size": 10,
+            "suggested_max": 4,
+            "demand_signal": 12,
+            "reorder_cycle_weeks": 1,
+            "avg_weekly_sales_loaded": 12.0,
+            "sales_span_days": 365,
+            "annualized_sales_loaded": 624.0,
+            "sales_health_signal": "active",
+            "performance_profile": "top_performer",
+            "days_since_last_sale": 7,
+            "detailed_sales_shape": "steady_repeat",
+        }
+
+        enrich_item(
+            item,
+            {"qoh": 20, "max": 4, "min": 2, "last_sale": "05-Mar-2026", "last_receipt": "01-Mar-2026"},
+            10,
+            None,
+        )
+        self.assertEqual(item["minimum_cover_cycles"], 3)
+        self.assertEqual(item["minimum_cover_cycles_source"], "heuristic")
+        self.assertEqual(item["reorder_trigger_basis"], "minimum_cover_cycles")
+        self.assertEqual(item["reorder_trigger_threshold"], 36)
+        self.assertIn("Minimum cover cycles: 3 (inferred)", item["why"])
 
     def test_stale_hardware_pack_mismatch_does_not_infer_two_pack_floor(self):
         item = {

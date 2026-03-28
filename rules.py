@@ -257,7 +257,7 @@ def has_pack_trigger_fields(rule):
 
 
 def infer_minimum_packs_on_hand(item, inv, pack_qty):
-    """Infer a conservative two-pack floor for active hardware with extreme pack/max mismatch."""
+    """Infer a conservative hardware pack floor for active hardware with extreme pack/max mismatch."""
     mx = inv.get("max") if inv else None
     if not (mx and mx > 0 and pack_qty and pack_qty >= LARGE_PACK_REVIEW_MIN_PACK_QTY):
         return None
@@ -278,11 +278,30 @@ def infer_minimum_packs_on_hand(item, inv, pack_qty):
         return None
     if isinstance(days_since_last_sale, (int, float)) and days_since_last_sale > 120:
         return None
+
+    sales_span_days = item.get("sales_span_days")
+    weekly_demand = item.get("avg_weekly_sales_loaded")
+    annualized_demand = item.get("annualized_sales_loaded")
+    detailed_shape = str(item.get("detailed_sales_shape", "") or "").strip().lower()
+    if not isinstance(weekly_demand, (int, float)) or weekly_demand <= 0:
+        weekly_demand = item.get("demand_signal")
+
+    if (
+        isinstance(sales_span_days, (int, float))
+        and sales_span_days >= 180
+        and isinstance(weekly_demand, (int, float))
+        and weekly_demand >= max(float(pack_qty) * 0.75, float(mx) * 1.5)
+        and isinstance(annualized_demand, (int, float))
+        and annualized_demand >= max(float(pack_qty) * 18.0, float(mx) * 24.0)
+        and performance in ("steady", "top_performer")
+        and detailed_shape in ("", "steady_repeat", "routine_mixed")
+    ):
+        return 3
     return 2
 
 
 def infer_minimum_cover_cycles(item, inv, pack_qty):
-    """Infer a conservative two-cycle cover floor for active weekly-order hardware items."""
+    """Infer a conservative hardware cover floor for active weekly-order hardware items."""
     reorder_cycle_weeks = item.get("reorder_cycle_weeks")
     mx = inv.get("max") if inv else None
     if not (
@@ -321,6 +340,20 @@ def infer_minimum_cover_cycles(item, inv, pack_qty):
         return None
     if weekly_demand < max(1.0, pack_qty * 0.5):
         return None
+
+    sales_span_days = item.get("sales_span_days")
+    annualized_demand = item.get("annualized_sales_loaded")
+    detailed_shape = str(item.get("detailed_sales_shape", "") or "").strip().lower()
+    if (
+        isinstance(sales_span_days, (int, float))
+        and sales_span_days >= 180
+        and weekly_demand >= max(float(pack_qty) * 0.85, float(mx) * 1.75)
+        and isinstance(annualized_demand, (int, float))
+        and annualized_demand >= max(float(pack_qty) * 26.0, float(mx) * 40.0)
+        and performance in ("steady", "top_performer")
+        and detailed_shape in ("", "steady_repeat", "routine_mixed")
+    ):
+        return 3
     return 2
 
 

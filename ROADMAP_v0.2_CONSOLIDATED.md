@@ -149,7 +149,7 @@ The goal is to keep one phased checklist that reflects what is actually done in 
 - [ ] Add min/max sanity normalization and review flags for invalid or suspicious source pairs such as `max < min`, negative values, or extreme jumps.
 - [ ] Add churn-damping / hysteresis so small source-data changes do not unnecessarily flip reorder decisions or target-stock outcomes between runs.
 - [ ] Clarify and deepen the split between hard reorder floors and preferred operational targets so protected reorder timing can stay stable without permanently inflating routine targets.
-- [ ] Replace the static hardware two-pack bias with a more dynamic hardware buffer based on available evidence such as sales window length, annualized demand, receipt cadence, and pack size.
+- [x] Replace the static hardware two-pack bias with a more dynamic hardware buffer based on available evidence such as sales window length, annualized demand, receipt cadence, and pack size.
 - [ ] Make hardware buffer heuristics get more permissive only when the loaded history window is long enough and the demand shape is stable enough to justify it.
 - [ ] Clean up pack semantics so "unknown pack", "no pack data", and explicit operator intent to order exact quantities are represented distinctly instead of overloading zero-like values.
 
