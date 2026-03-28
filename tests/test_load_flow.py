@@ -102,6 +102,9 @@ class LoadFlowTests(unittest.TestCase):
         self.assertEqual(session.inventory_source_lookup, result["inventory_lookup"])
         self.assertEqual(session.receipt_history_lookup, result["receipt_history_lookup"])
         self.assertEqual(session.detailed_sales_stats_lookup, result["detailed_sales_stats_lookup"])
+        self.assertEqual(session.inventory_coverage_missing_keys, set())
+        self.assertEqual(session.detailed_sales_conflict_keys, set())
+        self.assertEqual(session.unresolved_detailed_item_codes, set())
         self.assertEqual(session.pack_size_by_item, {"GH781-4": 6})
         self.assertEqual(session.pack_size_conflicts, {"DUP-1"})
 
@@ -374,6 +377,7 @@ class LoadFlowTests(unittest.TestCase):
         ]
         self.assertEqual(len(startup_rows), 1)
         self.assertEqual(startup_rows[0]["qty"], "2")
+        self.assertEqual(result["unresolved_detailed_item_codes"], {"GH781-4"})
 
     def test_parse_all_files_warns_when_parsed_detailed_sales_line_code_conflicts_with_known_data(self):
         with patch("load_flow.parsers.parse_detailed_part_sales_csv", return_value=[
@@ -438,6 +442,7 @@ class LoadFlowTests(unittest.TestCase):
         self.assertEqual(len(startup_rows), 1)
         self.assertEqual(startup_rows[0]["qty"], "1")
         self.assertEqual(result["detailed_sales_corrections"]["row_count"], 0)
+        self.assertEqual(result["detailed_sales_conflict_keys"], {("WRONG-", "GH781-4")})
 
     def test_parse_all_files_auto_corrects_conflicting_detailed_sales_line_code_when_known_candidate_is_unique(self):
         with patch("load_flow.parsers.parse_detailed_part_sales_csv", return_value=[

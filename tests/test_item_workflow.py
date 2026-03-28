@@ -56,6 +56,25 @@ class ItemWorkflowTests(unittest.TestCase):
         self.assertEqual(rule["pack_size"], 12)
         self.assertNotIn("order_policy", rule)
 
+    def test_apply_pack_size_edit_zero_creates_exact_qty_override(self):
+        item = {"line_code": "AER-", "item_code": "GH781-4", "pack_size": 5}
+        order_rules = {"AER-:GH781-4": {"order_policy": "standard"}}
+
+        rule_key, rule = item_workflow.apply_pack_size_edit(
+            item,
+            "0",
+            order_rules,
+            lambda line_code, item_code: f"{line_code}:{item_code}",
+        )
+
+        self.assertEqual(rule_key, "AER-:GH781-4")
+        self.assertIsNone(item["pack_size"])
+        self.assertEqual(item["pack_size_source"], "rule_exact_qty")
+        self.assertTrue(item["exact_qty_override"])
+        self.assertEqual(rule["pack_size"], 0)
+        self.assertTrue(rule["exact_qty_override"])
+        self.assertNotIn("order_policy", rule)
+
     def test_recalculate_item_from_session_uses_session_state(self):
         session = AppSessionState(
             inventory_lookup={("AER-", "GH781-4"): {"qoh": 0, "max": 10, "last_sale": "05-Mar-2026", "last_receipt": "01-Mar-2026"}},

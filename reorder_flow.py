@@ -328,6 +328,7 @@ def pack_size_source_label(source_code):
     return {
         "": "",
         "rule": "Saved Rule",
+        "rule_exact_qty": "Saved Exact Qty Override",
         "x4_exact": "X4 Exact",
         "x4_item": "X4 Item Fallback",
         "x4_item_fallback": "X4 Generic Fallback",

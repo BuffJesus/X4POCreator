@@ -15,6 +15,7 @@ from rules import (
     get_rule_float,
     get_rule_int,
     get_rule_pack_size,
+    has_exact_qty_override,
     infer_default_order_policy,
     package_profile_label,
     replenishment_unit_mode_label,
@@ -481,7 +482,11 @@ def open_buy_rule_editor(app, idx, order_rules_file):
     )
 
     var_min = tk.StringVar(value=str(rule.get("min_order_qty", "")))
-    var_pack = tk.StringVar(value=str(get_rule_pack_size(rule) or item.get("pack_size", "") or ""))
+    if has_exact_qty_override(rule):
+        initial_pack_value = "0"
+    else:
+        initial_pack_value = str(get_rule_pack_size(rule) or item.get("pack_size", "") or "")
+    var_pack = tk.StringVar(value=initial_pack_value)
     var_trigger_qty = tk.StringVar(value=str(get_rule_int(rule, "reorder_trigger_qty") or ""))
     var_trigger_pct = tk.StringVar(value=str(get_rule_float(rule, "reorder_trigger_pct") or ""))
     var_min_packs = tk.StringVar(value=str(get_rule_int(rule, "minimum_packs_on_hand") or ""))
@@ -657,13 +662,26 @@ def open_buy_rule_editor(app, idx, order_rules_file):
         pack_val = var_pack.get().strip()
         if pack_val:
             try:
-                item["pack_size"] = int(float(pack_val))
-                new_rule["pack_size"] = item["pack_size"]
+                parsed_pack = int(float(pack_val))
+                if parsed_pack <= 0:
+                    item["pack_size"] = None
+                    item["pack_size_source"] = "rule_exact_qty"
+                    item["exact_qty_override"] = True
+                    new_rule["pack_size"] = 0
+                    new_rule["exact_qty_override"] = True
+                else:
+                    item["pack_size"] = parsed_pack
+                    item["pack_size_source"] = "rule"
+                    item["exact_qty_override"] = False
+                    new_rule["pack_size"] = item["pack_size"]
             except ValueError:
                 pass
         elif pack_val == "":
             item["pack_size"] = None
+            item["pack_size_source"] = ""
+            item["exact_qty_override"] = False
             new_rule.pop("pack_size", None)
+            new_rule.pop("exact_qty_override", None)
 
         trigger_qty_val = var_trigger_qty.get().strip()
         if trigger_qty_val:

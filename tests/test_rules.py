@@ -25,6 +25,7 @@ from rules import (
     get_rule_float,
     get_rule_int,
     get_rule_pack_size,
+    has_exact_qty_override,
     has_pack_trigger_fields,
     infer_minimum_cover_cycles,
     infer_minimum_packs_on_hand,
@@ -40,8 +41,18 @@ class RulesTests(unittest.TestCase):
     def test_get_rule_pack_size_parses_numeric_strings(self):
         self.assertEqual(get_rule_pack_size({"pack_size": "500"}), 500)
         self.assertEqual(get_rule_pack_size({"pack_size": 12.0}), 12)
+        self.assertIsNone(get_rule_pack_size({"pack_size": 0}))
         self.assertIsNone(get_rule_pack_size({"pack_size": ""}))
         self.assertIsNone(get_rule_pack_size({"pack_size": "abc"}))
+
+    def test_has_exact_qty_override_detects_explicit_or_legacy_zero_pack(self):
+        self.assertTrue(has_exact_qty_override({"exact_qty_override": True}))
+        self.assertTrue(has_exact_qty_override({"pack_size": 0}))
+        self.assertFalse(has_exact_qty_override({"pack_size": 12}))
+        self.assertFalse(has_exact_qty_override({}))
+
+    def test_has_exact_qty_override_ignores_blank_pack_values(self):
+        self.assertFalse(has_exact_qty_override({"pack_size": ""}))
 
     def test_get_rule_int_and_float_parse_trigger_fields(self):
         rule = {
@@ -311,6 +322,17 @@ class RulesTests(unittest.TestCase):
         rule = {"minimum_packs_on_hand": 2}
         policy = determine_order_policy(item, {"max": 20}, 100, rule)
         self.assertEqual(policy, "pack_trigger")
+
+    def test_exact_qty_override_rule_beats_pack_trigger_inference(self):
+        item = {
+            "description": "1/4 X 1 ELEVATOR BOLT",
+            "sales_health_signal": "active",
+            "performance_profile": "steady",
+            "days_since_last_sale": 14,
+        }
+        rule = {"exact_qty_override": True, "pack_size": 0}
+        policy = determine_order_policy(item, {"max": 20}, 100, rule)
+        self.assertEqual(policy, "exact_qty")
 
     def test_active_hardware_pack_mismatch_infers_pack_trigger_without_rule_fields(self):
         item = {
@@ -607,6 +629,20 @@ class RulesTests(unittest.TestCase):
         })
         self.assertEqual(status, "warning")
         self.assertIn("missing_pack", flags)
+        self.assertIn("zero_final", flags)
+
+    def test_evaluate_item_status_skips_missing_pack_for_exact_qty_override(self):
+        status, flags = evaluate_item_status({
+            "pack_size": None,
+            "exact_qty_override": True,
+            "order_policy": "exact_qty",
+            "final_qty": 0,
+            "raw_need": 5,
+            "review_required": False,
+            "review_resolved": False,
+        })
+        self.assertEqual(status, "warning")
+        self.assertNotIn("missing_pack", flags)
         self.assertIn("zero_final", flags)
 
     def test_buy_rule_summary_uses_soft_pack_and_below_pack_flag(self):

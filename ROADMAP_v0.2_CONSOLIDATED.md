@@ -151,7 +151,7 @@ The goal is to keep one phased checklist that reflects what is actually done in 
 - [ ] Clarify and deepen the split between hard reorder floors and preferred operational targets so protected reorder timing can stay stable without permanently inflating routine targets.
 - [x] Replace the static hardware two-pack bias with a more dynamic hardware buffer based on available evidence such as sales window length, annualized demand, receipt cadence, and pack size.
 - [ ] Make hardware buffer heuristics get more permissive only when the loaded history window is long enough and the demand shape is stable enough to justify it.
-- [ ] Clean up pack semantics so "unknown pack", "no pack data", and explicit operator intent to order exact quantities are represented distinctly instead of overloading zero-like values.
+- [x] Clean up pack semantics so "unknown pack", "no pack data", and explicit operator intent to order exact quantities are represented distinctly instead of overloading zero-like values.
 
 ## Phase 5. Vendor Shipping Policy Model
 
@@ -289,7 +289,7 @@ This is the next high-value shipping slice. The current model already uses `repl
 - [ ] Add a protected removal path for items that still meet reorder-worthiness signals from inventory floors, trigger rules, suspense demand, or other protected evidence, routing them to review before deletion instead of silently dropping them.
 - [ ] Add explicit "why this item survived removal" reasoning for protected candidates so operators can distinguish true false-positives from protected-but-uncertain reorder rows.
 - [ ] Add audit visibility for session removals so a removed row can be traced back as intentional operator action rather than upstream candidate loss.
-- [ ] Promote unresolved source-mapping and high inventory-coverage-gap cases into an explicit review workflow so weak upstream joins do not quietly degrade ordering correctness.
+- [x] Promote unresolved source-mapping and high inventory-coverage-gap cases into an explicit review workflow so weak upstream joins do not quietly degrade ordering correctness.
 
 ## Phase 9. Workflow Simplification and Default-First UX
 
@@ -354,8 +354,8 @@ These are the best next steps after reconciliation.
 - [ ] Keep negative QOH from inflating order quantities beyond the zero-on-hand interpretation while still flagging the underlying source issue for review.
 - [ ] Add removal-protection tests for rows that still qualify through trigger rules, inventory-floor protection, suspense demand, or other protected reorder evidence.
 - [ ] Add tests covering churn-control behavior so tiny source-data changes do not reorder or suppress items needlessly.
-- [ ] Add tests covering explicit pack-state distinctions between unknown pack data, no-pack items, and deliberate exact-quantity overrides.
-- [ ] Add tests covering unresolved source-mapping / inventory-coverage review routing so weak joins fail visible rather than silent.
+- [x] Add tests covering explicit pack-state distinctions between unknown pack data, no-pack items, and deliberate exact-quantity overrides.
+- [x] Add tests covering unresolved source-mapping / inventory-coverage review routing so weak joins fail visible rather than silent.
 - [ ] Add remaining edge-case tests called out in the original `0.2.5` roadmap, especially:
 - [ ] Complete packaged-app self-update replacement flow.
 - [ ] Finish bulk edit-target integrity hardening under rapid interactions.

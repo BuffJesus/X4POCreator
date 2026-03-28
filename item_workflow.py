@@ -1,5 +1,5 @@
 import reorder_flow
-from rules import enrich_item, evaluate_item_status, infer_default_order_policy
+from rules import enrich_item, evaluate_item_status, has_exact_qty_override, infer_default_order_policy
 
 
 def find_filtered_item(filtered_items, key):
@@ -50,17 +50,25 @@ def apply_recent_order_context(item, recent_orders):
 
 def apply_pack_size_edit(item, raw, order_rules, get_rule_key):
     """Update an item's pack size and its persisted per-item rule."""
-    item["pack_size"] = None if raw == "" else int(float(raw))
+    parsed = None if raw == "" else int(float(raw))
+    item["pack_size"] = parsed if isinstance(parsed, int) and parsed > 0 else None
     item["pack_size_source"] = "" if item["pack_size"] is None else "rule"
     rule_key = get_rule_key(item["line_code"], item["item_code"])
     rule = dict(order_rules.get(rule_key) or {})
-    if item["pack_size"] is None:
+    if raw == "":
         rule.pop("pack_size", None)
+        rule.pop("exact_qty_override", None)
+    elif parsed is not None and parsed <= 0:
+        rule["exact_qty_override"] = True
+        rule["pack_size"] = 0
+        item["pack_size_source"] = "rule_exact_qty"
     else:
         rule["pack_size"] = item["pack_size"]
+        rule.pop("exact_qty_override", None)
     if not rule.get("policy_locked") and rule.get("order_policy") in ("exact_qty", "standard"):
         rule.pop("order_policy", None)
     order_rules[rule_key] = rule
+    item["exact_qty_override"] = has_exact_qty_override(rule)
     return rule_key, rule
 
 

@@ -5,7 +5,7 @@ from tkinter import filedialog, messagebox
 
 import storage
 import ui_bulk
-from rules import get_rule_pack_size
+from rules import get_rule_pack_size, has_exact_qty_override
 
 
 def build_data_paths(data_dir):
@@ -136,10 +136,14 @@ def refresh_active_data_state(app, known_vendors, get_rule_key, notify=True):
 
     for item in app.filtered_items:
         key = (item["line_code"], item["item_code"])
-        rule_pack = get_rule_pack_size(app.order_rules.get(get_rule_key(*key)))
+        rule = app.order_rules.get(get_rule_key(*key))
+        rule_pack = get_rule_pack_size(rule)
         if rule_pack is not None:
             item["pack_size"] = rule_pack
             item["pack_size_source"] = "rule"
+        elif has_exact_qty_override(rule):
+            item["pack_size"] = None
+            item["pack_size_source"] = "rule_exact_qty"
         elif not item.get("pack_size"):
             if hasattr(app, "_resolve_pack_size_with_source"):
                 item["pack_size"], item["pack_size_source"] = app._resolve_pack_size_with_source(key)

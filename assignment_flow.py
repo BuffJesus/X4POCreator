@@ -7,7 +7,7 @@ import shipping_flow
 import storage
 import ui_bulk
 from item_workflow import apply_recent_order_context
-from rules import enrich_item, get_rule_float, get_rule_int, get_rule_pack_size
+from rules import enrich_item, get_rule_float, get_rule_int, get_rule_pack_size, has_exact_qty_override
 
 
 def prepare_assignment_session(
@@ -92,6 +92,19 @@ def prepare_assignment_session(
         filtered_items.append(payload)
         reorder_flow.apply_receipt_vendor_context(session, filtered_items[-1], key)
         seen_keys.add(key)
+
+    def _append_review_reason(item, code, detail):
+        item["review_required"] = True
+        if code:
+            reason_codes = list(item.get("reason_codes", []) or [])
+            if code not in reason_codes:
+                reason_codes.append(code)
+            item["reason_codes"] = reason_codes
+        base_why = str(item.get("core_why", item.get("why", "")) or "").strip()
+        if detail and detail not in base_why:
+            merged = f"{base_why} | {detail}" if base_why else detail
+            item["core_why"] = merged
+            item["why"] = merged
 
     filtered_items = []
     seen_keys = set()
@@ -218,6 +231,9 @@ def prepare_assignment_session(
     ui_bulk.replace_filtered_items(session, filtered_items)
 
     session.recent_orders = storage.get_recent_orders(order_history_path, lookback_days)
+    missing_inventory_keys = set(getattr(session, "inventory_coverage_missing_keys", set()) or set())
+    detailed_conflict_keys = set(getattr(session, "detailed_sales_conflict_keys", set()) or set())
+    unresolved_item_codes = set(getattr(session, "unresolved_detailed_item_codes", set()) or set())
 
     for item in session.filtered_items:
         key = (item["line_code"], item["item_code"])
@@ -235,6 +251,9 @@ def prepare_assignment_session(
         if rule_pack is not None:
             item["pack_size"] = rule_pack
             item["pack_size_source"] = "rule"
+        elif has_exact_qty_override(rule):
+            item["pack_size"] = None
+            item["pack_size_source"] = "rule_exact_qty"
         enrich_item(item, inv, item.get("pack_size"), rule)
         preserved_reason = str(item.get("candidate_preserved_reason", "") or "").strip()
         if preserved_reason:
@@ -252,6 +271,25 @@ def prepare_assignment_session(
                 if code not in reason_codes:
                     reason_codes.append(code)
             item["reason_codes"] = reason_codes
+            _append_review_reason(item, "", detail)
+        if key in missing_inventory_keys:
+            _append_review_reason(
+                item,
+                "inventory_coverage_gap",
+                "Review: sales item is missing from inventory/min-max data, so reorder guidance is running on incomplete coverage",
+            )
+        if key in detailed_conflict_keys:
+            _append_review_reason(
+                item,
+                "source_mapping_conflict",
+                "Review: parsed detailed-sales line code conflicts with known inventory or receipt-history mapping",
+            )
+        if not item.get("line_code") and item.get("item_code") in unresolved_item_codes:
+            _append_review_reason(
+                item,
+                "source_mapping_unresolved",
+                "Review: detailed sales rows could not be resolved to a supported line code",
+            )
         reorder_flow.append_suggestion_comparison_reason(item)
         item_workflow.apply_suggestion_gap_review_state(item)
     performance_flow.annotate_items(

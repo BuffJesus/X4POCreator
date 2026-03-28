@@ -197,9 +197,25 @@ def get_rule_pack_size(rule):
     if value in (None, ""):
         return None
     try:
-        return int(float(value))
+        parsed = int(float(value))
     except (TypeError, ValueError):
         return None
+    return parsed if parsed > 0 else None
+
+
+def has_exact_qty_override(rule):
+    """Return True when a rule explicitly forces exact-quantity behavior."""
+    if not rule:
+        return False
+    if rule.get("exact_qty_override"):
+        return True
+    value = rule.get("pack_size")
+    if value in (None, ""):
+        return False
+    try:
+        return int(float(value)) <= 0
+    except (TypeError, ValueError):
+        return False
 
 
 def get_rule_int(rule, field_name):
@@ -773,6 +789,9 @@ def determine_order_policy(item, inv, pack_qty, rule):
     Determine the ordering policy for an item.
     Returns: 'standard', 'pack_trigger', 'soft_pack', 'exact_qty', 'reel_review', 'large_pack_review', or 'manual_only'
     """
+    if has_exact_qty_override(rule):
+        return "exact_qty"
+
     if rule and rule.get("order_policy"):
         return rule["order_policy"]
 
@@ -869,7 +888,7 @@ def evaluate_item_status(item):
     flags = []
     status = "ok"
 
-    if not item.get("pack_size"):
+    if not item.get("pack_size") and not item.get("exact_qty_override"):
         flags.append("missing_pack")
 
     if item.get("order_policy") == "reel_review":
@@ -906,6 +925,7 @@ def enrich_item(item, inv, pack_qty, rule):
     Mutates the item dict in place with calculated fields.
     """
     item["inventory"] = inv or {}
+    item["exact_qty_override"] = has_exact_qty_override(rule)
     item["package_profile"] = classify_package_profile(item, inv or {}, pack_qty)
     apply_rule_fields(item, rule)
     if item.get("minimum_packs_on_hand") is None:

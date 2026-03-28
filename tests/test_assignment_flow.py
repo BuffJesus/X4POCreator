@@ -252,6 +252,86 @@ class AssignmentFlowTests(unittest.TestCase):
         self.assertEqual(item["detailed_suggestion_compare"], "aligned")
         self.assertNotIn("suggestion_gap_detailed_only", item["data_flags"])
 
+    def test_prepare_assignment_session_marks_inventory_coverage_gap_for_review(self):
+        session = AppSessionState(
+            sales_items=[{
+                "line_code": "AER-",
+                "item_code": "GH781-4",
+                "description": "HOSE",
+                "qty_received": 0,
+                "qty_sold": 9,
+            }],
+            inventory_lookup={},
+            inventory_coverage_missing_keys={("AER-", "GH781-4")},
+            order_rules={},
+        )
+
+        with patch("assignment_flow.storage.get_recent_orders", return_value={}), \
+             patch("assignment_flow.storage.load_vendor_codes", return_value=["MOTION"]):
+            result = assignment_flow.prepare_assignment_session(
+                session,
+                excluded_line_codes=set(),
+                excluded_customers=set(),
+                dup_whitelist=set(),
+                ignored_keys=set(),
+                lookback_days=14,
+                order_history_path=str(ROOT / "test_order_history.json"),
+                vendor_codes_path=str(ROOT / "test_vendor_codes.txt"),
+                known_vendors=["MOTION"],
+                get_suspense_carry_qty=lambda key: 0,
+                default_vendor_for_key=lambda key: "MOTION",
+                resolve_pack_size=lambda key: 6,
+                suggest_min_max=lambda key: (None, None),
+                get_cycle_weeks=lambda: 2,
+                get_rule_key=lambda lc, ic: f"{lc}:{ic}",
+            )
+
+        self.assertTrue(result)
+        item = session.filtered_items[0]
+        self.assertTrue(item["review_required"])
+        self.assertIn("inventory_coverage_gap", item["reason_codes"])
+        self.assertIn("missing from inventory/min-max data", item["why"])
+
+    def test_prepare_assignment_session_marks_mapping_conflict_for_review(self):
+        session = AppSessionState(
+            sales_items=[{
+                "line_code": "WRONG-",
+                "item_code": "GH781-4",
+                "description": "HOSE",
+                "qty_received": 0,
+                "qty_sold": 9,
+            }],
+            inventory_lookup={("WRONG-", "GH781-4"): {"qoh": 2, "max": 6}},
+            detailed_sales_conflict_keys={("WRONG-", "GH781-4")},
+            order_rules={},
+        )
+
+        with patch("assignment_flow.storage.get_recent_orders", return_value={}), \
+             patch("assignment_flow.storage.load_vendor_codes", return_value=["MOTION"]):
+            result = assignment_flow.prepare_assignment_session(
+                session,
+                excluded_line_codes=set(),
+                excluded_customers=set(),
+                dup_whitelist=set(),
+                ignored_keys=set(),
+                lookback_days=14,
+                order_history_path=str(ROOT / "test_order_history.json"),
+                vendor_codes_path=str(ROOT / "test_vendor_codes.txt"),
+                known_vendors=["MOTION"],
+                get_suspense_carry_qty=lambda key: 0,
+                default_vendor_for_key=lambda key: "MOTION",
+                resolve_pack_size=lambda key: 6,
+                suggest_min_max=lambda key: (None, None),
+                get_cycle_weeks=lambda: 2,
+                get_rule_key=lambda lc, ic: f"{lc}:{ic}",
+            )
+
+        self.assertTrue(result)
+        item = session.filtered_items[0]
+        self.assertTrue(item["review_required"])
+        self.assertIn("source_mapping_conflict", item["reason_codes"])
+        self.assertIn("conflicts with known inventory or receipt-history mapping", item["why"])
+
     def test_prepare_assignment_session_suppresses_receipt_heavy_detailed_fallback_to_review_gap(self):
         session = AppSessionState(
             sales_items=[{

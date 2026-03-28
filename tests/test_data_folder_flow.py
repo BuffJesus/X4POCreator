@@ -147,6 +147,55 @@ class DataFolderFlowTests(unittest.TestCase):
         mocked_recent.assert_called_once_with(str(ROOT / "test_order_history"), 14)
         mocked_info.assert_called_once()
 
+    def test_refresh_active_data_state_applies_saved_exact_qty_override(self):
+        filtered = [{
+            "line_code": "MOT-",
+            "item_code": "ABC123",
+            "pack_size": 8,
+            "pack_size_source": "receipt_history",
+            "vendor": "SOURCE",
+            "final_qty": 4,
+            "order_qty": 4,
+        }]
+        fake_app = SimpleNamespace(
+            filtered_items=filtered,
+            assigned_items=[],
+            individual_items=[],
+            ignored_item_keys=set(),
+            dup_whitelist=set(),
+            inventory_lookup={("MOT-", "ABC123"): {"qoh": 3}},
+            order_rules={"MOT-:ABC123": {"pack_size": 0, "exact_qty_override": True}},
+            recent_orders={},
+            data_dir=str(ROOT),
+            var_lookback_days=SimpleNamespace(get=lambda: 14),
+            _refresh_vendor_inputs=lambda: None,
+            _resolve_pack_size=lambda key: 12,
+            _recalculate_item=lambda item: item.update({"recalculated": True}),
+            _sync_review_item_to_filtered=lambda item: item,
+            _apply_bulk_filter=lambda: None,
+            _update_bulk_summary=lambda: None,
+            _load_persistent_state=lambda: None,
+            _data_path=lambda key: str(ROOT / f"test_{key}"),
+            _has_active_assignment_session=lambda: True,
+            _prune_ignored_items_from_session=lambda: False,
+            _rebuild_duplicate_ic_lookup=lambda: None,
+            _ignore_key=lambda lc, ic: f"{lc}:{ic}",
+            _annotate_release_decisions=lambda: None,
+        )
+
+        with patch("data_folder_flow.storage.get_recent_orders", return_value={}), \
+             patch("data_folder_flow.messagebox.showinfo"):
+            result = data_folder_flow.refresh_active_data_state(
+                fake_app,
+                po_builder.KNOWN_VENDORS,
+                po_builder.get_rule_key,
+            )
+
+        self.assertIsNone(filtered[0]["pack_size"])
+        self.assertEqual(filtered[0]["pack_size_source"], "rule_exact_qty")
+        self.assertTrue(filtered[0]["recalculated"])
+        self.assertEqual(result, {"session_updated": True, "ignored_changed_session": False})
+
 
 if __name__ == "__main__":
     unittest.main()

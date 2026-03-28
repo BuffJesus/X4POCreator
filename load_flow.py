@@ -252,6 +252,9 @@ def parse_all_files(paths, *, old_po_warning_days, short_sales_window_days, now=
     result["detailed_sales_resolution"] = {"row_count": 0, "item_count": 0, "items": []}
     result["detailed_sales_corrections"] = {"row_count": 0, "item_count": 0, "item_codes": []}
     result["detailed_sales_conflicts"] = {"row_count": 0, "item_count": 0, "items": []}
+    result["inventory_coverage_missing_keys"] = set()
+    result["detailed_sales_conflict_keys"] = set()
+    result["unresolved_detailed_item_codes"] = set()
     result["sales_items"] = sales_inputs["sales_items"]
     result["receipt_history_lookup"] = sales_inputs.get("receipt_history_lookup", {})
     result["detailed_sales_stats_lookup"] = sales_inputs.get("detailed_sales_stats_lookup", {})
@@ -493,6 +496,11 @@ def parse_all_files(paths, *, old_po_warning_days, short_sales_window_days, now=
             receipt_history_lookup=result["receipt_history_lookup"],
         )
         unresolved = result["detailed_sales_resolution"]
+        result["unresolved_detailed_item_codes"] = {
+            str(item.get("item_code", "") or "").strip()
+            for item in unresolved.get("items", [])
+            if str(item.get("item_code", "") or "").strip()
+        }
         if unresolved["row_count"] > 0:
             sample = ", ".join(item["item_code"] for item in unresolved["items"][:8])
             extra = "..." if unresolved["item_count"] > 8 else ""
@@ -520,6 +528,14 @@ def parse_all_files(paths, *, old_po_warning_days, short_sales_window_days, now=
                 ),
             })
         conflicts = result["detailed_sales_conflicts"]
+        result["detailed_sales_conflict_keys"] = {
+            (
+                str(item.get("line_code", "") or "").strip(),
+                str(item.get("item_code", "") or "").strip(),
+            )
+            for item in conflicts.get("items", [])
+            if str(item.get("line_code", "") or "").strip() and str(item.get("item_code", "") or "").strip()
+        }
         if conflicts["row_count"] > 0:
             sample = ", ".join(
                 f"{item['line_code']}/{item['item_code']}"
@@ -603,6 +619,14 @@ def parse_all_files(paths, *, old_po_warning_days, short_sales_window_days, now=
 
         missing = [s for s in result["sales_items"] if (s["line_code"], s["item_code"]) not in inventory_lookup]
         if missing:
+            result["inventory_coverage_missing_keys"] = {
+                (
+                    str(s.get("line_code", "") or "").strip(),
+                    str(s.get("item_code", "") or "").strip(),
+                )
+                for s in missing
+                if str(s.get("line_code", "") or "").strip() and str(s.get("item_code", "") or "").strip()
+            }
             missing_qty = sum(s.get("qty_sold", 0) for s in missing)
             sample = ", ".join(f"{s['line_code']}/{s['item_code']}" for s in missing[:12])
             extra = "..." if len(missing) > 12 else ""
@@ -653,6 +677,9 @@ def apply_load_result(session, result, *, parsers_module=parsers):
     session.inventory_source_lookup = copy.deepcopy(session.inventory_lookup)
     session.receipt_history_lookup = result.get("receipt_history_lookup", {})
     session.detailed_sales_stats_lookup = result.get("detailed_sales_stats_lookup", {})
+    session.inventory_coverage_missing_keys = set(result.get("inventory_coverage_missing_keys", set()) or set())
+    session.detailed_sales_conflict_keys = set(result.get("detailed_sales_conflict_keys", set()) or set())
+    session.unresolved_detailed_item_codes = set(result.get("unresolved_detailed_item_codes", set()) or set())
     session.pack_size_lookup = result.get("pack_size_lookup", {})
     session.pack_size_source_lookup = copy.deepcopy(session.pack_size_lookup)
     session.startup_warning_rows = result.get("startup_warning_rows", [])
