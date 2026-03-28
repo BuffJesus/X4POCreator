@@ -383,6 +383,7 @@ class POBuilderApp:
         self.dup_whitelist = set()      # persistent whitelist
         self.ignored_item_keys = set()  # persistent ignore list keyed by LC:Item
         self.last_removed_bulk_items = []  # [(index, item_dict)] for one-step undo
+        self.last_protected_bulk_items = []
         self.bulk_undo_stack = []
         self.bulk_redo_stack = []
         self.bulk_sheet = None
@@ -1096,6 +1097,7 @@ class POBuilderApp:
 
         self._loaded_vendor_codes = list(self.vendor_codes_used)
         self.last_removed_bulk_items = []
+        self.last_protected_bulk_items = []
         try:
             self._refresh_vendor_inputs()
             self._populate_bulk_tree()
@@ -1269,6 +1271,17 @@ class POBuilderApp:
 
     def _not_needed_reason(self, item):
         return ui_bulk_dialogs.not_needed_reason(self, item, MAX_EXCEED_ABS_BUFFER)
+
+    def _is_bulk_removal_protected(self, item, *, history_label="remove:bulk"):
+        label = str(history_label or "").strip().lower()
+        if not label.startswith("remove:not_needed"):
+            return False, ""
+        if item.get("candidate_preserved_reason"):
+            reason = str(item.get("candidate_preserved_reason", "") or "").strip()
+            return True, f"candidate_preserved:{reason or 'inventory_protection'}"
+        if (item.get("effective_qty_suspended", 0) or item.get("qty_suspended", 0) or 0) > 0:
+            return True, "active_suspense_demand"
+        return False, ""
 
     def _bulk_remove_not_needed_visible(self, include_assigned=None):
         self._bulk_remove_not_needed(scope="screen", include_assigned=include_assigned)

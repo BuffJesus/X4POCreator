@@ -385,6 +385,82 @@ class AssignmentFlowTests(unittest.TestCase):
         self.assertFalse(result)
         self.assertEqual(session.filtered_items, [])
 
+    def test_prepare_assignment_session_preserves_inventory_only_item_below_current_min(self):
+        session = AppSessionState(
+            sales_items=[],
+            inventory_lookup={
+                ("AER-", "GH781-4"): {"qoh": 1, "min": 3, "max": 6},
+            },
+            order_rules={},
+        )
+
+        with patch("assignment_flow.storage.get_recent_orders", return_value={}), \
+             patch("assignment_flow.storage.load_vendor_codes", return_value=[]):
+            result = assignment_flow.prepare_assignment_session(
+                session,
+                excluded_line_codes=set(),
+                excluded_customers=set(),
+                dup_whitelist=set(),
+                ignored_keys=set(),
+                lookback_days=14,
+                order_history_path=str(ROOT / "test_order_history.json"),
+                vendor_codes_path=str(ROOT / "test_vendor_codes.txt"),
+                known_vendors=[],
+                get_suspense_carry_qty=lambda key: 0,
+                default_vendor_for_key=lambda key: "",
+                resolve_pack_size=lambda key: None,
+                suggest_min_max=lambda key: (None, None),
+                get_cycle_weeks=lambda: 2,
+                get_rule_key=lambda lc, ic: f"{lc}:{ic}",
+            )
+
+        self.assertTrue(result)
+        self.assertEqual(len(session.filtered_items), 1)
+        item = session.filtered_items[0]
+        self.assertTrue(item["candidate_preserved"])
+        self.assertEqual(item["candidate_preserved_reason"], "below_current_min")
+        self.assertIn("candidate_preserved_below_current_min", item["reason_codes"])
+        self.assertIn("Candidate preserved: inventory is below current min", item["why"])
+
+    def test_prepare_assignment_session_preserves_inventory_only_item_below_rule_trigger(self):
+        session = AppSessionState(
+            sales_items=[],
+            inventory_lookup={
+                ("AER-", "GH781-4"): {"qoh": 50, "min": 0, "max": 80},
+            },
+            order_rules={
+                "AER-:GH781-4": {"minimum_packs_on_hand": 2},
+            },
+        )
+
+        with patch("assignment_flow.storage.get_recent_orders", return_value={}), \
+             patch("assignment_flow.storage.load_vendor_codes", return_value=[]):
+            result = assignment_flow.prepare_assignment_session(
+                session,
+                excluded_line_codes=set(),
+                excluded_customers=set(),
+                dup_whitelist=set(),
+                ignored_keys=set(),
+                lookback_days=14,
+                order_history_path=str(ROOT / "test_order_history.json"),
+                vendor_codes_path=str(ROOT / "test_vendor_codes.txt"),
+                known_vendors=[],
+                get_suspense_carry_qty=lambda key: 0,
+                default_vendor_for_key=lambda key: "",
+                resolve_pack_size=lambda key: 100,
+                suggest_min_max=lambda key: (None, None),
+                get_cycle_weeks=lambda: 2,
+                get_rule_key=lambda lc, ic: f"{lc}:{ic}",
+            )
+
+        self.assertTrue(result)
+        self.assertEqual(len(session.filtered_items), 1)
+        item = session.filtered_items[0]
+        self.assertTrue(item["candidate_preserved"])
+        self.assertEqual(item["candidate_preserved_reason"], "below_rule_trigger")
+        self.assertIn("candidate_preserved_below_rule_trigger", item["reason_codes"])
+        self.assertIn("Candidate preserved: inventory is below an explicit rule-based trigger", item["why"])
+
 
 if __name__ == "__main__":
     unittest.main()

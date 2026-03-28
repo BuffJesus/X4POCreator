@@ -358,7 +358,7 @@ def bulk_remove_not_needed(app, scope, max_exceed_abs_buffer, *, include_assigne
         if auto_remove:
             checked_set.add(iid)
 
-    result = {"removed": 0}
+    result = {"removed": 0, "protected": 0}
 
     footer = ttk.Frame(dlg)
     footer.pack(fill=tk.X, padx=16, pady=(4, 0))
@@ -414,6 +414,7 @@ def bulk_remove_not_needed(app, scope, max_exceed_abs_buffer, *, include_assigne
             history_label=f"remove:not_needed:{scope}",
         )
         result["removed"] = len(removed_payload)
+        result["protected"] = len(getattr(app, "last_protected_bulk_items", []) or [])
         dlg.destroy()
 
     btn_frame = ttk.Frame(dlg)
@@ -428,7 +429,11 @@ def bulk_remove_not_needed(app, scope, max_exceed_abs_buffer, *, include_assigne
     if result["removed"] > 0:
         app._apply_bulk_filter()
         app._update_bulk_summary()
-        messagebox.showinfo("Removed", f"Removed {result['removed']} item(s) from this session.")
+    if result["removed"] > 0 or result["protected"] > 0:
+        detail = f"Removed {result['removed']} item(s) from this session."
+        if result["protected"] > 0:
+            detail += f"\n\nSkipped {result['protected']} protected item(s) that still carry reorder evidence."
+        messagebox.showinfo("Removed", detail)
 
 
 def open_buy_rule_editor(app, idx, order_rules_file):

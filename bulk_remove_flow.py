@@ -16,10 +16,27 @@ def remove_filtered_rows(app, remove_indices, deepcopy, *, history_label="remove
             before_state = capture()
     filtered_items = list(getattr(app, "filtered_items", ()) or ())
     removed_payload = []
+    protected_payload = []
+    protect_item = getattr(app, "_is_bulk_removal_protected", None)
     for idx in unique_indices:
         if 0 <= idx < len(filtered_items):
-            removed_payload.append((idx, deepcopy(filtered_items[idx])))
+            item = filtered_items[idx]
+            protected = False
+            protected_reason = ""
+            if callable(protect_item):
+                try:
+                    protected, protected_reason = protect_item(item, history_label=history_label)
+                except TypeError:
+                    protected = bool(protect_item(item))
+            if protected:
+                preserved = deepcopy(item)
+                if protected_reason:
+                    preserved["_removal_protection_reason"] = protected_reason
+                protected_payload.append((idx, preserved))
+                continue
+            removed_payload.append((idx, deepcopy(item)))
             filtered_items.pop(idx)
+    app.last_protected_bulk_items = protected_payload
     if not removed_payload:
         return []
     ui_bulk.replace_filtered_items(app, filtered_items)

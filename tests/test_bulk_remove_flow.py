@@ -20,6 +20,7 @@ class BulkRemoveFlowTests(unittest.TestCase):
                 {"item_code": "C"},
             ],
             last_removed_bulk_items=[],
+            last_protected_bulk_items=[],
             _capture_bulk_history_state=lambda capture_spec=None: {"before": True, "capture_spec": capture_spec},
             _finalize_bulk_history_action=lambda label, before, capture_spec=None: events.append((label, before, capture_spec)),
         )
@@ -68,6 +69,7 @@ class BulkRemoveFlowTests(unittest.TestCase):
         app = SimpleNamespace(
             filtered_items=[item_a, item_b],
             last_removed_bulk_items=[],
+            last_protected_bulk_items=[],
             _capture_bulk_history_state=lambda: {"before": True},
             _finalize_bulk_history_action=lambda label, before: None,
             _bulk_row_index_generation=0,
@@ -94,6 +96,7 @@ class BulkRemoveFlowTests(unittest.TestCase):
         app = SimpleNamespace(
             filtered_items=[{"item_code": "A"}],
             last_removed_bulk_items=[],
+            last_protected_bulk_items=[],
             _capture_bulk_history_state=lambda: {"before": True},
             _finalize_bulk_history_action=lambda label, before: events.append((label, before)),
         )
@@ -109,6 +112,38 @@ class BulkRemoveFlowTests(unittest.TestCase):
         self.assertEqual(app.filtered_items, [{"item_code": "A"}])
         self.assertEqual(app.last_removed_bulk_items, [])
         self.assertEqual(events, [])
+
+    def test_remove_filtered_rows_skips_protected_not_needed_candidates(self):
+        events = []
+        app = SimpleNamespace(
+            filtered_items=[
+                {"item_code": "A", "candidate_preserved_reason": "below_current_min"},
+                {"item_code": "B"},
+            ],
+            last_removed_bulk_items=[],
+            last_protected_bulk_items=[],
+            _capture_bulk_history_state=lambda capture_spec=None: {"before": True, "capture_spec": capture_spec},
+            _finalize_bulk_history_action=lambda label, before, capture_spec=None: events.append((label, before, capture_spec)),
+            _is_bulk_removal_protected=lambda item, history_label="": (
+                bool(item.get("candidate_preserved_reason")) and str(history_label).startswith("remove:not_needed"),
+                "candidate_preserved:below_current_min" if item.get("candidate_preserved_reason") else "",
+            ),
+        )
+
+        removed = bulk_remove_flow.remove_filtered_rows(
+            app,
+            [1, 0],
+            lambda value: dict(value),
+            history_label="remove:not_needed:filtered",
+        )
+
+        self.assertEqual(app.filtered_items, [{"item_code": "A", "candidate_preserved_reason": "below_current_min"}])
+        self.assertEqual(removed, [(1, {"item_code": "B"})])
+        self.assertEqual(
+            app.last_protected_bulk_items,
+            [(0, {"item_code": "A", "candidate_preserved_reason": "below_current_min", "_removal_protection_reason": "candidate_preserved:below_current_min"})],
+        )
+        self.assertEqual(len(events), 1)
 
 
 if __name__ == "__main__":

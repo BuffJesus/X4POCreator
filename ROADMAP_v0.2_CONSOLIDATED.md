@@ -144,7 +144,7 @@ The goal is to keep one phased checklist that reflects what is actually done in 
 - [x] Add cadence-aware heuristics for high-velocity small-pack items beyond the current two-pack hardware floor.
 - [x] Decide whether `reel_review` should remain distinct or split into `reel_auto` plus generalized replenishment-unit policies.
 - [ ] Keep negative QOH clamped to zero for ordering quantities while continuing to surface negative-balance data-quality warnings.
-- [ ] Add explicit candidate-preservation rules so items can enter the assignment session from inventory/min-max protection signals even when loaded sales rows are weak or absent.
+- [x] Add explicit candidate-preservation rules so items can enter the assignment session from inventory/min-max protection signals even when loaded sales rows are weak or absent.
 - [ ] Add stronger source-confidence handling when X4 min/max, X4 12-month sales, and detailed-sales annualization materially disagree.
 - [ ] Add min/max sanity normalization and review flags for invalid or suspicious source pairs such as `max < min`, negative values, or extreme jumps.
 - [ ] Add churn-damping / hysteresis so small source-data changes do not unnecessarily flip reorder decisions or target-stock outcomes between runs.
@@ -349,7 +349,7 @@ These are the best next steps after reconciliation.
 - [x] Treat recent local PO history as protective recency evidence for review bucketing, while still keeping missing-recency items review-first by default.
 - [x] Distinguish explicit critical min-rule protection from other rule-protected missing-recency cases.
 - [x] Cover weekly-order hardware cadence cases with inferred trigger-floor behavior for active small-pack hardware.
-- [ ] Preserve reorder-worthy candidates that are below protected inventory floors even when they have little or no loaded sales history.
+- [x] Preserve reorder-worthy candidates that are below protected inventory floors even when they have little or no loaded sales history.
 - [ ] Replace the fixed hardware floor with evidence-weighted hardware buffer rules that improve as the loaded history window becomes longer and more stable.
 - [ ] Keep negative QOH from inflating order quantities beyond the zero-on-hand interpretation while still flagging the underlying source issue for review.
 - [ ] Add removal-protection tests for rows that still qualify through trigger rules, inventory-floor protection, suspense demand, or other protected reorder evidence.
