@@ -1,11 +1,78 @@
 import copy
 import os
+import pickle
 from collections import defaultdict
 from datetime import datetime
 
 import parsers
 import performance_flow
 import sales_history_flow
+
+
+PARSE_CACHE_SCHEMA_VERSION = 1
+PARSE_CACHE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "parse_result_cache.pkl")
+
+
+def _path_signature(path):
+    normalized = str(path or "").strip()
+    if not normalized:
+        return None
+    try:
+        stat = os.stat(normalized)
+    except OSError:
+        return {
+            "path": os.path.abspath(normalized),
+            "exists": False,
+        }
+    return {
+        "path": os.path.abspath(normalized),
+        "exists": True,
+        "size": stat.st_size,
+        "mtime_ns": stat.st_mtime_ns,
+    }
+
+
+def _build_parse_cache_signature(paths, *, old_po_warning_days, short_sales_window_days):
+    return {
+        "schema_version": PARSE_CACHE_SCHEMA_VERSION,
+        "old_po_warning_days": int(old_po_warning_days),
+        "short_sales_window_days": int(short_sales_window_days),
+        "paths": {
+            key: _path_signature(value)
+            for key, value in sorted((paths or {}).items())
+        },
+    }
+
+
+def _load_parse_cache(signature):
+    try:
+        with open(PARSE_CACHE_FILE, "rb") as handle:
+            payload = pickle.load(handle)
+    except Exception:
+        return None
+    if not isinstance(payload, dict):
+        return None
+    if payload.get("schema_version") != PARSE_CACHE_SCHEMA_VERSION:
+        return None
+    if payload.get("signature") != signature:
+        return None
+    result = payload.get("result")
+    return copy.deepcopy(result) if isinstance(result, dict) else None
+
+
+def _save_parse_cache(signature, result):
+    directory = os.path.dirname(PARSE_CACHE_FILE)
+    if directory:
+        os.makedirs(directory, exist_ok=True)
+    temp_path = PARSE_CACHE_FILE + ".tmp"
+    payload = {
+        "schema_version": PARSE_CACHE_SCHEMA_VERSION,
+        "signature": signature,
+        "result": result,
+    }
+    with open(temp_path, "wb") as handle:
+        pickle.dump(payload, handle, protocol=pickle.HIGHEST_PROTOCOL)
+    os.replace(temp_path, PARSE_CACHE_FILE)
 
 
 def _sales_line_code_candidates(item_code, *, inventory_lookup, receipt_history_lookup):
@@ -254,6 +321,15 @@ def _normalize_inventory_min_max(inventory_lookup):
 
 def parse_all_files(paths, *, old_po_warning_days, short_sales_window_days, now=None):
     """Parse the selected input files into a single workflow result."""
+    cache_signature = _build_parse_cache_signature(
+        paths,
+        old_po_warning_days=old_po_warning_days,
+        short_sales_window_days=short_sales_window_days,
+    )
+    cached = _load_parse_cache(cache_signature)
+    if cached is not None:
+        return cached
+
     warnings = []
     startup_warning_rows = []
     result = {"warnings": warnings, "startup_warning_rows": startup_warning_rows}
@@ -672,6 +748,10 @@ def parse_all_files(paths, *, old_po_warning_days, short_sales_window_days, now=
             warnings.append(("Pack Size Parse Warning", f"Could not parse pack sizes:\n{exc}\nContinuing without it."))
 
     result["all_line_codes"] = all_line_codes
+    try:
+        _save_parse_cache(cache_signature, result)
+    except Exception:
+        pass
     return result
 
 

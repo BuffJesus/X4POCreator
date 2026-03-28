@@ -2,6 +2,7 @@ import sys
 import unittest
 from datetime import datetime
 from pathlib import Path
+import tempfile
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -13,6 +14,109 @@ from models import AppSessionState
 
 
 class LoadFlowTests(unittest.TestCase):
+    def test_parse_all_files_reuses_cached_result_when_signatures_match(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            sales_path = Path(tmp) / "sales.csv"
+            cache_path = Path(tmp) / "parse_cache.pkl"
+            sales_path.write_text("placeholder\n", encoding="utf-8-sig")
+            with patch.object(load_flow, "PARSE_CACHE_FILE", str(cache_path)):
+                with patch("load_flow.parsers.parse_part_sales_csv", return_value=[{
+                    "line_code": "AER-",
+                    "item_code": "GH781-4",
+                    "description": "HOSE",
+                    "qty_received": 0,
+                    "qty_sold": 2,
+                }]), patch(
+                    "load_flow.parsers.parse_sales_date_range",
+                    return_value=(datetime(2026, 3, 1), datetime(2026, 3, 3)),
+                ):
+                    first = load_flow.parse_all_files(
+                        {
+                            "sales": str(sales_path),
+                            "po": "",
+                            "susp": "",
+                            "onhand": "",
+                            "minmax": "",
+                            "packsize": "",
+                        },
+                        old_po_warning_days=90,
+                        short_sales_window_days=7,
+                    )
+
+                with patch("load_flow.parsers.parse_part_sales_csv", side_effect=AssertionError("parser should not run")), \
+                     patch("load_flow.parsers.parse_sales_date_range", side_effect=AssertionError("date range should not run")):
+                    second = load_flow.parse_all_files(
+                        {
+                            "sales": str(sales_path),
+                            "po": "",
+                            "susp": "",
+                            "onhand": "",
+                            "minmax": "",
+                            "packsize": "",
+                        },
+                        old_po_warning_days=90,
+                        short_sales_window_days=7,
+                    )
+
+        self.assertEqual(first["sales_items"], second["sales_items"])
+        self.assertEqual(first["sales_window_start"], second["sales_window_start"])
+
+    def test_parse_all_files_invalidates_cache_when_file_signature_changes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            sales_path = Path(tmp) / "sales.csv"
+            cache_path = Path(tmp) / "parse_cache.pkl"
+            sales_path.write_text("placeholder\n", encoding="utf-8-sig")
+            with patch.object(load_flow, "PARSE_CACHE_FILE", str(cache_path)):
+                with patch("load_flow.parsers.parse_part_sales_csv", return_value=[{
+                    "line_code": "AER-",
+                    "item_code": "GH781-4",
+                    "description": "HOSE",
+                    "qty_received": 0,
+                    "qty_sold": 2,
+                }]), patch(
+                    "load_flow.parsers.parse_sales_date_range",
+                    return_value=(datetime(2026, 3, 1), datetime(2026, 3, 3)),
+                ):
+                    load_flow.parse_all_files(
+                        {
+                            "sales": str(sales_path),
+                            "po": "",
+                            "susp": "",
+                            "onhand": "",
+                            "minmax": "",
+                            "packsize": "",
+                        },
+                        old_po_warning_days=90,
+                        short_sales_window_days=7,
+                    )
+
+                sales_path.write_text("placeholder\nchanged\n", encoding="utf-8-sig")
+                with patch("load_flow.parsers.parse_part_sales_csv", return_value=[{
+                    "line_code": "AER-",
+                    "item_code": "GH781-4",
+                    "description": "HOSE",
+                    "qty_received": 0,
+                    "qty_sold": 5,
+                }]) as mocked_parse, patch(
+                    "load_flow.parsers.parse_sales_date_range",
+                    return_value=(datetime(2026, 3, 1), datetime(2026, 3, 5)),
+                ):
+                    result = load_flow.parse_all_files(
+                        {
+                            "sales": str(sales_path),
+                            "po": "",
+                            "susp": "",
+                            "onhand": "",
+                            "minmax": "",
+                            "packsize": "",
+                        },
+                        old_po_warning_days=90,
+                        short_sales_window_days=7,
+                    )
+
+        self.assertEqual(mocked_parse.call_count, 1)
+        self.assertEqual(result["sales_items"][0]["qty_sold"], 5)
+
     def test_parse_all_files_sales_window_warning_uses_actionable_language(self):
         with patch("load_flow.parsers.parse_part_sales_csv", return_value=[{
             "line_code": "AER-",
