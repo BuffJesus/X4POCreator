@@ -136,6 +136,34 @@ def suggestion_compare_label(compare_code):
     }.get(compare_code, compare_code or "")
 
 
+def suggestion_disagreement_metrics(active_pair, detailed_pair):
+    active_min, active_max = active_pair
+    detailed_min, detailed_max = detailed_pair
+    metrics = {
+        "ratio": None,
+        "max_gap": None,
+        "material": False,
+    }
+    if not (
+        isinstance(active_min, (int, float))
+        and isinstance(active_max, (int, float))
+        and isinstance(detailed_min, (int, float))
+        and isinstance(detailed_max, (int, float))
+    ):
+        return metrics
+    max_gap = max(abs(float(detailed_min) - float(active_min)), abs(float(detailed_max) - float(active_max)))
+    metrics["max_gap"] = max_gap
+    positive_values = [value for value in (active_max, detailed_max, active_min, detailed_min) if isinstance(value, (int, float)) and value > 0]
+    if len(positive_values) >= 2:
+        low = min(positive_values)
+        high = max(positive_values)
+        if low > 0:
+            metrics["ratio"] = high / low
+    ratio = metrics["ratio"]
+    metrics["material"] = bool((ratio is not None and ratio >= 2.0) or max_gap >= 6.0)
+    return metrics
+
+
 def apply_suggestion_context(app, item, key, active_pair=None, min_annual_sales_for_suggestions=None, active_source=None):
     if active_pair is None:
         active_min, active_max, active_source = suggest_min_max_with_source(
@@ -162,6 +190,12 @@ def apply_suggestion_context(app, item, key, active_pair=None, min_annual_sales_
     item["detailed_suggestion_compare"] = compare_code
     item["detailed_suggestion_compare_label"] = suggestion_compare_label(compare_code)
     item["detailed_suggestion_gap"] = compare_code not in ("", "no_detailed", "aligned")
+    disagreement = suggestion_disagreement_metrics((active_min, active_max), (detailed_min, detailed_max))
+    item["detailed_suggestion_ratio"] = disagreement["ratio"]
+    item["detailed_suggestion_max_gap"] = disagreement["max_gap"]
+    item["material_suggestion_disagreement"] = bool(
+        disagreement["material"] and compare_code not in ("", "no_detailed", "aligned")
+    )
     return active_min, active_max
 
 

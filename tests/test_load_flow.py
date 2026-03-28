@@ -686,6 +686,69 @@ class LoadFlowTests(unittest.TestCase):
         self.assertEqual(item["sales_health_signal"], "active")
         self.assertFalse(item["possible_missed_reorder"])
 
+    def test_parse_all_files_normalizes_invalid_min_max_pairs_and_warns(self):
+        with patch("load_flow.parsers.parse_part_sales_csv", return_value=[{
+            "line_code": "AER-",
+            "item_code": "GH781-4",
+            "description": "HOSE",
+            "qty_received": 0,
+            "qty_sold": 2,
+        }]), patch(
+            "load_flow.parsers.parse_sales_date_range",
+            return_value=(None, None),
+        ), patch(
+            "load_flow.parsers.parse_on_hand_min_max",
+            return_value={("AER-", "GH781-4"): {
+                "qoh": 9.0,
+                "repl_cost": 12.5,
+                "min": -2,
+                "max": -5,
+                "ytd_sales": 11,
+                "mo12_sales": 22,
+                "supplier": "MOTION",
+                "last_receipt": "01-Mar-2026",
+                "last_sale": "05-Mar-2026",
+            }, ("AMS-", "XLF-1G"): {
+                "qoh": 4.0,
+                "repl_cost": 8.0,
+                "min": 6,
+                "max": 3,
+                "ytd_sales": 5,
+                "mo12_sales": 10,
+                "supplier": "AMSOIL",
+                "last_receipt": "01-Mar-2026",
+                "last_sale": "05-Mar-2026",
+            }},
+        ):
+            result = load_flow.parse_all_files(
+                {
+                    "sales": "sales.csv",
+                    "po": "",
+                    "susp": "",
+                    "onhand": "",
+                    "minmax": "minmax.csv",
+                    "packsize": "",
+                },
+                old_po_warning_days=90,
+                short_sales_window_days=7,
+            )
+
+        inventory_a = result["inventory_lookup"][("AER-", "GH781-4")]
+        inventory_b = result["inventory_lookup"][("AMS-", "XLF-1G")]
+        self.assertEqual(inventory_a["min"], 0)
+        self.assertEqual(inventory_a["max"], 0)
+        self.assertEqual(inventory_b["min"], 6)
+        self.assertEqual(inventory_b["max"], 6)
+        warning_titles = [title for title, _message in result["warnings"]]
+        self.assertIn("Min/Max Sanity Warning", warning_titles)
+        startup_rows = [
+            row for row in result["startup_warning_rows"]
+            if row["warning_type"] == "Min/Max Sanity Warning"
+        ]
+        self.assertEqual(len(startup_rows), 2)
+        self.assertIn("min_clamped_to_zero", startup_rows[0]["details"] + startup_rows[1]["details"])
+        self.assertIn("max_raised_to_min", startup_rows[0]["details"] + startup_rows[1]["details"])
+
 
 if __name__ == "__main__":
     unittest.main()

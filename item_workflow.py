@@ -124,11 +124,30 @@ def apply_suggestion_gap_review_state(item):
     if compare_code and compare_code not in ("no_detailed", "aligned"):
         gap_codes.append("suggestion_gap")
         gap_codes.append(f"suggestion_gap_{compare_code}")
+    if item.get("material_suggestion_disagreement"):
+        gap_codes.append("suggestion_gap_material")
 
     if compare_code == "detailed_only":
         item["review_required"] = True
         base_why = str(item.get("core_why", item.get("why", "")) or "").strip()
         detail = "Review: active suggestion is blank, but detailed sales suggests stocking"
+        if base_why and detail not in base_why:
+            merged = f"{base_why} | {detail}"
+            item["core_why"] = merged
+            item["why"] = merged
+    elif item.get("material_suggestion_disagreement"):
+        item["review_required"] = True
+        base_why = str(item.get("core_why", item.get("why", "")) or "").strip()
+        ratio = item.get("detailed_suggestion_ratio")
+        max_gap = item.get("detailed_suggestion_max_gap")
+        detail = "Review: X4 and detailed sales suggestions disagree materially"
+        if isinstance(ratio, (int, float)):
+            detail += f" (ratio {ratio:.2f}x"
+            if isinstance(max_gap, (int, float)):
+                detail += f", max gap {max_gap:g}"
+            detail += ")"
+        elif isinstance(max_gap, (int, float)):
+            detail += f" (max gap {max_gap:g})"
         if base_why and detail not in base_why:
             merged = f"{base_why} | {detail}"
             item["core_why"] = merged

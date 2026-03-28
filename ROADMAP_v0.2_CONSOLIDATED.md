@@ -145,8 +145,8 @@ The goal is to keep one phased checklist that reflects what is actually done in 
 - [x] Decide whether `reel_review` should remain distinct or split into `reel_auto` plus generalized replenishment-unit policies.
 - [ ] Keep negative QOH clamped to zero for ordering quantities while continuing to surface negative-balance data-quality warnings.
 - [x] Add explicit candidate-preservation rules so items can enter the assignment session from inventory/min-max protection signals even when loaded sales rows are weak or absent.
-- [ ] Add stronger source-confidence handling when X4 min/max, X4 12-month sales, and detailed-sales annualization materially disagree.
-- [ ] Add min/max sanity normalization and review flags for invalid or suspicious source pairs such as `max < min`, negative values, or extreme jumps.
+- [x] Add stronger source-confidence handling when X4 min/max, X4 12-month sales, and detailed-sales annualization materially disagree.
+- [x] Add min/max sanity normalization and review flags for invalid or suspicious source pairs such as `max < min`, negative values, or extreme jumps.
 - [ ] Add churn-damping / hysteresis so small source-data changes do not unnecessarily flip reorder decisions or target-stock outcomes between runs.
 - [ ] Clarify and deepen the split between hard reorder floors and preferred operational targets so protected reorder timing can stay stable without permanently inflating routine targets.
 - [x] Replace the static hardware two-pack bias with a more dynamic hardware buffer based on available evidence such as sales window length, annualized demand, receipt cadence, and pack size.

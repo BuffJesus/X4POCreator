@@ -193,6 +193,54 @@ def _parse_sales_inputs(paths):
     }
 
 
+def _normalize_inventory_min_max(inventory_lookup):
+    normalized = {}
+    issues = []
+    for key, raw_info in (inventory_lookup or {}).items():
+        info = dict(raw_info or {})
+        current_min = info.get("min")
+        current_max = info.get("max")
+        normalized_min = current_min
+        normalized_max = current_max
+        reasons = []
+
+        if isinstance(normalized_min, (int, float)) and normalized_min < 0:
+            normalized_min = 0
+            reasons.append("min_clamped_to_zero")
+        if isinstance(normalized_max, (int, float)) and normalized_max < 0:
+            normalized_max = 0
+            reasons.append("max_clamped_to_zero")
+        if (
+            isinstance(normalized_min, (int, float))
+            and isinstance(normalized_max, (int, float))
+            and normalized_max < normalized_min
+        ):
+            normalized_max = normalized_min
+            reasons.append("max_raised_to_min")
+        if (
+            isinstance(normalized_min, (int, float))
+            and isinstance(normalized_max, (int, float))
+            and normalized_min > 0
+            and normalized_max >= max(50, normalized_min * 10)
+        ):
+            reasons.append("max_far_exceeds_min")
+
+        if reasons:
+            issues.append({
+                "key": key,
+                "old_min": current_min,
+                "old_max": current_max,
+                "new_min": normalized_min,
+                "new_max": normalized_max,
+                "reasons": tuple(reasons),
+            })
+
+        info["min"] = normalized_min
+        info["max"] = normalized_max
+        normalized[key] = info
+    return normalized, issues
+
+
 def parse_all_files(paths, *, old_po_warning_days, short_sales_window_days, now=None):
     """Parse the selected input files into a single workflow result."""
     warnings = []
@@ -382,7 +430,39 @@ def parse_all_files(paths, *, old_po_warning_days, short_sales_window_days, now=
         except Exception as exc:
             warnings.append(("Min/Max Parse Warning", f"Could not parse Min/Max report:\n{exc}\nContinuing without it."))
 
+    inventory_lookup, min_max_issues = _normalize_inventory_min_max(inventory_lookup)
     result["inventory_lookup"] = inventory_lookup
+    if min_max_issues:
+        sample = "\n".join(
+            f"  {line_code}/{item_code}: {issue['old_min']}/{issue['old_max']} -> {issue['new_min']}/{issue['new_max']}"
+            for issue in min_max_issues[:8]
+            for (line_code, item_code) in [issue["key"]]
+        )
+        warnings.append((
+            "Min/Max Sanity Warning",
+            (
+                f"{len(min_max_issues)} inventory item(s) had invalid or suspicious min/max values that were normalized or flagged.\n"
+                "The app kept the values safe for ordering, but these rows should be reviewed in X4.\n\n"
+                f"Examples:\n{sample}"
+            ),
+        ))
+        for issue in min_max_issues:
+            line_code, item_code = issue["key"]
+            startup_warning_rows.append({
+                "warning_type": "Min/Max Sanity Warning",
+                "severity": "warning",
+                "line_code": line_code,
+                "item_code": item_code,
+                "description": desc_lookup.get((line_code, item_code), ""),
+                "reference_date": "",
+                "qty": "",
+                "po_reference": "",
+                "details": (
+                    f"Source min/max {issue['old_min']}/{issue['old_max']} -> "
+                    f"{issue['new_min']}/{issue['new_max']}; "
+                    f"reasons: {', '.join(issue['reasons'])}"
+                ),
+            })
     result["sales_items"], result["detailed_sales_stats_lookup"], result["detailed_sales_corrections"] = _normalize_detailed_sales_keys(
         result["sales_items"],
         result["detailed_sales_stats_lookup"],

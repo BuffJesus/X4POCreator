@@ -113,6 +113,41 @@ class ItemWorkflowTests(unittest.TestCase):
         self.assertEqual(item["status"], "ok")
         self.assertNotIn("suggestion_gap_detailed_only", item["data_flags"])
 
+    def test_recalculate_item_from_session_marks_material_suggestion_disagreement_for_review(self):
+        session = AppSessionState(
+            inventory_lookup={("AER-", "GH781-4"): {"qoh": 0, "max": 10, "last_sale": "05-Mar-2026", "last_receipt": "01-Mar-2026", "mo12_sales": 52}},
+            detailed_sales_stats_lookup={("AER-", "GH781-4"): {
+                "annualized_qty_sold": 208,
+                "transaction_count": 8,
+                "sale_day_count": 8,
+                "avg_units_per_transaction": 4.0,
+                "median_units_per_transaction": 4.0,
+                "max_units_per_transaction": 6.0,
+                "avg_days_between_sales": 7.0,
+            }},
+            order_rules={},
+        )
+        session._get_cycle_weeks = lambda: 2
+        item = {
+            "line_code": "AER-",
+            "item_code": "GH781-4",
+            "description": "HOSE",
+            "qty_sold": 9,
+            "qty_suspended": 0,
+            "qty_on_po": 0,
+            "pack_size": 6,
+        }
+
+        item_workflow.recalculate_item_from_session(item, session, lambda key: (None, None), lambda lc, ic: f"{lc}:{ic}")
+
+        self.assertEqual(item["suggested_source"], "x4_mo12_sales")
+        self.assertEqual(item["detailed_suggestion_compare"], "detailed_higher")
+        self.assertTrue(item["material_suggestion_disagreement"])
+        self.assertTrue(item["review_required"])
+        self.assertEqual(item["status"], "review")
+        self.assertIn("suggestion_gap_material", item["data_flags"])
+        self.assertIn("Review: X4 and detailed sales suggestions disagree materially", item["why"])
+
     def test_sync_review_item_to_filtered_from_session_uses_session_state(self):
         filtered = {
             "line_code": "AER-",
