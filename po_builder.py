@@ -683,7 +683,7 @@ class POBuilderApp:
         """Remove the loading overlay."""
         loading_flow.hide_loading(self)
 
-    def _run_with_loading(self, text, func, *args, min_seconds=5):
+    def _run_with_loading(self, text, func, *args, min_seconds=0):
         """Show loading overlay with animation, run func in a thread, then hide."""
         return loading_flow.run_with_loading(self, text, func, *args, min_seconds=min_seconds)
 

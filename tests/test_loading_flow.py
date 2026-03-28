@@ -1,4 +1,5 @@
 import sys
+import time
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
@@ -149,6 +150,30 @@ class LoadingFlowTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "boom"):
             loading_flow.run_with_loading(fake_app, "Working", lambda: (_ for _ in ()).throw(RuntimeError("boom")), min_seconds=0)
 
+        self.assertEqual(events[-1], ("hide", None))
+
+    def test_run_with_loading_honors_small_minimum_duration_without_after_loop(self):
+        events = []
+
+        class Root:
+            def update_idletasks(self):
+                events.append(("idle", None))
+            def update(self):
+                events.append(("update", None))
+
+        fake_app = SimpleNamespace(
+            _show_loading=lambda text: events.append(("show", text)),
+            _hide_loading=lambda: events.append(("hide", None)),
+            root=Root(),
+        )
+
+        start = time.monotonic()
+        result = loading_flow.run_with_loading(fake_app, "Working", lambda: 7, min_seconds=0.03)
+        elapsed = time.monotonic() - start
+
+        self.assertEqual(result, 7)
+        self.assertGreaterEqual(elapsed, 0.02)
+        self.assertNotIn(("after", 16), events)
         self.assertEqual(events[-1], ("hide", None))
 
 

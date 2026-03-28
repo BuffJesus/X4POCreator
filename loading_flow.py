@@ -142,11 +142,12 @@ def hide_loading(app):
         app._loading_overlay = None
 
 
-def run_with_loading(app, text, func, *args, min_seconds=5):
+def run_with_loading(app, text, func, *args, min_seconds=0):
     app._show_loading(text)
     app.root.update()
     result_holder = {"result": None, "error": None}
-    start_time = time.time()
+    start_time = time.monotonic()
+    min_seconds = max(0.0, float(min_seconds or 0))
 
     def _worker():
         try:
@@ -157,9 +158,19 @@ def run_with_loading(app, text, func, *args, min_seconds=5):
     thread = threading.Thread(target=_worker, daemon=True)
     thread.start()
 
-    while thread.is_alive() or (time.time() - start_time) < min_seconds:
-        app.root.update()
-        app.root.after(16)
+    while thread.is_alive() or (time.monotonic() - start_time) < min_seconds:
+        try:
+            if hasattr(app.root, "update_idletasks"):
+                app.root.update_idletasks()
+            app.root.update()
+        except Exception:
+            break
+        if thread.is_alive():
+            thread.join(0.016)
+        else:
+            remaining = min_seconds - (time.monotonic() - start_time)
+            if remaining > 0:
+                time.sleep(min(0.016, remaining))
 
     app._hide_loading()
 
