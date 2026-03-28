@@ -252,6 +252,65 @@ class AssignmentFlowTests(unittest.TestCase):
         self.assertEqual(item["detailed_suggestion_compare"], "aligned")
         self.assertNotIn("suggestion_gap_detailed_only", item["data_flags"])
 
+    def test_prepare_assignment_session_suppresses_receipt_heavy_detailed_fallback_to_review_gap(self):
+        session = AppSessionState(
+            sales_items=[{
+                "line_code": "AER-",
+                "item_code": "GH781-4",
+                "description": "HOSE",
+                "qty_received": 12,
+                "qty_sold": 2,
+            }],
+            inventory_lookup={("AER-", "GH781-4"): {"qoh": 0, "max": 10, "mo12_sales": 0}},
+            receipt_history_lookup={("AER-", "GH781-4"): {
+                "receipt_count": 3,
+                "avg_units_per_receipt": 4.0,
+            }},
+            detailed_sales_stats_lookup={("AER-", "GH781-4"): {
+                "annualized_qty_sold": 26,
+                "transaction_count": 6,
+                "sale_day_count": 5,
+                "avg_units_per_transaction": 3.0,
+                "median_units_per_transaction": 3.0,
+                "max_units_per_transaction": 4.0,
+                "avg_days_between_sales": 7.0,
+            }},
+            order_rules={},
+        )
+
+        with patch("assignment_flow.storage.get_recent_orders", return_value={}), \
+             patch("assignment_flow.storage.load_vendor_codes", return_value=["MOTION"]):
+            result = assignment_flow.prepare_assignment_session(
+                session,
+                excluded_line_codes=set(),
+                excluded_customers=set(),
+                dup_whitelist=set(),
+                ignored_keys=set(),
+                lookback_days=14,
+                order_history_path=str(ROOT / "test_order_history.json"),
+                vendor_codes_path=str(ROOT / "test_vendor_codes.txt"),
+                known_vendors=["MOTION"],
+                get_suspense_carry_qty=lambda key: 0,
+                default_vendor_for_key=lambda key: "MOTION",
+                resolve_pack_size=lambda key: 6,
+                suggest_min_max=lambda key: (None, None),
+                get_cycle_weeks=lambda: 2,
+                get_rule_key=lambda lc, ic: f"{lc}:{ic}",
+            )
+
+        self.assertTrue(result)
+        item = session.filtered_items[0]
+        self.assertEqual(item["suggested_source"], "none")
+        self.assertEqual(item["suggested_source_label"], "No suggestion")
+        self.assertIsNone(item["suggested_min"])
+        self.assertIsNone(item["suggested_max"])
+        self.assertEqual(item["detailed_suggested_min"], 3)
+        self.assertEqual(item["detailed_suggested_max"], 6)
+        self.assertEqual(item["detailed_suggestion_compare"], "detailed_only")
+        self.assertIn("suggestion_gap_detailed_only", item["data_flags"])
+        self.assertEqual(item["receipt_sales_balance"], "receipt_heavy")
+        self.assertEqual(item["reorder_attention_signal"], "review_receipt_heavy")
+
     def test_prepare_assignment_session_returns_false_when_no_items_remain(self):
         session = AppSessionState(
             sales_items=[{

@@ -23,7 +23,7 @@ The goal is to keep one phased checklist that reflects what is actually done in 
 
 - The reorder core refactor is materially in place.
 - Trigger-based ordering, effective reorder floors, pack-trigger behavior, hardware heuristics, recency-confidence gating, and acceptable-overstock handling are all implemented.
-- The biggest remaining reorder-core gaps are deeper low-confidence classification, stricter separation between explicit-rule-protected and uncertain missing-recency items, and additional reel/generalized replenishment policy cleanup.
+- The biggest remaining reorder-core gaps are deeper low-confidence classification, stricter separation between explicit-rule-protected and uncertain missing-recency items, additional reel/generalized replenishment policy cleanup, stronger candidate-preservation safeguards, and more dynamic hardware buffering tied to real usage history.
 
 ### Shipping-aware release logic
 
@@ -95,7 +95,7 @@ The goal is to keep one phased checklist that reflects what is actually done in 
 - [ ] Decide whether to fully remove the legacy combined `Part Sales & Receipts` path after live-file coverage is proven.
 - [x] Tighten live `DETAILED PART SALES.csv` parsing for edge cases where the first hyphen in the combined code token may not be the true PG/item boundary.
 - [x] Measure real-world line-code resolution coverage after live parsing and add diagnostics for unresolved detailed-sales rows.
-- [ ] Decide how receipt activity should influence target-stock / reorder suppression beyond review/confidence handling.
+- [x] Decide how receipt activity should influence target-stock / reorder suppression beyond review/confidence handling.
 - [ ] Decide whether any detailed-sales suggestion cases should replace the active suggestion by default instead of remaining compare/review signals only.
 
 ## Phase 3. Rule Model Expansion and Pack-Trigger Behavior
@@ -143,6 +143,15 @@ The goal is to keep one phased checklist that reflects what is actually done in 
 - [x] Make low-confidence recency buckets actionable in Review filters and summary text.
 - [x] Add cadence-aware heuristics for high-velocity small-pack items beyond the current two-pack hardware floor.
 - [x] Decide whether `reel_review` should remain distinct or split into `reel_auto` plus generalized replenishment-unit policies.
+- [ ] Keep negative QOH clamped to zero for ordering quantities while continuing to surface negative-balance data-quality warnings.
+- [ ] Add explicit candidate-preservation rules so items can enter the assignment session from inventory/min-max protection signals even when loaded sales rows are weak or absent.
+- [ ] Add stronger source-confidence handling when X4 min/max, X4 12-month sales, and detailed-sales annualization materially disagree.
+- [ ] Add min/max sanity normalization and review flags for invalid or suspicious source pairs such as `max < min`, negative values, or extreme jumps.
+- [ ] Add churn-damping / hysteresis so small source-data changes do not unnecessarily flip reorder decisions or target-stock outcomes between runs.
+- [ ] Clarify and deepen the split between hard reorder floors and preferred operational targets so protected reorder timing can stay stable without permanently inflating routine targets.
+- [ ] Replace the static hardware two-pack bias with a more dynamic hardware buffer based on available evidence such as sales window length, annualized demand, receipt cadence, and pack size.
+- [ ] Make hardware buffer heuristics get more permissive only when the loaded history window is long enough and the demand shape is stable enough to justify it.
+- [ ] Clean up pack semantics so "unknown pack", "no pack data", and explicit operator intent to order exact quantities are represented distinctly instead of overloading zero-like values.
 
 ## Phase 5. Vendor Shipping Policy Model
 
@@ -198,7 +207,7 @@ The goal is to keep one phased checklist that reflects what is actually done in 
 
 This is the next high-value shipping slice. The current model already uses `repl_cost` from inventory data and the current weekday to decide `release_decision`, but it does not yet reason about expected future threshold reach or order-ahead timing.
 
-- [ ] Confirm and document the cost source used for shipping decisions:
+- [x] Confirm and document the cost source used for shipping decisions:
   - inventory `repl_cost`
   - report-provided extended/value fields if available
   - fallback behavior when cost is missing or zero
@@ -207,25 +216,25 @@ This is the next high-value shipping slice. The current model already uses `repl
   - zero cost
   - obviously stale or malformed cost
   - vendor totals with mixed known/unknown value coverage
-- [ ] Add vendor-level threshold progress signals:
+- [x] Add vendor-level threshold progress signals:
   - current estimated vendor total
   - amount short of threshold
   - percentage of threshold reached
   - value coverage confidence
-- [ ] Add shipping-planning dates:
+- [x] Add shipping-planning dates:
   - next preferred free-freight weekday
   - recommended order/export date
   - business-day-aware "release one day early" date when appropriate
-- [ ] Decide and encode the operational rule for "day before" export:
+- [x] Decide and encode the operational rule for "day before" export:
   - calendar day
   - business day
   - vendor-configurable lead days
-- [ ] Add a release decision family for planned future release, for example:
+- [x] Add a release decision family for planned future release, for example:
   - `hold_for_threshold`
   - `hold_until_free_day`
   - `export_next_business_day_for_free_day`
   - `release_now_threshold_reached`
-- [ ] Show planning outputs in Review & Export:
+- [x] Show planning outputs in Review & Export:
   - threshold shortfall
   - next free-freight day
   - planned export date
@@ -238,7 +247,7 @@ This is the next high-value shipping slice. The current model already uses `repl
   - exported now for immediate ordering
   - exported early for a scheduled free-freight release
   - still held and not exported
-- [ ] Add tests for:
+- [x] Add tests for:
   - threshold shortfall math from report cost
   - mixed known/unknown cost coverage
   - next-free-day calculation
@@ -276,12 +285,17 @@ This is the next high-value shipping slice. The current model already uses `repl
 - [x] Document and centralize final precedence between current cell, selected cells, selected rows, and right-click snapshot state.
 - [ ] Tighten undo/history boundaries so they always match the user's perceived edit unit.
 - [ ] Separate full-session, active-filtered, and visible-row performance paths more aggressively for very large sessions.
+- [ ] Require removal actions to verify stable row id plus current item identity before mutating the session, so stale UI state cannot remove the wrong candidate.
+- [ ] Add a protected removal path for items that still meet reorder-worthiness signals from inventory floors, trigger rules, suspense demand, or other protected evidence, routing them to review before deletion instead of silently dropping them.
+- [ ] Add explicit "why this item survived removal" reasoning for protected candidates so operators can distinguish true false-positives from protected-but-uncertain reorder rows.
+- [ ] Add audit visibility for session removals so a removed row can be traced back as intentional operator action rather than upstream candidate loss.
+- [ ] Promote unresolved source-mapping and high inventory-coverage-gap cases into an explicit review workflow so weak upstream joins do not quietly degrade ordering correctness.
 
 ## Phase 9. Workflow Simplification and Default-First UX
 
 This phase is about reducing required operator input. Humans will consistently choose the path of least resistance, so the app should make the safest routine path the easiest one.
 
-- [ ] Treat the common path as:
+- [x] Treat the common path as:
   - load reports
   - review exceptions
   - export the default recommended batch
@@ -300,7 +314,7 @@ This phase is about reducing required operator input. Humans will consistently c
 - [x] Make missing policy data fail soft with safe defaults instead of forcing immediate user intervention.
 - [x] Prefer auto-filled values from current reports and saved history before asking for manual entry.
 - [x] Collapse low-value fields behind an "Advanced" affordance in dialogs where the common workflow only needs one or two inputs.
-- [ ] Shift review emphasis from "touch every item" to "touch only exceptions":
+- [x] Shift review emphasis from "touch every item" to "touch only exceptions":
   - held vendors with meaningful shortfall
   - urgent overrides
   - low-confidence recommendations
@@ -312,7 +326,7 @@ This phase is about reducing required operator input. Humans will consistently c
 - [x] Add a single "Recommended Action" concept at both item and vendor level, so the operator can mostly follow one instruction instead of interpreting several fields.
 - [x] Prefer persistent user choices over repeated prompts when the same decision recurs often.
 - [x] Audit current prompts and dialogs for removal, consolidation, or safe defaulting.
-- [ ] Document a UX rule for future features:
+- [x] Document a UX rule for future features:
   - no new required field unless the app cannot infer or default it safely
   - no new prompt unless different user choices create materially different outcomes
   - advanced controls should not slow down the routine path
@@ -325,9 +339,9 @@ These are the best next steps after reconciliation.
 - [x] Add saved user preferences for export-scope prompting vs auto-selection.
 - [x] Add broader vendor-policy defaulting beyond explicit presets to reduce setup friction without guessing unsafe values.
 - [x] Add a compact exception-first review workflow that highlights only the items/vendors needing human judgment.
-- [ ] Add cost-confidence and threshold-progress signals to vendor shipping decisions.
-- [ ] Add planned release dates and "export the day before free-freight day" workflow for vendor policies.
-- [ ] Add stronger vendor-group release consolidation and explicit urgent paid-freight override workflow.
+- [x] Add cost-confidence and threshold-progress signals to vendor shipping decisions.
+- [x] Add planned release dates and "export the day before free-freight day" workflow for vendor policies.
+- [x] Add stronger vendor-group release consolidation and explicit urgent paid-freight override workflow.
 - [x] Replace the combined sales/receipts input path with `DETAILEDPARTSALES.csv` + `ReceivedPartsDetail.csv`, including receipt-derived vendor evidence and receipt-aware reorder protection.
 - [x] Deepen shipping review/export options so users can export immediate, planned-tomorrow, or all-due batches intentionally.
 - [x] Deepen recency-confidence classification for new-item / stale-item / critical-item distinctions.
@@ -335,6 +349,13 @@ These are the best next steps after reconciliation.
 - [x] Treat recent local PO history as protective recency evidence for review bucketing, while still keeping missing-recency items review-first by default.
 - [x] Distinguish explicit critical min-rule protection from other rule-protected missing-recency cases.
 - [x] Cover weekly-order hardware cadence cases with inferred trigger-floor behavior for active small-pack hardware.
+- [ ] Preserve reorder-worthy candidates that are below protected inventory floors even when they have little or no loaded sales history.
+- [ ] Replace the fixed hardware floor with evidence-weighted hardware buffer rules that improve as the loaded history window becomes longer and more stable.
+- [ ] Keep negative QOH from inflating order quantities beyond the zero-on-hand interpretation while still flagging the underlying source issue for review.
+- [ ] Add removal-protection tests for rows that still qualify through trigger rules, inventory-floor protection, suspense demand, or other protected reorder evidence.
+- [ ] Add tests covering churn-control behavior so tiny source-data changes do not reorder or suppress items needlessly.
+- [ ] Add tests covering explicit pack-state distinctions between unknown pack data, no-pack items, and deliberate exact-quantity overrides.
+- [ ] Add tests covering unresolved source-mapping / inventory-coverage review routing so weak joins fail visible rather than silent.
 - [ ] Add remaining edge-case tests called out in the original `0.2.5` roadmap, especially:
 - [ ] Complete packaged-app self-update replacement flow.
 - [ ] Finish bulk edit-target integrity hardening under rapid interactions.
@@ -344,6 +365,7 @@ These are the best next steps after reconciliation.
 The `v0.2.x` line is in good shape when all of the following are true:
 
 - reorder behavior is explainable for pack, reel, hardware, confidence, and shipping cases
+- reorder-worthy items are not silently lost because of source gaps, stale row state, or over-aggressive removal paths
 - shared/local persistence behavior is operationally trustworthy
 - shipping policy affects release workflow, not just display text
 - bulk editor rapid-edit correctness is no longer a known risk

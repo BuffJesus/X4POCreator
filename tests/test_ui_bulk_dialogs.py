@@ -373,6 +373,67 @@ class BulkDialogTests(unittest.TestCase):
 
         self.assertEqual(seen["items"], ["A", "B"])
 
+    def test_bulk_remove_not_needed_flushes_pending_edit_before_reading_visible_rows(self):
+        state = {"rows": ["0"]}
+        seen = {}
+
+        class FakeSheet:
+            def flush_pending_edit(self):
+                state["rows"] = ["1"]
+            def visible_row_ids(self):
+                return list(state["rows"])
+
+        def fake_not_needed_reason(_app, item, _buffer):
+            seen.setdefault("items", []).append(item["item_code"])
+            return "candidate", True
+
+        app = SimpleNamespace(
+            bulk_sheet=FakeSheet(),
+            filtered_items=[
+                {
+                    "line_code": "AER-",
+                    "item_code": "A",
+                    "vendor": "",
+                    "status": "skip",
+                    "final_qty": 0,
+                    "order_qty": 0,
+                    "suggested_qty": 0,
+                    "gross_need": 0,
+                    "raw_need": 0,
+                    "pack_size": 1,
+                },
+                {
+                    "line_code": "AER-",
+                    "item_code": "B",
+                    "vendor": "",
+                    "status": "skip",
+                    "final_qty": 0,
+                    "order_qty": 0,
+                    "suggested_qty": 0,
+                    "gross_need": 0,
+                    "raw_need": 0,
+                    "pack_size": 1,
+                },
+            ],
+            inventory_lookup={
+                ("AER-", "A"): {"qoh": 0, "max": 0},
+                ("AER-", "B"): {"qoh": 0, "max": 0},
+            },
+            on_po_qty={("AER-", "A"): 0, ("AER-", "B"): 0},
+            _suggest_min_max=lambda key: (0, 0),
+            _get_remove_not_needed_scope=lambda: "unassigned_only",
+            root=None,
+            bulk_tree=SimpleNamespace(get_children=lambda: (), bbox=lambda iid: True),
+            last_removed_bulk_items=[],
+        )
+
+        with patch("ui_bulk_dialogs.not_needed_reason", side_effect=fake_not_needed_reason), \
+             patch("ui_bulk_dialogs.tk.Toplevel", side_effect=RuntimeError("stop after candidate selection")):
+            with self.assertRaisesRegex(RuntimeError, "stop after candidate selection"):
+                ui_bulk_dialogs.bulk_remove_not_needed(app, "screen", 5)
+
+        self.assertEqual(seen["items"], ["B"])
+
     def test_item_details_rows_include_sales_history_and_attention_signals(self):
         app = SimpleNamespace(
             on_po_qty={("AER-", "GH781-4"): 4},
@@ -509,6 +570,8 @@ class BulkDialogTests(unittest.TestCase):
             "release_lead_business_days": 1,
             "release_timing_mode": "release_on_threshold",
             "release_decision": "hold_for_threshold",
+            "release_decision_detail": "hold_for_threshold",
+            "release_decision_detail_label": "Hold for threshold",
             "release_reason": "Held for freight threshold 2000 (current vendor total 1200)",
             "vendor_order_value_total": 1200.0,
             "vendor_value_coverage": "partial",
@@ -543,6 +606,7 @@ class BulkDialogTests(unittest.TestCase):
         self.assertEqual(row_lookup["Release Lead Days"], "1")
         self.assertEqual(row_lookup["Timing Mode"], "release_on_threshold")
         self.assertEqual(row_lookup["Release Decision"], "hold_for_threshold")
+        self.assertEqual(row_lookup["Release Detail"], "Hold for threshold")
         self.assertIn("freight threshold 2000", row_lookup["Release Reason"])
         self.assertEqual(row_lookup["Vendor Order Value"], "1200.00")
         self.assertEqual(row_lookup["Vendor Value Coverage"], "partial")

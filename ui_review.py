@@ -27,6 +27,19 @@ def is_critical_shipping_hold(item):
     return shipping_flow.is_critical_shipping_hold(item)
 
 
+def has_urgent_release_override(item):
+    trigger = str(item.get("release_trigger", "") or "").strip().lower()
+    if trigger in ("urgent_floor", "vendor_urgent_consolidation"):
+        return True
+    detail = str(item.get("release_decision_detail", "") or "").strip().lower()
+    return detail in (
+        "release_now_urgent_floor",
+        "release_now_paid_urgent_freight",
+        "release_now_vendor_urgent_consolidation",
+        "release_now_paid_urgent_vendor_consolidation",
+    )
+
+
 def has_suggestion_gap(item):
     compare_code = str(item.get("detailed_suggestion_compare", "") or "").strip().lower()
     if compare_code:
@@ -35,6 +48,8 @@ def has_suggestion_gap(item):
 
 
 def is_review_exception(item):
+    if has_urgent_release_override(item):
+        return True
     if release_filter_bucket(item) != "Release Now":
         return True
     if str(item.get("status", "") or "").strip().lower() in ("review", "warning"):
@@ -128,6 +143,23 @@ def on_review_focus_changed(app):
         app._apply_review_filter()
 
 
+def resolved_review_focus_label(app):
+    focus = "All Items"
+    current_focus_var = getattr(app, "var_review_focus_filter", None)
+    current_focus = current_focus_var.get() if current_focus_var and hasattr(current_focus_var, "get") else ""
+    if current_focus in ("All Items", "Exceptions Only"):
+        focus = current_focus
+    elif callable(getattr(app, "_get_review_export_focus", None)):
+        focus = review_focus_label_for_setting(app._get_review_export_focus())
+    auto_fallback = False
+    if focus == "Exceptions Only":
+        assigned_items = list(getattr(app, "assigned_items", []) or [])
+        if assigned_items and not any(is_review_exception(item) for item in assigned_items):
+            focus = "All Items"
+            auto_fallback = True
+    return focus, auto_fallback
+
+
 def build_vendor_release_plan_rows(app):
     return shipping_flow.build_vendor_release_plan(getattr(app, "assigned_items", []))
 
@@ -186,17 +218,83 @@ def compact_review_bucket(row):
 
 def compact_review_reason(row):
     bucket = compact_review_bucket(row)
+    paid_urgent_count = int(float(row.get("paid_urgent_count", 0) or 0))
+    vendor_urgent_consolidation_count = int(float(row.get("vendor_urgent_consolidation_count", 0) or 0))
+    urgent_release_count = int(float(row.get("urgent_release_count", 0) or 0))
+    if paid_urgent_count > 0:
+        detail = f"Paid urgent freight override is active for {paid_urgent_count} item(s)"
+        if vendor_urgent_consolidation_count > 0:
+            detail += f"; {vendor_urgent_consolidation_count} additional item(s) are riding the urgent vendor consolidation"
+        detail += "."
+        if shipping_flow.vendor_has_value_risk(row):
+            detail += " Review value coverage before export."
+        return detail
+    if urgent_release_count > 0 or vendor_urgent_consolidation_count > 0:
+        detail = f"Urgent release is active for {urgent_release_count} item(s)"
+        if vendor_urgent_consolidation_count > 0:
+            detail += f"; {vendor_urgent_consolidation_count} additional item(s) are being consolidated with the urgent vendor PO"
+        detail += "."
+        if shipping_flow.vendor_has_value_risk(row):
+            detail += " Review value coverage before export."
+        return detail
+    if shipping_flow.vendor_has_value_risk(row):
+        coverage = str(row.get("vendor_value_coverage", "") or "").strip() or "unknown"
+        confidence = str(row.get("vendor_value_confidence", "") or "").strip() or "unknown"
+        unknown = int(float(row.get("vendor_value_unknown_items", 0) or 0))
+        missing_cost = int(float(row.get("vendor_value_missing_cost_items", 0) or 0))
+        zero_cost = int(float(row.get("vendor_value_zero_cost_items", 0) or 0))
+        invalid_cost = int(float(row.get("vendor_value_invalid_cost_items", 0) or 0))
+        detail = (
+            f"Vendor value coverage needs review: {coverage} ({confidence} confidence, "
+            f"{unknown} unknown"
+        )
+        if missing_cost:
+            detail += f", missing cost {missing_cost}"
+        if zero_cost:
+            detail += f", zero cost {zero_cost}"
+        if invalid_cost:
+            detail += f", invalid cost {invalid_cost}"
+        detail += ")."
+        if bucket != "Blocked":
+            return detail
     if bucket == "Blocked":
         if int(row.get("critical_held_count", 0) or 0) > 0:
             return "Critical held items need review before waiting on policy."
         if str(row.get("release_plan_status", "") or "").strip() == "hold_accumulating_to_threshold":
             shortfall = float(row.get("vendor_threshold_shortfall", 0.0) or 0.0)
+            suffix = compact_review_reason({
+                **row,
+                "release_now_count": 1,
+                "planned_today_count": 0,
+                "held_count": 0,
+                "critical_held_count": 0,
+            }) if shipping_flow.vendor_has_value_risk(row) else ""
+            if suffix:
+                return f"Held toward freight threshold; short {shortfall:.2f}. {suffix}"
             return f"Held toward freight threshold; short {shortfall:.2f}."
         next_free = str(row.get("next_free_ship_date", "") or "").strip()
         planned_export = str(row.get("planned_export_date", "") or "").strip()
         if planned_export:
+            suffix = compact_review_reason({
+                **row,
+                "release_now_count": 1,
+                "planned_today_count": 0,
+                "held_count": 0,
+                "critical_held_count": 0,
+            }) if shipping_flow.vendor_has_value_risk(row) else ""
+            if suffix:
+                return f"Held until planned export date {planned_export}. {suffix}"
             return f"Held until planned export date {planned_export}."
         if next_free:
+            suffix = compact_review_reason({
+                **row,
+                "release_now_count": 1,
+                "planned_today_count": 0,
+                "held_count": 0,
+                "critical_held_count": 0,
+            }) if shipping_flow.vendor_has_value_risk(row) else ""
+            if suffix:
+                return f"Held for free-ship day {next_free}. {suffix}"
             return f"Held for free-ship day {next_free}."
         return "Held by shipping policy."
     if bucket == "Planned Today":
@@ -319,6 +417,17 @@ def export_review_scope(app, scope):
     )
 
 
+def export_review_recommended(app):
+    export_flow.do_export(
+        app,
+        app._export_vendor_po,
+        app._data_path("order_history"),
+        app._data_path("sessions"),
+        export_scope_label="recommended export items",
+        selection_mode="default",
+    )
+
+
 def show_release_plan(app):
     rows = build_vendor_release_plan_rows(app)
     if not rows:
@@ -344,7 +453,7 @@ def show_release_plan(app):
 
     columns = (
         "vendor", "recommended", "policy", "plan", "immediate", "planned", "held", "total_value",
-        "shortfall", "progress", "coverage", "timing", "next_free", "planned_export",
+        "shortfall", "progress", "coverage", "confidence", "known_pct", "cost_issues", "detail", "timing", "next_free", "planned_export",
     )
     tree = ttk.Treeview(frame, columns=columns, show="headings", selectmode="browse")
     headings = {
@@ -359,6 +468,10 @@ def show_release_plan(app):
         "shortfall": "Shortfall",
         "progress": "Progress %",
         "coverage": "Coverage",
+        "confidence": "Confidence",
+        "known_pct": "Known %",
+        "cost_issues": "Cost Issues",
+        "detail": "Release Detail",
         "timing": "Timing",
         "next_free": "Next Free-Ship",
         "planned_export": "Planned Export",
@@ -375,6 +488,10 @@ def show_release_plan(app):
         "shortfall": 90,
         "progress": 80,
         "coverage": 80,
+        "confidence": 85,
+        "known_pct": 75,
+        "cost_issues": 95,
+        "detail": 160,
         "timing": 170,
         "next_free": 100,
         "planned_export": 100,
@@ -400,6 +517,14 @@ def show_release_plan(app):
                 f'{row["vendor_threshold_shortfall"]:.2f}',
                 f'{row["vendor_threshold_progress_pct"]:.2f}',
                 row.get("vendor_value_coverage", "") or "-",
+                row.get("vendor_value_confidence", "") or "-",
+                f'{float(row.get("vendor_value_known_pct", 0.0) or 0.0):.0f}',
+                (
+                    f'M{int(row.get("vendor_value_missing_cost_items", 0) or 0)}/'
+                    f'Z{int(row.get("vendor_value_zero_cost_items", 0) or 0)}/'
+                    f'I{int(row.get("vendor_value_invalid_cost_items", 0) or 0)}'
+                ),
+                row.get("release_decision_detail_label", "") or "-",
                 row.get("release_timing_mode", "") or "-",
                 row.get("next_free_ship_date", "") or "-",
                 row.get("planned_export_date", "") or "-",
@@ -564,7 +689,7 @@ def build_review_tab(app):
     ttk.Label(frame, text="Review & Export", style="Header.TLabel").pack(anchor="w")
     ttk.Label(
         frame,
-        text="Review assigned items below. Final Qty is what will export. Why This Qty explains the calculation. Double-click Final Qty, Vendor, or Pack to edit. Select rows and press Delete to remove.",
+        text="Common path: review exceptions, then use Export Recommended. Final Qty is what will export. Why This Qty explains the calculation. Shipping planning columns show release posture, threshold shortfall, and planned timing. Double-click Final Qty, Vendor, or Pack to edit. Select rows and press Delete to remove.",
         style="SubHeader.TLabel",
         wraplength=800,
     ).pack(anchor="w", pady=(2, 8))
@@ -672,7 +797,10 @@ def build_review_tab(app):
     tree_frame = ttk.Frame(frame)
     tree_frame.pack(fill=tk.BOTH, expand=True, pady=4)
 
-    cols = ("vendor", "line_code", "item_code", "description", "order_qty", "status", "why", "pack_size")
+    cols = (
+        "vendor", "line_code", "item_code", "description", "order_qty", "status", "recommended_action",
+        "release_decision", "release_decision_detail", "threshold_shortfall", "next_free_ship_date", "planned_export_date", "why", "pack_size",
+    )
     app.tree = ttk.Treeview(tree_frame, columns=cols, show="headings", selectmode="extended")
 
     col_widths = {
@@ -682,6 +810,12 @@ def build_review_tab(app):
         "description": 200,
         "order_qty": 60,
         "status": 55,
+        "recommended_action": 140,
+        "release_decision": 120,
+        "release_decision_detail": 150,
+        "threshold_shortfall": 85,
+        "next_free_ship_date": 95,
+        "planned_export_date": 100,
         "why": 180,
         "pack_size": 45,
     }
@@ -692,13 +826,21 @@ def build_review_tab(app):
         "description": "Description",
         "order_qty": "Final Qty",
         "status": "Action",
+        "recommended_action": "Recommended",
+        "release_decision": "Release",
+        "release_decision_detail": "Release Detail",
+        "threshold_shortfall": "Shortfall",
+        "next_free_ship_date": "Next Free",
+        "planned_export_date": "Planned Export",
         "why": "Why This Qty",
         "pack_size": "Pack",
     }
 
     for col in cols:
         app.tree.heading(col, text=col_labels[col], command=lambda c=col: app._sort_tree(c))
-        anchor = "center" if col in ("order_qty", "pack_size", "status") else "w"
+        anchor = "center" if col in (
+            "order_qty", "pack_size", "status", "threshold_shortfall", "next_free_ship_date", "planned_export_date",
+        ) else "w"
         app.tree.column(col, width=col_widths[col], anchor=anchor)
     app.review_tree_labels = col_labels
     app.review_tree_columns = cols
@@ -740,24 +882,25 @@ def build_review_tab(app):
     right_btn_row.pack(anchor="e", fill=tk.X, pady=(8, 0))
     ttk.Button(
         right_btn_row,
-        text="Export POs",
+        text="Export Recommended",
         style="Big.TButton",
-        command=app._do_export,
+        command=lambda: export_review_recommended(app),
     ).pack(side=tk.RIGHT, padx=4)
     ttk.Button(
         right_btn_row,
-        text="Export Planned",
+        text="Export Planned Only",
         command=lambda: export_review_scope(app, "planned_only"),
     ).pack(side=tk.RIGHT, padx=4)
     ttk.Button(
         right_btn_row,
-        text="Export Immediate",
+        text="Export Immediate Only",
         command=lambda: export_review_scope(app, "immediate_only"),
     ).pack(side=tk.RIGHT, padx=4)
 
 
 def review_row_values(item):
     ps = item.get("pack_size")
+    threshold_shortfall = item.get("vendor_threshold_shortfall")
     return (
         item["vendor"],
         item["line_code"],
@@ -765,6 +908,12 @@ def review_row_values(item):
         item["description"],
         item["order_qty"],
         item.get("status", "ok"),
+        item.get("recommended_action", "") or "-",
+        item.get("release_decision", "") or "-",
+        item.get("release_decision_detail_label", "") or item.get("release_decision_detail", "") or "-",
+        f"{float(threshold_shortfall):.2f}" if isinstance(threshold_shortfall, (int, float)) else "-",
+        item.get("next_free_ship_date", "") or "-",
+        item.get("planned_export_date", "") or "-",
         item.get("why", ""),
         ps if ps else "",
     )
@@ -784,14 +933,8 @@ def populate_review_tab(app):
     if hasattr(app, "var_review_suggestion_source_filter"):
         app.var_review_suggestion_source_filter.set("ALL")
     app.var_review_release_filter.set("ALL")
-    focus = "All Items"
-    current_focus_var = getattr(app, "var_review_focus_filter", None)
-    current_focus = current_focus_var.get() if current_focus_var and hasattr(current_focus_var, "get") else ""
-    if current_focus in ("All Items", "Exceptions Only"):
-        focus = current_focus
-    get_focus = getattr(app, "_get_review_export_focus", None)
-    if callable(get_focus) and not current_focus:
-        focus = review_focus_label_for_setting(get_focus())
+    focus, auto_fallback = resolved_review_focus_label(app)
+    app._review_focus_auto_fallback = auto_fallback
     app.var_review_focus_filter.set(focus)
     apply_review_filter(app)
     update_review_summary(app)
@@ -812,10 +955,14 @@ def update_review_summary(app):
     suggestion_gap_count = 0
     suggestion_gap_breakdown = {}
     suggestion_source_counts = {}
+    value_coverage_issue_count = 0
+    urgent_override_count = 0
     for item in app.assigned_items:
         bucket = item.get("recency_review_bucket")
         if bucket:
             low_recency_counts[bucket] = low_recency_counts.get(bucket, 0) + 1
+        if has_urgent_release_override(item):
+            urgent_override_count += 1
         if item.get("receipt_vendor_ambiguous"):
             ambiguous_receipt_vendor_count += 1
         if str(item.get("reorder_attention_signal", "") or "").strip().lower() == "review_lumpy_demand":
@@ -832,6 +979,8 @@ def update_review_summary(app):
         source_code = str(item.get("suggested_source", "") or "").strip().lower()
         if source_code:
             suggestion_source_counts[source_code] = suggestion_source_counts.get(source_code, 0) + 1
+        if str(item.get("vendor_value_coverage", "") or "").strip().lower() in ("partial", "missing"):
+            value_coverage_issue_count += 1
     exportable_count = immediate_count + planned_count
     hold_summary = f" | Exportable now: {exportable_count} | Immediate: {immediate_count} | Exceptions: {exception_count}"
     if planned_count:
@@ -840,6 +989,10 @@ def update_review_summary(app):
         hold_summary += f" | Held by shipping policy: {held_count}"
     if critical_held_count:
         hold_summary += f" | Critical held: {critical_held_count}"
+    if urgent_override_count:
+        hold_summary += f" | Urgent overrides: {urgent_override_count}"
+    if value_coverage_issue_count:
+        hold_summary += f" | Value coverage issues: {value_coverage_issue_count}"
     if ambiguous_receipt_vendor_count:
         hold_summary += f" | Receipt vendor ambiguity: {ambiguous_receipt_vendor_count}"
     if lumpy_demand_count:
@@ -886,7 +1039,9 @@ def update_review_summary(app):
     app.lbl_review_summary.config(
         text=(
             f"{len(app.assigned_items)} items across {len(vendors)} vendor PO(s): {', '.join(sorted(vendors))} | "
-            f"Final Qty exports. Why This Qty explains the recommendation.{hold_summary}"
+            f"Final Qty exports. Why This Qty explains the recommendation."
+            f"{' No review exceptions were found, so all items are shown.' if getattr(app, '_review_focus_auto_fallback', False) else ''}"
+            f"{hold_summary}"
         )
     )
 

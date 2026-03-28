@@ -7,7 +7,8 @@ It is designed for a practical workflow:
 - filter out line codes or suspended customers you do not want in the run
 - review suggested quantities
 - assign vendors in bulk or one item at a time
-- export one PO import file per vendor
+- review exceptions instead of rereading every routine row
+- use `Export Recommended` for the normal export path
 - review a maintenance report for X4 cleanup items afterward
 
 ## What It Does
@@ -34,19 +35,23 @@ Key behaviors:
 3. Optionally exclude suspended customers.
 4. Use the bulk grid to review suggested quantities and assign vendors.
 5. Use the individual assignment tab for leftovers.
-6. Review the final grouped items.
-7. Export PO files.
+6. Review exceptions first in `Review & Export`.
+7. Use `Export Recommended` for the default export path, or choose an explicit immediate-only / planned-only export when needed.
 8. Review the maintenance report and optional startup warnings CSV if needed.
 
 ## Input Files
 
 Typical inputs:
-- `Part Sales & Receipts CSV` (required)
+- `Detailed Part Sales CSV` (required with `Received Parts Detail CSV`)
+- `Received Parts Detail CSV` (required with `Detailed Part Sales CSV`)
 - `On Hand Min/Max Sales CSV`
 - `On Hand Report CSV`
 - `Open PO Listing CSV`
 - `Suspended Items CSV`
 - `Order Multiples / Pack Sizes CSV`
+
+Legacy compatibility:
+- `Part Sales & Receipts CSV` is still supported as a fallback when the detailed pair is unavailable, but it is no longer the preferred daily workflow.
 
 The app can scan a folder and auto-detect supported report files, or you can browse to them manually.
 
@@ -108,6 +113,13 @@ The app can check GitHub for a newer release when it starts.
 - It uses the latest GitHub release for `BuffJesus/X4POCreator`
 - If a newer release is found, the app prompts the user and can open the release page
 - Network failures or missing connectivity do not block startup
+
+## UX Rule
+
+Default-first workflow is intentional:
+- no new required field unless the app cannot infer or default it safely
+- no new prompt unless different user choices materially change the outcome
+- advanced controls should not slow down the routine path
 
 Versioning note:
 

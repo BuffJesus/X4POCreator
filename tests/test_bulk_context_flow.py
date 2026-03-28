@@ -88,6 +88,41 @@ class BulkContextFlowTests(unittest.TestCase):
         self.assertEqual(events[0], "flush")
         self.assertEqual(events[2], ("ignore", {"MOT-:ABC123"}))
 
+    def test_ignore_from_bulk_flushes_pending_edit_before_reading_snapshot_selection(self):
+        events = []
+        item_a = {"line_code": "AER-", "item_code": "GH781-4"}
+        item_b = {"line_code": "MOT-", "item_code": "ABC123"}
+        row_id_a = ui_bulk.bulk_row_id(item_a)
+        row_id_b = ui_bulk.bulk_row_id(item_b)
+        state = {"snapshot": (row_id_a,)}
+
+        def flush_pending_edit():
+            events.append("flush")
+            state["snapshot"] = (row_id_b,)
+
+        fake_app = SimpleNamespace(
+            _right_click_bulk_context={"row_id": row_id_b},
+            bulk_sheet=SimpleNamespace(
+                flush_pending_edit=flush_pending_edit,
+                snapshot_row_ids=lambda: state["snapshot"],
+                explicit_selected_row_ids=lambda: (row_id_a,),
+                selected_row_ids=lambda: (row_id_a,),
+                current_row_id=lambda: row_id_a,
+            ),
+            filtered_items=[item_a, item_b],
+            _ignore_key=lambda lc, ic: f"{lc}:{ic}",
+            _ignore_items_by_keys=lambda keys: events.append(("ignore", keys)) or len(keys),
+        )
+
+        bulk_context_flow.ignore_from_bulk(
+            fake_app,
+            lambda title, message: events.append(("ask", title)) or True,
+            lambda title, message: events.append(("info", title, message)),
+        )
+
+        self.assertEqual(events[0], "flush")
+        self.assertEqual(events[2], ("ignore", {"MOT-:ABC123"}))
+
 
 if __name__ == "__main__":
     unittest.main()

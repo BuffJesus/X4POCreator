@@ -17,7 +17,8 @@ Normal flow
 - Exclude line codes or suspended customers you do not want in this run.
 - Review the Bulk Assign list, assign vendors, and adjust quantities only where needed.
 - Use Individual Assign for leftovers that need manual attention.
-- Review the final vendor groups and export the PO files.
+- Review exceptions first instead of rereading every routine item.
+- Use Export Recommended for the normal export path.
 - Use the maintenance report afterward to clean up X4 source values when needed.
 
 What each main tab is for
@@ -32,6 +33,8 @@ What each main tab is for
 Best practice
 - Use the latest reports from the same general time window.
 - Treat Bulk Assign as the main working screen and Individual as the exception path.
+- Treat Review & Export as an exception-first screen, not a touch-every-row screen.
+- Use Export Recommended unless you intentionally want immediate-only or planned-only scope.
 - Review warnings instead of exporting blindly.
 - Prefer fixing repeated pack, vendor, min, and max issues at the source when possible.
 """,
@@ -244,6 +247,7 @@ Review table
 - Final Qty is what will export.
 - Why This Qty explains the recommendation in plain language.
 - Review & Export can default to Exceptions Only so routine items do not crowd the screen.
+- If no exceptions are present, Review automatically falls back to All Items so the screen stays usable.
 - The Focus filter switches between All Items and Exceptions Only.
 - The Release filter separates Release Now, Planned Today, and Held items.
 - If multiple rows are selected, editing one editable cell in that column applies that value across the selected rows.
@@ -269,6 +273,7 @@ Export
 - Export writes one PO file per vendor.
 - The export step also saves a session snapshot for traceability.
 - Maintenance output reflects X4 source values, target values, and suggested values where appropriate.
+- Export Recommended is the normal path from Review & Export.
 - Mixed immediate/planned export behavior can be saved as a workflow default.
 - The default can be Export All Exportable, Immediate Only, or Ask When Mixed.
 - Scoped exports from Release Plan still use the normal export pipeline, history, and session snapshot behavior.
@@ -321,6 +326,7 @@ Important behavior
 
 How to work with it
 - Use Review & Export in Exceptions Only mode for the fastest path.
+- Treat urgent overrides as review-first exceptions even when they are exportable now.
 - Use Release Plan when you want to think by vendor instead of by item.
 - If a vendor is Planned Today, export its planned batch directly from Release Plan or include planned items in the normal export batch depending on your saved default.
 """,
@@ -460,6 +466,12 @@ def build_help_tab(app):
         style="SubHeader.TLabel",
         wraplength=900,
     ).pack(anchor="w", pady=(2, 10))
+    ttk.Label(
+        frame,
+        text="UX rule: no new required field unless the app cannot infer or default it safely, and no new prompt unless different user choices materially change the outcome.",
+        style="Info.TLabel",
+        wraplength=900,
+    ).pack(anchor="w", pady=(0, 10))
 
     settings_frame = ttk.LabelFrame(frame, text="Workflow Defaults", padding=10)
     settings_frame.pack(fill=tk.X, pady=(0, 10))

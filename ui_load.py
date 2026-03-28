@@ -74,6 +74,24 @@ LOAD_FILE_SECTIONS = (
 )
 
 
+def iter_load_file_rows(*, include_legacy=True):
+    for section in load_file_sections(include_legacy=include_legacy):
+        for row in section["rows"]:
+            yield row
+
+
+def ensure_load_file_vars(app, *, var_factory=tk.StringVar):
+    created = {}
+    for row in iter_load_file_rows(include_legacy=True):
+        attr_name = row["attr_name"]
+        variable = getattr(app, attr_name, None)
+        if variable is None:
+            variable = var_factory()
+            setattr(app, attr_name, variable)
+        created[attr_name] = variable
+    return created
+
+
 def load_file_sections(*, include_legacy=False):
     if include_legacy:
         return LOAD_FILE_SECTIONS
@@ -96,6 +114,7 @@ def refresh_load_file_sections(app):
 
 
 def build_load_tab(app):
+    ensure_load_file_vars(app)
     frame = ttk.Frame(app.notebook, padding=0)
     app.notebook.add(frame, text="  1. Load Files  ")
 
@@ -209,8 +228,10 @@ def build_load_tab(app):
 def _add_file_row(app, parent, row, label, attr_name, browse_key, hint):
     base_row = row * 2
     ttk.Label(parent, text=label).grid(row=base_row, column=0, sticky="w", padx=4, pady=(4, 2))
-    variable = tk.StringVar()
-    setattr(app, attr_name, variable)
+    variable = getattr(app, attr_name, None)
+    if variable is None:
+        variable = tk.StringVar()
+        setattr(app, attr_name, variable)
     ttk.Entry(parent, textvariable=variable, width=60).grid(row=base_row, column=1, padx=4, pady=(4, 2), sticky="ew")
     ttk.Button(parent, text="Browse...", command=lambda: app._browse(browse_key)).grid(row=base_row, column=2, padx=4, pady=(4, 2))
     ttk.Label(parent, text=hint, style="Path.TLabel").grid(

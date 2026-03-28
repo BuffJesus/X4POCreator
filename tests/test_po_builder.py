@@ -163,7 +163,7 @@ class POBuilderTests(unittest.TestCase):
             po_builder.POBuilderApp._get_review_export_focus(fake_app),
             po_builder.DEFAULT_REVIEW_EXPORT_FOCUS,
         )
-        self.assertEqual(po_builder.DEFAULT_REVIEW_EXPORT_FOCUS, "all_items")
+        self.assertEqual(po_builder.DEFAULT_REVIEW_EXPORT_FOCUS, "exceptions_only")
 
         po_builder.POBuilderApp._set_review_export_focus(fake_app, "all_items")
 
@@ -227,6 +227,47 @@ class POBuilderTests(unittest.TestCase):
         refresh_sections.assert_not_called()
         self.assertIn("Detailed Part Sales", status_calls[-1])
         self.assertIn("Received Parts Detail", status_calls[-1])
+        self.assertIn("left hidden", status_calls[-1])
+
+    def test_scan_folder_tolerates_hidden_legacy_variable_being_absent(self):
+        class FakeVar:
+            def __init__(self, value=""):
+                self.value = value
+
+            def get(self):
+                return self.value
+
+            def set(self, value):
+                self.value = value
+
+        status_calls = []
+        fake_app = SimpleNamespace(
+            var_scan_dir=FakeVar("C:\\Reports"),
+            var_show_legacy_inputs=FakeVar(False),
+            var_detailed_sales_path=FakeVar(""),
+            var_received_parts_path=FakeVar(""),
+            var_minmax_path=FakeVar(""),
+            var_onhand_path=FakeVar(""),
+            var_po_path=FakeVar(""),
+            var_susp_path=FakeVar(""),
+            var_packsize_path=FakeVar(""),
+            lbl_scan_status=SimpleNamespace(config=lambda **kwargs: status_calls.append(kwargs["text"])),
+        )
+
+        with patch("po_builder.os.path.isdir", return_value=True), patch(
+            "po_builder.parsers.scan_directory_for_reports",
+            return_value={
+                "sales": "C:\\Reports\\legacy.csv",
+                "detailedsales": "C:\\Reports\\detailed.csv",
+                "receivedparts": "C:\\Reports\\received.csv",
+            },
+        ), patch("po_builder.ui_load.refresh_load_file_sections") as refresh_sections:
+            po_builder.POBuilderApp._scan_folder(fake_app)
+
+        self.assertEqual(fake_app.var_detailed_sales_path.get(), "C:\\Reports\\detailed.csv")
+        self.assertEqual(fake_app.var_received_parts_path.get(), "C:\\Reports\\received.csv")
+        self.assertFalse(fake_app.var_show_legacy_inputs.get())
+        refresh_sections.assert_not_called()
         self.assertIn("left hidden", status_calls[-1])
 
     def test_scan_folder_auto_shows_legacy_sales_when_it_is_the_only_sales_source_found(self):

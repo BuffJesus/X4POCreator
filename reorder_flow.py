@@ -97,6 +97,9 @@ def suggest_min_max_with_source(app, key, min_annual_sales_for_suggestions):
         sug_min, sug_max = tune_detailed_sales_fallback_suggestion(stats, sug_min, sug_max)
         if sug_min is None and sug_max is None:
             return None, None, "none"
+        receipt_balance = receipt_sales_balance_for_key(app, key)
+        if receipt_balance.get("receipt_sales_balance") == "receipt_heavy":
+            return None, None, "none"
     return sug_min, sug_max, source
 
 
@@ -194,6 +197,30 @@ def suggest_min_max(app, key, min_annual_sales_for_suggestions):
 
 def receipt_history_for_key(app, key):
     return dict((getattr(app, "receipt_history_lookup", {}) or {}).get(key, {}) or {})
+
+
+def sales_history_for_key(app, key):
+    for item in getattr(app, "sales_items", []) or []:
+        if (item.get("line_code", ""), item.get("item_code", "")) == key:
+            return dict(item or {})
+    return {}
+
+
+def receipt_sales_balance_for_key(app, key):
+    sales = sales_history_for_key(app, key)
+    receipt_history = receipt_history_for_key(app, key)
+    detailed_stats = dict((getattr(app, "detailed_sales_stats_lookup", {}) or {}).get(key, {}) or {})
+    return performance_flow.classify_receipt_sales_balance({
+        "qty_sold": sales.get("qty_sold", 0),
+        "qty_received": sales.get("qty_received", 0),
+        "receipt_count": receipt_history.get("receipt_count", 0),
+        "avg_units_per_receipt": receipt_history.get("avg_units_per_receipt"),
+        "avg_units_per_transaction": (
+            detailed_stats.get("avg_units_per_transaction")
+            if detailed_stats.get("avg_units_per_transaction") is not None
+            else sales.get("avg_units_per_transaction")
+        ),
+    })
 
 
 def _description_for_key(app, key):

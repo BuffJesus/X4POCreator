@@ -110,7 +110,7 @@ DEFAULT_MIXED_EXPORT_BEHAVIOR = "all_exportable"
 MIXED_EXPORT_BEHAVIOR_OPTIONS = ("all_exportable", "immediate_only", "ask_when_mixed")
 DEFAULT_PLANNED_ONLY_EXPORT_BEHAVIOR = "export_automatically"
 PLANNED_ONLY_EXPORT_BEHAVIOR_OPTIONS = ("export_automatically", "ask_before_export")
-DEFAULT_REVIEW_EXPORT_FOCUS = "all_items"
+DEFAULT_REVIEW_EXPORT_FOCUS = "exceptions_only"
 REVIEW_EXPORT_FOCUS_OPTIONS = ("all_items", "exceptions_only")
 DEFAULT_REMOVE_NOT_NEEDED_SCOPE = "unassigned_only"
 REMOVE_NOT_NEEDED_SCOPE_OPTIONS = ("unassigned_only", "include_assigned")
@@ -717,14 +717,14 @@ class POBuilderApp:
             auto_enabled_legacy = True
 
         var_map = {
-            "sales": self.var_sales_path,
-            "detailedsales": self.var_detailed_sales_path,
-            "receivedparts": self.var_received_parts_path,
-            "minmax": self.var_minmax_path,
-            "onhand": self.var_onhand_path,
-            "po": self.var_po_path,
-            "susp": self.var_susp_path,
-            "packsize": self.var_packsize_path,
+            "sales": getattr(self, "var_sales_path", None),
+            "detailedsales": getattr(self, "var_detailed_sales_path", None),
+            "receivedparts": getattr(self, "var_received_parts_path", None),
+            "minmax": getattr(self, "var_minmax_path", None),
+            "onhand": getattr(self, "var_onhand_path", None),
+            "po": getattr(self, "var_po_path", None),
+            "susp": getattr(self, "var_susp_path", None),
+            "packsize": getattr(self, "var_packsize_path", None),
         }
 
         report_names = {
@@ -743,7 +743,7 @@ class POBuilderApp:
             if rtype == "sales" and found_detailed_pair and not legacy_visible:
                 hidden_legacy_sales = True
                 continue
-            if rtype in var_map:
+            if rtype in var_map and var_map[rtype] is not None:
                 var_map[rtype].set(filepath)
                 populated.append(report_names.get(rtype, rtype))
 
@@ -770,22 +770,25 @@ class POBuilderApp:
         )
         if path:
             var_map = {
-                "sales": self.var_sales_path,
-                "detailedsales": self.var_detailed_sales_path,
-                "receivedparts": self.var_received_parts_path,
-                "po": self.var_po_path,
-                "susp": self.var_susp_path,
-                "minmax": self.var_minmax_path,
-                "onhand": self.var_onhand_path,
-                "packsize": self.var_packsize_path,
+                "sales": getattr(self, "var_sales_path", None),
+                "detailedsales": getattr(self, "var_detailed_sales_path", None),
+                "receivedparts": getattr(self, "var_received_parts_path", None),
+                "po": getattr(self, "var_po_path", None),
+                "susp": getattr(self, "var_susp_path", None),
+                "minmax": getattr(self, "var_minmax_path", None),
+                "onhand": getattr(self, "var_onhand_path", None),
+                "packsize": getattr(self, "var_packsize_path", None),
             }
-            if which in var_map:
+            if which in var_map and var_map[which] is not None:
                 var_map[which].set(path)
 
     def _do_load(self):
-        sales_path = self.var_sales_path.get().strip()
-        detailed_sales_path = self.var_detailed_sales_path.get().strip()
-        received_parts_path = self.var_received_parts_path.get().strip()
+        sales_path = getattr(self, "var_sales_path", None)
+        detailed_sales_path = getattr(self, "var_detailed_sales_path", None)
+        received_parts_path = getattr(self, "var_received_parts_path", None)
+        sales_path = sales_path.get().strip() if sales_path is not None else ""
+        detailed_sales_path = detailed_sales_path.get().strip() if detailed_sales_path is not None else ""
+        received_parts_path = received_parts_path.get().strip() if received_parts_path is not None else ""
         if not sales_path and not (detailed_sales_path and received_parts_path):
             messagebox.showerror(
                 "Missing File",
@@ -798,11 +801,11 @@ class POBuilderApp:
             "sales": sales_path,
             "detailedsales": detailed_sales_path,
             "receivedparts": received_parts_path,
-            "po": self.var_po_path.get().strip(),
-            "susp": self.var_susp_path.get().strip(),
-            "onhand": self.var_onhand_path.get().strip(),
-            "minmax": self.var_minmax_path.get().strip(),
-            "packsize": self.var_packsize_path.get().strip(),
+            "po": getattr(self, "var_po_path", None).get().strip() if getattr(self, "var_po_path", None) is not None else "",
+            "susp": getattr(self, "var_susp_path", None).get().strip() if getattr(self, "var_susp_path", None) is not None else "",
+            "onhand": getattr(self, "var_onhand_path", None).get().strip() if getattr(self, "var_onhand_path", None) is not None else "",
+            "minmax": getattr(self, "var_minmax_path", None).get().strip() if getattr(self, "var_minmax_path", None) is not None else "",
+            "packsize": getattr(self, "var_packsize_path", None).get().strip() if getattr(self, "var_packsize_path", None) is not None else "",
         }
 
         try:
