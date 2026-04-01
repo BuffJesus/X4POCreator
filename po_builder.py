@@ -888,6 +888,23 @@ class POBuilderApp:
         status_parts.append(f"{len(self.all_line_codes)} line codes found")
         self.lbl_load_status.config(text="✓  " + "  ·  ".join(status_parts))
 
+        # Data quality summary
+        dq_summary = load_flow.compute_data_quality_summary(self.session)
+        ui_load.refresh_data_quality_card(self, dq_summary)
+        if dq_summary.get("gate_required"):
+            unresolved = dq_summary.get("unresolved_item_codes", 0)
+            total = dq_summary.get("total_items", 1)
+            pct = int(100 * unresolved / max(total, 1))
+            messagebox.showwarning(
+                "Data Quality",
+                (
+                    f"{unresolved} of {total} items ({pct}%) have unresolved detailed-sales line codes.\n\n"
+                    "These items will be missing detailed sales evidence. "
+                    "Check the X4 line-code mapping and re-load if possible.\n\n"
+                    "You may continue to assignment, but suggestions for affected items may be weaker."
+                ),
+            )
+
         # Populate exclude tab and enable it
         self._populate_exclude_tab()
         self.notebook.tab(1, state="normal")
@@ -1077,6 +1094,7 @@ class POBuilderApp:
         self.last_protected_bulk_items = []
         try:
             self._refresh_vendor_inputs()
+            ui_bulk.restore_bulk_filter_sort_state(self)
             self._populate_bulk_tree()
             self.notebook.tab(3, state="normal")
             self.notebook.select(3)

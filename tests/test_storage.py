@@ -346,6 +346,62 @@ class StorageTests(unittest.TestCase):
 
             self.assertEqual(loaded, {})
 
+    # --- Phase 4: session history loading ---
+
+    def test_load_session_snapshots_returns_empty_for_missing_directory(self):
+        self.assertEqual(storage.load_session_snapshots("/nonexistent/path/xyz"), [])
+
+    def test_load_session_snapshots_reads_recent_files_most_recent_first(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            snap1 = {"assigned_items": [{"line_code": "AER-", "item_code": "X1", "final_qty": 10}]}
+            snap2 = {"assigned_items": [{"line_code": "AER-", "item_code": "X1", "final_qty": 20}]}
+            p1 = Path(tmp) / "Session_20260301_120000_000001_1.json"
+            p2 = Path(tmp) / "Session_20260315_120000_000001_2.json"
+            p1.write_text(json.dumps(snap1), encoding="utf-8")
+            p2.write_text(json.dumps(snap2), encoding="utf-8")
+            import os, time
+            os.utime(str(p1), (time.time() - 100, time.time() - 100))
+            os.utime(str(p2), (time.time(), time.time()))
+            result = storage.load_session_snapshots(tmp, max_count=2)
+            self.assertEqual(len(result), 2)
+            # Most recent first
+            self.assertEqual(result[0]["assigned_items"][0]["final_qty"], 20)
+
+    def test_load_session_snapshots_respects_max_count(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            for i in range(5):
+                p = Path(tmp) / f"Session_2026030{i}_120000_000001_{i}.json"
+                p.write_text(json.dumps({"assigned_items": []}), encoding="utf-8")
+            result = storage.load_session_snapshots(tmp, max_count=2)
+            self.assertEqual(len(result), 2)
+
+    def test_extract_order_history_builds_per_item_dict(self):
+        snapshots = [
+            {"assigned_items": [
+                {"line_code": "AER-", "item_code": "X1", "final_qty": 10},
+                {"line_code": "AER-", "item_code": "X2", "final_qty": 5},
+            ]},
+            {"assigned_items": [
+                {"line_code": "AER-", "item_code": "X1", "final_qty": 20},
+            ]},
+        ]
+        history = storage.extract_order_history(snapshots)
+        self.assertIn(("AER-", "X1"), history)
+        self.assertIn(("AER-", "X2"), history)
+        self.assertCountEqual(history[("AER-", "X1")], [10, 20])
+        self.assertEqual(history[("AER-", "X2")], [5])
+
+    def test_extract_order_history_ignores_zero_and_missing_qty(self):
+        snapshots = [
+            {"assigned_items": [
+                {"line_code": "AER-", "item_code": "X1", "final_qty": 0},
+                {"line_code": "AER-", "item_code": "X1"},
+                {"line_code": "", "item_code": "X1", "final_qty": 10},
+            ]}
+        ]
+        history = storage.extract_order_history(snapshots)
+        self.assertNotIn(("AER-", "X1"), history)
+
 
 if __name__ == "__main__":
     unittest.main()

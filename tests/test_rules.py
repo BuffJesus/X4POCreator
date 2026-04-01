@@ -1424,6 +1424,244 @@ class RulesTests(unittest.TestCase):
         self.assertIn("Receipt pack evidence suggests 25", item["why"])
         self.assertIn("receipt_pack_mismatch", item["reason_codes"])
 
+    # --- Phase 2: reel_review / large_pack_review graduation ---
+
+    def test_reel_review_without_strong_evidence_stays_reel_review(self):
+        item = {"description": '1/4" 2WIRE 6500PSI HOSE'}
+        policy = determine_order_policy(item, {"max": 100}, 500, None)
+        self.assertEqual(policy, "reel_review")
+        self.assertNotIn("policy_graduated_from", item)
+
+    def test_reel_item_graduates_to_reel_auto_with_high_recency_and_active_sales(self):
+        item = {
+            "description": '1/4" 2WIRE 6500PSI HOSE',
+            "recency_confidence": "high",
+            "sales_health_signal": "active",
+        }
+        policy = determine_order_policy(item, {"max": 100}, 500, None)
+        self.assertEqual(policy, "reel_auto")
+        self.assertEqual(item.get("policy_graduated_from"), "reel_review")
+
+    def test_reel_item_graduates_to_reel_auto_with_high_recency_and_recent_local_order(self):
+        item = {
+            "description": '1/4" 2WIRE 6500PSI HOSE',
+            "recency_confidence": "high",
+            "sales_health_signal": "stable",
+            "has_recent_local_order": True,
+        }
+        policy = determine_order_policy(item, {"max": 100}, 500, None)
+        self.assertEqual(policy, "reel_auto")
+        self.assertEqual(item.get("policy_graduated_from"), "reel_review")
+
+    def test_reel_item_does_not_graduate_with_low_recency(self):
+        item = {
+            "description": '1/4" 2WIRE 6500PSI HOSE',
+            "recency_confidence": "low",
+            "sales_health_signal": "active",
+        }
+        policy = determine_order_policy(item, {"max": 100}, 500, None)
+        self.assertEqual(policy, "reel_review")
+
+    def test_reel_item_does_not_graduate_when_policy_locked(self):
+        item = {
+            "description": '1/4" 2WIRE 6500PSI HOSE',
+            "recency_confidence": "high",
+            "sales_health_signal": "active",
+        }
+        rule = {"policy_locked": True}
+        policy = determine_order_policy(item, {"max": 100}, 500, rule)
+        self.assertEqual(policy, "reel_review")
+        self.assertNotIn("policy_graduated_from", item)
+
+    def test_large_pack_review_graduates_to_pack_trigger_with_high_recency_and_active_sales(self):
+        item = {
+            "description": "LARGE CABLE TIE",
+            "performance_profile": "legacy",
+            "days_since_last_sale": 500,
+            "recency_confidence": "high",
+            "sales_health_signal": "active",
+        }
+        policy = determine_order_policy(item, {"max": 20}, 100, None)
+        self.assertEqual(policy, "pack_trigger")
+        self.assertEqual(item.get("policy_graduated_from"), "large_pack_review")
+
+    def test_large_pack_review_stays_without_strong_evidence(self):
+        item = {
+            "description": "LARGE CABLE TIE",
+            "performance_profile": "legacy",
+            "days_since_last_sale": 500,
+            "recency_confidence": "low",
+            "sales_health_signal": "active",
+        }
+        policy = determine_order_policy(item, {"max": 20}, 100, None)
+        self.assertEqual(policy, "large_pack_review")
+        self.assertNotIn("policy_graduated_from", item)
+
+    def test_reel_auto_calculates_pack_trigger_quantity(self):
+        suggested, why = calculate_suggested_qty(30, 500, "reel_auto", None, {"max": 100})
+        self.assertEqual(suggested, 500)
+        self.assertIn("Reel auto", why)
+        self.assertIn("graduated", why)
+
+    def test_reel_auto_replenishment_unit_mode_is_pack_trigger(self):
+        from rules import classify_replenishment_unit_mode
+        mode = classify_replenishment_unit_mode("reel_auto", {}, 500, None)
+        self.assertEqual(mode, "pack_trigger_replenishment")
+
+    def test_reel_auto_does_not_trigger_review_in_evaluate_item_status(self):
+        item = {"order_policy": "reel_auto", "raw_need": 50, "final_qty": 500}
+        status, flags = evaluate_item_status(item)
+        self.assertNotEqual(status, "review")
+        self.assertIn("reel_auto", flags)
+
+    def test_enrich_item_reel_auto_graduation_appears_in_reason_codes_and_why(self):
+        item = {
+            "description": '1/4" 2WIRE 6500PSI HOSE',
+            "qty_sold": 5,
+            "qty_suspended": 0,
+            "qty_received": 500,
+            "qty_on_po": 0,
+            "pack_size": 500,
+            "demand_signal": 5,
+            "recency_confidence": "high",
+            "sales_health_signal": "active",
+        }
+        inv = {"qoh": 0, "max": 100, "last_sale": "01-Mar-2026", "last_receipt": "15-Mar-2026"}
+        enrich_item(item, inv, 500, None)
+        self.assertEqual(item["order_policy"], "reel_auto")
+        self.assertIn("reel_auto", item["reason_codes"])
+        self.assertIn("graduated_from_reel_review", item["reason_codes"])
+        self.assertIn("graduated", item["why"].lower())
+
+    def test_reel_graduated_item_reverts_when_recency_drops(self):
+        item_weak = {
+            "description": '1/4" 2WIRE 6500PSI HOSE',
+            "recency_confidence": "medium",
+            "sales_health_signal": "active",
+        }
+        policy = determine_order_policy(item_weak, {"max": 100}, 500, None)
+        self.assertEqual(policy, "reel_review")
+        self.assertNotIn("policy_graduated_from", item_weak)
+
+    # --- Phase 3: confirmed_stocking lifecycle ---
+
+    def _missing_recency_item(self):
+        return {
+            "description": "WIDGET",
+            "qty_sold": 0,
+            "qty_suspended": 0,
+            "qty_received": 0,
+            "qty_on_po": 0,
+            "pack_size": 10,
+            "demand_signal": 5,
+        }
+
+    def test_confirmed_stocking_bypasses_recency_review_routes_to_auto_order(self):
+        item = self._missing_recency_item()
+        rule = {"confirmed_stocking": True}
+        enrich_item(item, {"qoh": 0, "max": 10}, 10, rule)
+        self.assertNotEqual(item["order_policy"], "manual_only")
+        self.assertTrue(item["confirmed_stocking"])
+        self.assertFalse(item.get("confirmed_stocking_expired", False))
+        self.assertIn("confirmed_stocking", item["reason_codes"])
+
+    def test_confirmed_stocking_false_still_routes_to_review_without_evidence(self):
+        item = self._missing_recency_item()
+        rule = {"confirmed_stocking": False}
+        enrich_item(item, {"qoh": 0, "max": 10}, 10, rule)
+        self.assertEqual(item["order_policy"], "manual_only")
+
+    def test_confirmed_stocking_expired_after_threshold_sessions_without_evidence(self):
+        from rules import CONFIRMED_STOCKING_MAX_SESSIONS_WITHOUT_EVIDENCE
+        item = self._missing_recency_item()
+        rule = {
+            "confirmed_stocking": True,
+            "confirmed_stocking_sessions_without_evidence": CONFIRMED_STOCKING_MAX_SESSIONS_WITHOUT_EVIDENCE,
+        }
+        enrich_item(item, {"qoh": 0, "max": 10}, 10, rule)
+        self.assertTrue(item["confirmed_stocking_expired"])
+        self.assertIn("confirmed_stocking_expired", item["reason_codes"])
+        self.assertEqual(item["order_policy"], "manual_only")
+
+    def test_confirmed_stocking_resets_counter_when_evidence_present(self):
+        item = self._missing_recency_item()
+        rule = {
+            "confirmed_stocking": True,
+            "confirmed_stocking_sessions_without_evidence": 2,
+        }
+        inv = {"qoh": 0, "max": 10, "last_sale": "01-Mar-2026", "last_receipt": "15-Mar-2026"}
+        enrich_item(item, inv, 10, rule)
+        self.assertEqual(item["confirmed_stocking_sessions_without_evidence"], 0)
+        self.assertEqual(rule["confirmed_stocking_sessions_without_evidence"], 0)
+
+    def test_confirmed_stocking_increments_counter_without_evidence(self):
+        item = self._missing_recency_item()
+        rule = {
+            "confirmed_stocking": True,
+            "confirmed_stocking_sessions_without_evidence": 1,
+        }
+        enrich_item(item, {"qoh": 0, "max": 10}, 10, rule)
+        self.assertEqual(item["confirmed_stocking_sessions_without_evidence"], 2)
+        self.assertEqual(rule["confirmed_stocking_sessions_without_evidence"], 2)
+
+    def test_confirmed_stocking_surfaces_in_why_detail(self):
+        item = self._missing_recency_item()
+        rule = {"confirmed_stocking": True}
+        enrich_item(item, {"qoh": 0, "max": 10}, 10, rule)
+        self.assertIn("Confirmed stocking", item["why"])
+        self.assertIn("operator-confirmed", item["why"])
+
+    def test_confirmed_stocking_expiry_surfaces_in_why_detail(self):
+        from rules import CONFIRMED_STOCKING_MAX_SESSIONS_WITHOUT_EVIDENCE
+        item = self._missing_recency_item()
+        rule = {
+            "confirmed_stocking": True,
+            "confirmed_stocking_sessions_without_evidence": CONFIRMED_STOCKING_MAX_SESSIONS_WITHOUT_EVIDENCE,
+        }
+        enrich_item(item, {"qoh": 0, "max": 10}, 10, rule)
+        self.assertIn("expired", item["why"])
+
+    # --- Phase 4: session learning / historical order qty ---
+
+    def _standard_item(self):
+        return {
+            "description": "WIDGET",
+            "qty_sold": 10,
+            "qty_suspended": 0,
+            "qty_received": 10,
+            "qty_on_po": 0,
+            "pack_size": 10,
+            "demand_signal": 10,
+        }
+
+    def test_no_history_no_gap_flag(self):
+        item = self._standard_item()
+        enrich_item(item, {"qoh": 0, "max": 20, "last_sale": "01-Mar-2026", "last_receipt": "15-Feb-2026"}, 10, None)
+        self.assertFalse(item.get("suggestion_vs_history_gap"))
+
+    def test_history_within_threshold_no_gap(self):
+        item = self._standard_item()
+        item["historical_order_qty"] = 20  # same as expected suggestion
+        enrich_item(item, {"qoh": 0, "max": 20, "last_sale": "01-Mar-2026", "last_receipt": "15-Feb-2026"}, 10, None)
+        self.assertFalse(item.get("suggestion_vs_history_gap"))
+
+    def test_history_gap_beyond_threshold_flags_review(self):
+        item = self._standard_item()
+        item["historical_order_qty"] = 100  # big divergence from a ~10-20 suggestion
+        enrich_item(item, {"qoh": 0, "max": 20, "last_sale": "01-Mar-2026", "last_receipt": "15-Feb-2026"}, 10, None)
+        self.assertTrue(item.get("suggestion_vs_history_gap"))
+        self.assertTrue(item.get("review_required"))
+        self.assertIn("suggestion_vs_history_gap", item["reason_codes"])
+        self.assertIn("History gap", item["why"])
+
+    def test_history_gap_ignored_for_manual_only_policy(self):
+        item = self._standard_item()
+        item["historical_order_qty"] = 100
+        # Force manual_only by removing recency
+        enrich_item(item, {"qoh": 0, "max": 20}, 10, None)  # no last_sale/last_receipt
+        if item.get("order_policy") == "manual_only":
+            self.assertFalse(item.get("suggestion_vs_history_gap"))
+
 
 if __name__ == "__main__":
     unittest.main()

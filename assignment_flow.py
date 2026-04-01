@@ -254,6 +254,12 @@ def prepare_assignment_session(
         elif has_exact_qty_override(rule):
             item["pack_size"] = None
             item["pack_size_source"] = "rule_exact_qty"
+        session_history = getattr(session, "session_history", {}) or {}
+        history_qtys = session_history.get(key, [])
+        if history_qtys:
+            sorted_qtys = sorted(history_qtys)
+            mid = len(sorted_qtys) // 2
+            item["historical_order_qty"] = sorted_qtys[mid] if len(sorted_qtys) % 2 != 0 else (sorted_qtys[mid - 1] + sorted_qtys[mid]) // 2
         enrich_item(item, inv, item.get("pack_size"), rule)
         preserved_reason = str(item.get("candidate_preserved_reason", "") or "").strip()
         if preserved_reason:

@@ -737,6 +737,57 @@ class LoadFlowTests(unittest.TestCase):
         self.assertIn("min_clamped_to_zero", startup_rows[0]["details"] + startup_rows[1]["details"])
         self.assertIn("max_raised_to_min", startup_rows[0]["details"] + startup_rows[1]["details"])
 
+    # --- Phase 5: data quality summary ---
+
+    def _make_session_with_quality_data(self, *, total=10, covered=10, unresolved=0, conflicts=0, missing_sale=0, missing_receipt=0):
+        session = AppSessionState()
+        session.sales_items = [{}] * total
+        session.inventory_lookup = {
+            (f"AER-", f"ITEM{i}"): {
+                "last_sale": None if i < missing_sale else "01-Mar-2026",
+                "last_receipt": None if i < missing_receipt else "15-Feb-2026",
+            }
+            for i in range(covered)
+        }
+        session.unresolved_detailed_item_codes = {f"UNRES{i}" for i in range(unresolved)}
+        session.detailed_sales_conflict_keys = {(f"AER-", f"CONF{i}") for i in range(conflicts)}
+        return session
+
+    def test_data_quality_summary_clean_session(self):
+        session = self._make_session_with_quality_data(total=10, covered=10, unresolved=0)
+        summary = load_flow.compute_data_quality_summary(session)
+        self.assertEqual(summary["total_items"], 10)
+        self.assertEqual(summary["inventory_covered"], 10)
+        self.assertEqual(summary["unresolved_item_codes"], 0)
+        self.assertAlmostEqual(summary["quality_score"], 1.0)
+        self.assertFalse(summary["gate_required"])
+
+    def test_data_quality_summary_gate_required_when_unresolved_exceeds_threshold(self):
+        # >10% unresolved triggers gate
+        session = self._make_session_with_quality_data(total=10, covered=10, unresolved=2)
+        summary = load_flow.compute_data_quality_summary(session)
+        self.assertTrue(summary["gate_required"])
+        self.assertLess(summary["quality_score"], 1.0)
+
+    def test_data_quality_summary_gate_not_required_when_unresolved_at_threshold(self):
+        # exactly 10% — should NOT gate (must be strictly >)
+        session = self._make_session_with_quality_data(total=10, covered=10, unresolved=1)
+        summary = load_flow.compute_data_quality_summary(session)
+        self.assertFalse(summary["gate_required"])
+
+    def test_data_quality_summary_counts_missing_recency(self):
+        session = self._make_session_with_quality_data(total=10, covered=5, missing_sale=3, missing_receipt=2)
+        summary = load_flow.compute_data_quality_summary(session)
+        self.assertEqual(summary["missing_last_sale"], 3)
+        self.assertEqual(summary["missing_last_receipt"], 2)
+
+    def test_data_quality_summary_handles_empty_session(self):
+        session = AppSessionState()
+        summary = load_flow.compute_data_quality_summary(session)
+        self.assertEqual(summary["total_items"], 0)
+        self.assertAlmostEqual(summary["quality_score"], 1.0)
+        self.assertFalse(summary["gate_required"])
+
 
 if __name__ == "__main__":
     unittest.main()

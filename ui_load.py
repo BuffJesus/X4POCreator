@@ -185,6 +185,25 @@ def build_load_tab(app):
     app.lbl_load_status = ttk.Label(content, text="", style="Info.TLabel")
     app.lbl_load_status.pack(anchor="w", pady=(12, 0))
 
+    app._data_quality_frame = ttk.LabelFrame(content, text="Data Quality", padding=10)
+    app._data_quality_frame.pack(fill=tk.X, pady=(8, 0))
+    app._data_quality_frame.pack_forget()  # hidden until a load completes
+
+    app._dq_lbl_total = ttk.Label(app._data_quality_frame, text="", style="Info.TLabel")
+    app._dq_lbl_total.grid(row=0, column=0, sticky="w")
+    app._dq_lbl_coverage = ttk.Label(app._data_quality_frame, text="", style="Info.TLabel")
+    app._dq_lbl_coverage.grid(row=1, column=0, sticky="w")
+    app._dq_lbl_unresolved = ttk.Label(app._data_quality_frame, text="", style="Info.TLabel")
+    app._dq_lbl_unresolved.grid(row=2, column=0, sticky="w")
+    app._dq_lbl_missing_sale = ttk.Label(app._data_quality_frame, text="", style="Info.TLabel")
+    app._dq_lbl_missing_sale.grid(row=3, column=0, sticky="w")
+    app._dq_lbl_missing_receipt = ttk.Label(app._data_quality_frame, text="", style="Info.TLabel")
+    app._dq_lbl_missing_receipt.grid(row=4, column=0, sticky="w")
+    app._dq_lbl_conflicts = ttk.Label(app._data_quality_frame, text="", style="Info.TLabel")
+    app._dq_lbl_conflicts.grid(row=5, column=0, sticky="w")
+    app._dq_lbl_score = ttk.Label(app._data_quality_frame, text="", style="Info.TLabel")
+    app._dq_lbl_score.grid(row=6, column=0, sticky="w", pady=(6, 0))
+
     footer = ttk.Frame(content)
     footer.pack(fill=tk.X, pady=(12, 0))
     footer.columnconfigure(1, weight=1)
@@ -198,6 +217,52 @@ def build_load_tab(app):
     ttk.Button(footer, text="Load Files & Continue ->", style="Big.TButton", command=app._do_load).grid(
         row=0, column=2, sticky="e"
     )
+
+
+def refresh_data_quality_card(app, summary):
+    """
+    Populate and show the data quality card with the provided summary dict.
+    summary is the dict returned by load_flow.compute_data_quality_summary().
+    """
+    frame = getattr(app, "_data_quality_frame", None)
+    if frame is None:
+        return
+
+    total = summary.get("total_items", 0)
+    covered = summary.get("inventory_covered", 0)
+    unresolved = summary.get("unresolved_item_codes", 0)
+    missing_sale = summary.get("missing_last_sale", 0)
+    missing_receipt = summary.get("missing_last_receipt", 0)
+    conflicts = summary.get("conflicting_items", 0)
+    score = summary.get("quality_score", 1.0)
+    gate = summary.get("gate_required", False)
+
+    app._dq_lbl_total.config(text=f"Items loaded: {total}")
+    app._dq_lbl_coverage.config(
+        text=f"Inventory coverage: {covered} of {total} items ({100*covered//max(total,1)}%)"
+    )
+    unresolved_text = (
+        f"Unresolved detailed-sales item codes: {unresolved}"
+        if unresolved == 0
+        else f"Unresolved detailed-sales item codes: {unresolved}  ← check X4 line-code mapping"
+    )
+    app._dq_lbl_unresolved.config(text=unresolved_text)
+    app._dq_lbl_missing_sale.config(
+        text=f"Items with no last-sale date: {missing_sale}"
+    )
+    app._dq_lbl_missing_receipt.config(
+        text=f"Items with no last-receipt date: {missing_receipt}"
+    )
+    app._dq_lbl_conflicts.config(
+        text=f"Detailed-sales vs X4 signal conflicts: {conflicts}"
+    )
+    score_pct = int(score * 100)
+    gate_note = "  ← acknowledgment required before assignment" if gate else ""
+    app._dq_lbl_score.config(
+        text=f"Quality score: {score_pct}%{gate_note}"
+    )
+
+    frame.pack(fill=tk.X, pady=(8, 0))
 
 
 def _add_file_row(app, parent, row, label, attr_name, browse_key, hint):

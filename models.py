@@ -106,6 +106,7 @@ class AppSessionState:
     qoh_adjustments: dict = field(default_factory=dict)
     duplicate_ic_lookup: dict = field(default_factory=dict)
     recent_orders: dict = field(default_factory=dict)
+    session_history: dict = field(default_factory=dict)  # (line_code, item_code) → [historical_order_qty, ...]
     vendor_policies: dict = field(default_factory=dict)
     default_vendor_policy_preset: str = ""
     order_rules: dict = field(default_factory=dict)

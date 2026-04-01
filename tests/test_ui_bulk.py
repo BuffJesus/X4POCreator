@@ -1668,6 +1668,73 @@ class UIBulkTests(unittest.TestCase):
         self.assertEqual(values[7], 0)
         self.assertEqual(values[8], 0)
 
+    # --- Phase 6: filter and sort persistence ---
+
+    class _FakeVar:
+        def __init__(self, value="ALL"):
+            self._value = value
+        def get(self):
+            return self._value
+        def set(self, v):
+            self._value = v
+
+    def _make_filter_app(self, settings=None):
+        saved_calls = []
+        app = SimpleNamespace(
+            app_settings=settings or {},
+            _bulk_sort_col=None,
+            _bulk_sort_reverse=False,
+            var_bulk_lc_filter=self._FakeVar("ALL"),
+            var_bulk_status_filter=self._FakeVar("ALL"),
+            var_bulk_source_filter=self._FakeVar("ALL"),
+            var_bulk_item_status=self._FakeVar("ALL"),
+            var_bulk_performance_filter=self._FakeVar("ALL"),
+            var_bulk_sales_health_filter=self._FakeVar("ALL"),
+            var_bulk_attention_filter=self._FakeVar("ALL"),
+        )
+        app._save_app_settings = lambda: saved_calls.append("saved")
+        app._saved_calls = saved_calls
+        return app
+
+    def test_save_bulk_filter_sort_state_persists_to_app_settings(self):
+        app = self._make_filter_app()
+        app.var_bulk_lc_filter.set("AER-")
+        app._bulk_sort_col = "vendor"
+        app._bulk_sort_reverse = True
+        ui_bulk.save_bulk_filter_sort_state(app)
+        self.assertEqual(app.app_settings["bulk_filter_state"]["lc"], "AER-")
+        self.assertEqual(app.app_settings["bulk_sort_col"], "vendor")
+        self.assertTrue(app.app_settings["bulk_sort_reverse"])
+        self.assertIn("saved", app._saved_calls)
+
+    def test_restore_bulk_filter_sort_state_applies_saved_values(self):
+        settings = {
+            "bulk_filter_state": {"lc": "AER-", "status": "Assigned", "source": "ALL",
+                                   "item_status": "ALL", "performance": "ALL",
+                                   "sales_health": "ALL", "attention": "ALL"},
+            "bulk_sort_col": "vendor",
+            "bulk_sort_reverse": True,
+        }
+        app = self._make_filter_app(settings)
+        ui_bulk.restore_bulk_filter_sort_state(app)
+        self.assertEqual(app.var_bulk_lc_filter.get(), "AER-")
+        self.assertEqual(app.var_bulk_status_filter.get(), "Assigned")
+        self.assertEqual(app._bulk_sort_col, "vendor")
+        self.assertTrue(app._bulk_sort_reverse)
+
+    def test_restore_bulk_filter_sort_state_handles_missing_settings(self):
+        app = self._make_filter_app({})
+        ui_bulk.restore_bulk_filter_sort_state(app)
+        self.assertEqual(app.var_bulk_lc_filter.get(), "ALL")
+        self.assertIsNone(app._bulk_sort_col)
+
+    def test_save_bulk_filter_sort_state_noop_when_no_app_settings(self):
+        app = SimpleNamespace()
+        del app  # no app_settings attr
+        app = SimpleNamespace()
+        # Should not raise
+        ui_bulk.save_bulk_filter_sort_state(app)
+
 
 if __name__ == "__main__":
     unittest.main()

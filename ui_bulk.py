@@ -1172,6 +1172,51 @@ def _try_targeted_filtered_refresh(app, row_ids, *, filter_state):
     return True
 
 
+def save_bulk_filter_sort_state(app):
+    """Persist the current bulk-editor filter and sort state to app_settings."""
+    app_settings = getattr(app, "app_settings", None)
+    if app_settings is None:
+        return
+    app_settings["bulk_filter_state"] = bulk_filter_state(app)
+    app_settings["bulk_sort_col"] = getattr(app, "_bulk_sort_col", None)
+    app_settings["bulk_sort_reverse"] = getattr(app, "_bulk_sort_reverse", False)
+    save_fn = getattr(app, "_save_app_settings", None)
+    if save_fn:
+        save_fn()
+
+
+def restore_bulk_filter_sort_state(app):
+    """
+    Restore bulk-editor filter and sort state from app_settings.
+    Safe to call before the filter vars exist — missing vars are silently skipped.
+    """
+    app_settings = getattr(app, "app_settings", None)
+    if app_settings is None:
+        return
+    saved_filter = app_settings.get("bulk_filter_state") or {}
+    var_map = {
+        "lc": "var_bulk_lc_filter",
+        "status": "var_bulk_status_filter",
+        "source": "var_bulk_source_filter",
+        "item_status": "var_bulk_item_status",
+        "performance": "var_bulk_performance_filter",
+        "sales_health": "var_bulk_sales_health_filter",
+        "attention": "var_bulk_attention_filter",
+    }
+    for key, attr in var_map.items():
+        value = saved_filter.get(key, "ALL")
+        var = getattr(app, attr, None)
+        if var is not None:
+            try:
+                var.set(value)
+            except Exception:
+                pass
+    sort_col = app_settings.get("bulk_sort_col")
+    if sort_col:
+        app._bulk_sort_col = sort_col
+        app._bulk_sort_reverse = bool(app_settings.get("bulk_sort_reverse", False))
+
+
 def apply_bulk_filter(app):
     flush_pending_bulk_sheet_edit(app)
     sync_bulk_cache_state(app)
@@ -1199,6 +1244,7 @@ def apply_bulk_filter(app):
         else:
             row_ids, rows = cached_rows
         app.bulk_sheet.set_rows(rows, row_ids)
+    save_bulk_filter_sort_state(app)
 
 
 def autosize_bulk_tree(app):
@@ -1226,6 +1272,7 @@ def sort_bulk_tree(app, col):
 
     sort_filtered_items(app, key=_sort_key, reverse=reverse)
     apply_bulk_filter(app)
+    save_bulk_filter_sort_state(app)
 
 
 def bulk_sort_value(app, item, col):

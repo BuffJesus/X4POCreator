@@ -2,6 +2,12 @@ import math
 
 REEL_REVIEW_MIN_PACK_QTY = 250
 LARGE_PACK_REVIEW_MIN_PACK_QTY = 25
+# Number of consecutive sessions without any new sale or receipt evidence before a
+# confirmed_stocking flag expires and the item reverts to manual review.
+CONFIRMED_STOCKING_MAX_SESSIONS_WITHOUT_EVIDENCE = 3
+# A current suggestion that deviates from historical_order_qty by more than this
+# fraction triggers suggestion_vs_history_gap review routing.
+SUGGESTION_VS_HISTORY_GAP_THRESHOLD = 0.5
 REEL_BLOCKLIST = (
     "BELT",
     "BOLT",
@@ -146,6 +152,8 @@ def classify_replenishment_unit_mode(policy, item, pack_qty, rule):
         return "pack_trigger_replenishment"
     if policy == "reel_review":
         return "reel_bulk_review"
+    if policy == "reel_auto":
+        return "pack_trigger_replenishment"
     if policy == "large_pack_review":
         return "large_pack_review"
     if pack_qty and pack_qty > 0:
@@ -478,10 +486,26 @@ def recency_review_bucket_label(bucket):
     }.get(bucket, bucket or "")
 
 
+def _confirmed_stocking_is_valid(rule):
+    """
+    Return True when the rule carries a non-expired confirmed_stocking flag.
+    The flag expires after CONFIRMED_STOCKING_MAX_SESSIONS_WITHOUT_EVIDENCE consecutive
+    sessions pass without any new sale or receipt evidence.
+    """
+    if not (rule and rule.get("confirmed_stocking")):
+        return False
+    sessions_without = rule.get("confirmed_stocking_sessions_without_evidence", 0) or 0
+    return sessions_without < CONFIRMED_STOCKING_MAX_SESSIONS_WITHOUT_EVIDENCE
+
+
 def should_force_recency_review(item, inv, rule):
     """Return True when a reorder candidate lacks enough recency evidence for auto-order."""
     recency_confidence = item.get("recency_confidence") or classify_recency_confidence(item, inv, rule)
     if recency_confidence != "low":
+        return False
+
+    # Operator has confirmed this item for stocking — bypass recency review if still valid.
+    if _confirmed_stocking_is_valid(rule):
         return False
 
     data_completeness = item.get("data_completeness", "")
@@ -504,6 +528,9 @@ def should_force_recency_review(item, inv, rule):
 def should_suppress_manual_only_qty(item):
     """Return True when a manual-review item should not carry a default order quantity."""
     if item.get("order_policy") != "manual_only":
+        return False
+    # Confirmed-stocking items keep their computed qty even in manual review.
+    if item.get("confirmed_stocking") and not item.get("confirmed_stocking_expired"):
         return False
     if (item.get("recency_confidence") or "") != "low":
         return False
@@ -801,10 +828,42 @@ def calculate_raw_need(item):
     return max(0, int(math.ceil(effective_order_floor - inventory_position)))
 
 
+def _qualifies_for_review_policy_graduation(item, inv, pack_qty, rule):
+    """
+    Return True if a reel_review or large_pack_review item has enough protective
+    evidence to auto-order this cycle without human review.
+
+    Graduation is blocked when the operator has explicitly set policy_locked on the rule.
+    At least one evidence tier must be satisfied:
+
+      Tier 1 — high recency + active sales health (clearest demand signal)
+      Tier 2 — high recency + operator has placed a recent local order (implicit confirmation)
+
+    When evidence weakens in a future session (recency drops, sales stall) the item
+    naturally falls back to reel_review / large_pack_review on re-evaluation.
+    """
+    if rule and rule.get("policy_locked"):
+        return False
+
+    recency_confidence = item.get("recency_confidence", "")
+    if recency_confidence != "high":
+        return False
+
+    sales_health = item.get("sales_health_signal", "")
+    if sales_health == "active":
+        return True
+
+    if item.get("has_recent_local_order"):
+        return True
+
+    return False
+
+
 def determine_order_policy(item, inv, pack_qty, rule):
     """
     Determine the ordering policy for an item.
-    Returns: 'standard', 'pack_trigger', 'soft_pack', 'exact_qty', 'reel_review', 'large_pack_review', or 'manual_only'
+    Returns: 'standard', 'pack_trigger', 'soft_pack', 'exact_qty',
+             'reel_review', 'reel_auto', 'large_pack_review', or 'manual_only'
     """
     if has_exact_qty_override(rule):
         return "exact_qty"
@@ -825,9 +884,15 @@ def determine_order_policy(item, inv, pack_qty, rule):
         and pack_qty > mx * 3
         and package_profile == "reel_stock"
     ):
+        if _qualifies_for_review_policy_graduation(item, inv, pack_qty, rule):
+            item["policy_graduated_from"] = "reel_review"
+            return "reel_auto"
         return "reel_review"
 
     if package_profile in ("hardware_large_pack", "large_nonreel_pack"):
+        if _qualifies_for_review_policy_graduation(item, inv, pack_qty, rule):
+            item["policy_graduated_from"] = "large_pack_review"
+            return "pack_trigger"
         return "large_pack_review"
 
     if (
@@ -884,6 +949,12 @@ def calculate_suggested_qty(raw_need, pack_qty, policy, rule, inv):
             suggested = math.ceil(suggested / min_qty) * min_qty
         return suggested, f"Soft pack: min order {min_qty}"
 
+    if policy == "reel_auto":
+        if pack_qty and pack_qty > 0:
+            rounded = max(pack_qty, math.ceil(raw_need / pack_qty) * pack_qty)
+            return rounded, f"Reel auto: graduated to auto-order, rounded to replenishment unit {pack_qty}"
+        return raw_need, "Reel auto: graduated to auto-order"
+
     if policy == "pack_trigger":
         if pack_qty and pack_qty > 0:
             rounded = max(pack_qty, math.ceil(raw_need / pack_qty) * pack_qty)
@@ -912,6 +983,9 @@ def evaluate_item_status(item):
         flags.append("reel_review")
         status = "review"
 
+    if item.get("order_policy") == "reel_auto":
+        flags.append("reel_auto")
+
     if item.get("order_policy") == "large_pack_review":
         flags.append("large_pack_review")
         status = "review"
@@ -936,6 +1010,41 @@ def evaluate_item_status(item):
     return status, flags
 
 
+def _apply_confirmed_stocking(item, inv, rule):
+    """
+    Stamp confirmed_stocking fields onto the item from the rule and advance the
+    sessions-without-evidence counter if applicable.
+
+    If the operator has set confirmed_stocking = True in the rule:
+    - item["confirmed_stocking"] = True
+    - item["confirmed_stocking_sessions_without_evidence"] = current counter value
+    - item["confirmed_stocking_expired"] = True if the counter has hit the threshold
+
+    When new evidence is present (last_sale and last_receipt both exist), the
+    counter is reset to 0 on the item so that persistent_state_flow can write it
+    back to order_rules.json.  When evidence is absent, the counter is incremented.
+    The rule dict is also mutated in place so callers can detect the change.
+    """
+    if not (rule and rule.get("confirmed_stocking")):
+        item["confirmed_stocking"] = False
+        return
+
+    sessions_without = rule.get("confirmed_stocking_sessions_without_evidence", 0) or 0
+    expired = sessions_without >= CONFIRMED_STOCKING_MAX_SESSIONS_WITHOUT_EVIDENCE
+    item["confirmed_stocking"] = True
+    item["confirmed_stocking_expired"] = expired
+
+    has_new_evidence = bool(inv.get("last_sale")) and bool(inv.get("last_receipt"))
+    if has_new_evidence:
+        new_count = 0
+    else:
+        new_count = sessions_without + 1 if not expired else sessions_without
+
+    item["confirmed_stocking_sessions_without_evidence"] = new_count
+    # Propagate back to rule so callers know the counter changed.
+    rule["confirmed_stocking_sessions_without_evidence"] = new_count
+
+
 def enrich_item(item, inv, pack_qty, rule):
     """
     Orchestrate the full enrichment pipeline for a single item.
@@ -957,6 +1066,7 @@ def enrich_item(item, inv, pack_qty, rule):
             item["minimum_cover_cycles_source"] = "heuristic"
     classify_recency_confidence(item, inv or {}, rule)
     classify_low_confidence_recency(item, inv or {}, rule)
+    _apply_confirmed_stocking(item, inv or {}, rule)
     calculate_inventory_position(item)
     determine_target_stock(item)
     item["reorder_needed"] = evaluate_reorder_trigger(item)
@@ -1032,8 +1142,12 @@ def enrich_item(item, inv, pack_qty, rule):
         reason_codes.append("pack_trigger")
     if policy == "reel_review":
         reason_codes.append("reel_review")
+    if policy == "reel_auto":
+        reason_codes.append("reel_auto")
     if policy == "large_pack_review":
         reason_codes.append("large_pack_review")
+    if item.get("policy_graduated_from"):
+        reason_codes.append(f"graduated_from_{item['policy_graduated_from']}")
     if policy == "manual_only":
         reason_codes.append("manual_only")
     if item.get("package_profile"):
@@ -1042,6 +1156,11 @@ def enrich_item(item, inv, pack_qty, rule):
     item["replenishment_unit_mode"] = replenishment_unit_mode
     if replenishment_unit_mode:
         reason_codes.append(f"unitmode_{replenishment_unit_mode}")
+    if item.get("confirmed_stocking"):
+        if item.get("confirmed_stocking_expired"):
+            reason_codes.append("confirmed_stocking_expired")
+        else:
+            reason_codes.append("confirmed_stocking")
     if item.get("recency_confidence") == "low":
         reason_codes.append("low_recency_confidence")
     recency_review_bucket = item.get("recency_review_bucket")
@@ -1081,6 +1200,10 @@ def enrich_item(item, inv, pack_qty, rule):
             item["reorder_attention_signal"] = "review_receipt_pack_mismatch"
 
     detail_parts = [f"Stock after open POs: {inventory_position:g}", f"Target stock: {target_stock:g}"]
+    if item.get("policy_graduated_from"):
+        graduated_from = item["policy_graduated_from"]
+        label = "Reel review" if graduated_from == "reel_review" else "Large-pack review"
+        detail_parts.append(f"Policy graduated from {label}: strong recency and demand evidence supports auto-order")
     if item.get("package_profile"):
         detail_parts.append(f"Package profile: {package_profile_label(item['package_profile'])}")
     if replenishment_unit_mode:
@@ -1105,6 +1228,20 @@ def enrich_item(item, inv, pack_qty, rule):
         detail_parts.append(f"Already on PO: {item.get('qty_on_po', 0):g}")
     if isinstance(trigger_threshold, (int, float)) and trigger_threshold > 0:
         detail_parts.append(f"Reorder trigger: {trigger_threshold:g}")
+    if item.get("confirmed_stocking"):
+        sessions_without = item.get("confirmed_stocking_sessions_without_evidence", 0) or 0
+        if item.get("confirmed_stocking_expired"):
+            detail_parts.append(
+                f"Confirmed stocking: expired after {CONFIRMED_STOCKING_MAX_SESSIONS_WITHOUT_EVIDENCE} sessions without evidence — reverted to review"
+            )
+        else:
+            remaining = CONFIRMED_STOCKING_MAX_SESSIONS_WITHOUT_EVIDENCE - sessions_without
+            if sessions_without > 0:
+                detail_parts.append(
+                    f"Confirmed stocking: operator-confirmed (auto-order bypassed recency review; {sessions_without} session(s) without new evidence, {remaining} remaining before expiry)"
+                )
+            else:
+                detail_parts.append("Confirmed stocking: operator-confirmed (auto-order bypassed recency review; evidence current)")
     recency_confidence = item.get("recency_confidence")
     if recency_confidence:
         detail_parts.append(f"Recency confidence: {recency_confidence}")
@@ -1220,6 +1357,29 @@ def enrich_item(item, inv, pack_qty, rule):
         item["review_resolved"] = False
     if "manual_override" not in item:
         item["manual_override"] = False
+
+    # Session-history gap detection: flag when the current suggestion deviates
+    # materially from the median of recent historical order quantities.
+    historical_order_qty = item.get("historical_order_qty")
+    if (
+        isinstance(historical_order_qty, (int, float))
+        and historical_order_qty > 0
+        and isinstance(suggested, (int, float))
+        and suggested > 0
+        and policy not in ("reel_review", "large_pack_review", "manual_only")
+    ):
+        ratio = abs(suggested - historical_order_qty) / float(historical_order_qty)
+        if ratio > SUGGESTION_VS_HISTORY_GAP_THRESHOLD:
+            item["suggestion_vs_history_gap"] = True
+            item["review_required"] = True
+            reason_codes = list(item.get("reason_codes", []))
+            if "suggestion_vs_history_gap" not in reason_codes:
+                reason_codes.append("suggestion_vs_history_gap")
+            item["reason_codes"] = reason_codes
+            detail = f"History gap: current suggestion {suggested:g} deviates from historical median {historical_order_qty:g}"
+            item["why"] = item["why"] + f" | {detail}" if item.get("why") else detail
+    else:
+        item["suggestion_vs_history_gap"] = False
 
     status, flags = evaluate_item_status(item)
     for code in reason_codes:

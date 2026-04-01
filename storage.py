@@ -461,3 +461,51 @@ def save_session_snapshot(directory, snapshot, now=None):
     path = os.path.join(directory, filename)
     _atomic_write_text(path, json.dumps(_to_jsonable(snapshot), indent=2), encoding="utf-8")
     return path
+
+
+def load_session_snapshots(directory, max_count=3):
+    """
+    Load the most recent `max_count` session snapshot JSON files from `directory`.
+    Returns a list of dicts (raw JSON), most-recent first.  Files that cannot be
+    parsed are silently skipped.
+    """
+    if not os.path.isdir(directory):
+        return []
+    try:
+        entries = [
+            e for e in os.scandir(directory)
+            if e.is_file() and e.name.startswith("Session_") and e.name.endswith(".json")
+        ]
+    except OSError:
+        return []
+    entries.sort(key=lambda e: e.stat().st_mtime, reverse=True)
+    snapshots = []
+    for entry in entries[:max_count]:
+        try:
+            with open(entry.path, "r", encoding="utf-8") as f:
+                snapshots.append(json.load(f))
+        except Exception:
+            continue
+    return snapshots
+
+
+def extract_order_history(snapshots):
+    """
+    Derive per-item order-quantity history from a list of raw session snapshot dicts.
+
+    Returns a dict keyed by (line_code, item_code) → sorted list of final_qty values
+    (one per snapshot that contains that item).  Only positive final_qty values are
+    included.
+    """
+    history = defaultdict(list)
+    for snap in snapshots:
+        assigned = snap.get("assigned_items") or []
+        for item in assigned:
+            line_code = item.get("line_code") or ""
+            item_code = item.get("item_code") or ""
+            if not line_code or not item_code:
+                continue
+            qty = item.get("final_qty")
+            if isinstance(qty, (int, float)) and qty > 0:
+                history[(line_code, item_code)].append(int(qty))
+    return dict(history)

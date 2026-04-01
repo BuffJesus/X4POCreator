@@ -7,6 +7,7 @@ from datetime import datetime
 import parsers
 import performance_flow
 import sales_history_flow
+import storage
 
 
 PARSE_CACHE_SCHEMA_VERSION = 1
@@ -829,4 +830,59 @@ def apply_load_result(session, result, *, parsers_module=parsers):
     session.sales_window_start = result.get("sales_window_start", "")
     session.sales_window_end = result.get("sales_window_end", "")
     session.pack_size_by_item, session.pack_size_conflicts = parsers_module.build_pack_size_fallbacks(session.pack_size_lookup)
+    sessions_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "sessions")
+    snapshots = storage.load_session_snapshots(sessions_dir, max_count=3)
+    session.session_history = storage.extract_order_history(snapshots)
     return session
+
+
+DATA_QUALITY_GATE_THRESHOLD = 0.10  # gate assignment if > 10% of items are unresolved
+
+
+def compute_data_quality_summary(session):
+    """
+    Compute a data quality summary from session state after a successful load.
+
+    Returns a dict with:
+      total_items          — count of items loaded from detailed sales
+      inventory_covered    — items with an inventory record (min/max present)
+      missing_last_sale    — items with no last_sale in inventory record
+      missing_last_receipt — items with no last_receipt in inventory record
+      unresolved_item_codes — count of detailed-sales item codes that could not be
+                              resolved to a known line code
+      conflicting_items    — items where detailed-sales and X4 min/max signals disagree
+      quality_score        — float in [0, 1]: 1 = clean, lower = more gaps
+      gate_required        — True when quality_score < (1 - DATA_QUALITY_GATE_THRESHOLD)
+    """
+    total_items = len(getattr(session, "sales_items", []) or [])
+    inv_lookup = getattr(session, "inventory_lookup", {}) or {}
+    inventory_covered = len(inv_lookup)
+
+    missing_last_sale = sum(
+        1 for inv in inv_lookup.values() if not (inv or {}).get("last_sale")
+    )
+    missing_last_receipt = sum(
+        1 for inv in inv_lookup.values() if not (inv or {}).get("last_receipt")
+    )
+    unresolved_item_codes = len(
+        getattr(session, "unresolved_detailed_item_codes", set()) or set()
+    )
+    conflicting_items = len(
+        getattr(session, "detailed_sales_conflict_keys", set()) or set()
+    )
+
+    denominator = max(total_items, 1)
+    gap_fraction = unresolved_item_codes / denominator
+    quality_score = max(0.0, 1.0 - gap_fraction)
+    gate_required = gap_fraction > DATA_QUALITY_GATE_THRESHOLD
+
+    return {
+        "total_items": total_items,
+        "inventory_covered": inventory_covered,
+        "missing_last_sale": missing_last_sale,
+        "missing_last_receipt": missing_last_receipt,
+        "unresolved_item_codes": unresolved_item_codes,
+        "conflicting_items": conflicting_items,
+        "quality_score": quality_score,
+        "gate_required": gate_required,
+    }
