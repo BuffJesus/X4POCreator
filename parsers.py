@@ -358,45 +358,6 @@ def _clean_item_description(text):
     return " ".join(kept)
 
 
-def parse_part_sales_csv(filepath):
-    agg = {}
-    seen_rows = set()
-    with open(filepath, "r", encoding="utf-8-sig") as f:
-        reader = csv.reader(f)
-        for row in reader:
-            normalized_row = tuple(str(cell).strip() for cell in row)
-            if normalized_row in seen_rows:
-                continue
-            seen_rows.add(normalized_row)
-            lc = _find_lc_column(row)
-            if lc is None or lc + 5 >= len(row):
-                continue
-            try:
-                line_code = row[lc].strip()
-                item_code = row[lc + 1].strip()
-                description = _clean_item_description(row[lc + 2])
-                qty_received = int(float(row[lc + 3].replace(",", "")))
-                qty_sold = int(float(row[lc + 5].replace(",", "")))
-            except (ValueError, IndexError):
-                continue
-            if not item_code:
-                continue
-            key = (line_code, item_code)
-            if key not in agg:
-                agg[key] = {
-                    "line_code": line_code,
-                    "item_code": item_code,
-                    "description": description,
-                    "qty_received": qty_received,
-                    "qty_sold": qty_sold,
-                }
-            else:
-                agg[key]["qty_received"] += qty_received
-                agg[key]["qty_sold"] += qty_sold
-                if not agg[key].get("description") and description:
-                    agg[key]["description"] = description
-    return list(agg.values())
-
 
 def parse_detailed_part_sales_csv(filepath):
     return list(_iter_detailed_part_sales_csv(filepath))
@@ -947,24 +908,6 @@ def parse_detailed_pair_aggregates(detailed_sales_path, received_parts_path, *, 
         "detailed_sales_rows": list(detailed_sales_rollup.values()),
     }
 
-
-def parse_sales_date_range(filepath):
-    try:
-        with open(filepath, "r", encoding="utf-8-sig") as f:
-            head = f.read(8192)
-    except Exception:
-        return None, None
-    m = re.search(
-        r"From:\s*([0-9]{2}-[A-Za-z]{3}-[0-9]{4}).*?thru\s*([0-9]{2}-[A-Za-z]{3}-[0-9]{4})",
-        head,
-        flags=re.IGNORECASE | re.DOTALL,
-    )
-    if not m:
-        return None, None
-    try:
-        return datetime.strptime(m.group(1), "%d-%b-%Y"), datetime.strptime(m.group(2), "%d-%b-%Y")
-    except Exception:
-        return None, None
 
 
 def parse_suspended_csv(filepath):

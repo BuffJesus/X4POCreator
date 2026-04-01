@@ -264,7 +264,6 @@ def _summarize_conflicting_detailed_sales_rows(
 
 
 def _parse_sales_inputs(paths, *, progress_callback=None):
-    sales_path = str(paths.get("sales", "") or "").strip()
     detailed_sales_path = str(paths.get("detailedsales", "") or "").strip()
     received_parts_path = str(paths.get("receivedparts", "") or "").strip()
 
@@ -294,18 +293,6 @@ def _parse_sales_inputs(paths, *, progress_callback=None):
             "sales_window": parsers.parse_detailed_sales_date_range(detailed_sales_rows),
             "receipt_history_lookup": parsers.build_receipt_history_lookup(received_rows),
             "detailed_sales_stats_lookup": parsers.build_detailed_sales_stats_lookup(detailed_sales_rows),
-        }
-
-    if sales_path:
-        if callable(progress_callback):
-            progress_callback("Parsing legacy Part Sales & Receipts...")
-        return {
-            "sales_source_mode": "legacy_combined",
-            "detailed_sales_rows": [],
-            "sales_items": parsers.parse_part_sales_csv(sales_path),
-            "sales_window": parsers.parse_sales_date_range(sales_path),
-            "receipt_history_lookup": {},
-            "detailed_sales_stats_lookup": {},
         }
 
     return {
@@ -432,16 +419,6 @@ def parse_all_files(paths, *, old_po_warning_days, short_sales_window_days, now=
                 "po_reference": "",
                 "details": f"Sales window is {span_days} day(s), below recommended {short_sales_window_days}+.",
             })
-
-    if result["sales_source_mode"] == "legacy_combined":
-        warnings.append((
-            "Legacy Sales Source",
-            (
-                "Using the legacy Part Sales & Receipts report as a compatibility fallback.\n\n"
-                "The preferred workflow is Detailed Part Sales + Received Parts Detail, which provides "
-                "stronger vendor, receipt, and demand-shape evidence."
-            ),
-        ))
 
     all_line_codes = sorted(set(item["line_code"] for item in result["sales_items"]))
 

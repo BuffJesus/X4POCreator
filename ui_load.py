@@ -59,30 +59,18 @@ LOAD_FILE_SECTIONS = (
             },
         ),
     },
-    {
-        "title": "Legacy Compatibility",
-        "summary": "Keep only for fallback use while older workflows are still supported.",
-        "rows": (
-            {
-                "label": "Part Sales & Receipts CSV (Legacy / Compatibility)",
-                "attr_name": "var_sales_path",
-                "browse_key": "sales",
-                "hint": "Legacy combined report. Use only when the detailed pair is unavailable.",
-            },
-        ),
-    },
 )
 
 
-def iter_load_file_rows(*, include_legacy=True):
-    for section in load_file_sections(include_legacy=include_legacy):
+def iter_load_file_rows():
+    for section in LOAD_FILE_SECTIONS:
         for row in section["rows"]:
             yield row
 
 
 def ensure_load_file_vars(app, *, var_factory=tk.StringVar):
     created = {}
-    for row in iter_load_file_rows(include_legacy=True):
+    for row in iter_load_file_rows():
         attr_name = row["attr_name"]
         variable = getattr(app, attr_name, None)
         if variable is None:
@@ -92,13 +80,8 @@ def ensure_load_file_vars(app, *, var_factory=tk.StringVar):
     return created
 
 
-def load_file_sections(*, include_legacy=False):
-    if include_legacy:
-        return LOAD_FILE_SECTIONS
-    return tuple(
-        section for section in LOAD_FILE_SECTIONS
-        if section["title"] != "Legacy Compatibility"
-    )
+def load_file_sections():
+    return LOAD_FILE_SECTIONS
 
 
 def refresh_load_file_sections(app):
@@ -108,7 +91,7 @@ def refresh_load_file_sections(app):
     for child in host.winfo_children():
         child.destroy()
     next_row = 0
-    for section in load_file_sections(include_legacy=bool(app.var_show_legacy_inputs.get())):
+    for section in LOAD_FILE_SECTIONS:
         next_row = _add_file_section(app, host, start_row=next_row, section=section)
     host.columnconfigure(1, weight=1)
 
@@ -188,21 +171,13 @@ def build_load_tab(app):
 
     ttk.Label(
         file_frame,
-        text="Use the core files first. Optional files add context; legacy files are fallback-only.",
+        text="Use the core files first. Optional files add context.",
         style="Info.TLabel",
         wraplength=900,
     ).grid(row=0, column=0, columnspan=3, sticky="w", padx=4, pady=(0, 8))
 
-    app.var_show_legacy_inputs = tk.BooleanVar(value=False)
-    ttk.Checkbutton(
-        file_frame,
-        text="Show legacy compatibility input (Part Sales & Receipts)",
-        variable=app.var_show_legacy_inputs,
-        command=lambda: refresh_load_file_sections(app),
-    ).grid(row=1, column=0, columnspan=3, sticky="w", padx=4, pady=(0, 8))
-
     app._load_sections_host = ttk.Frame(file_frame)
-    app._load_sections_host.grid(row=2, column=0, columnspan=3, sticky="ew")
+    app._load_sections_host.grid(row=1, column=0, columnspan=3, sticky="ew")
     refresh_load_file_sections(app)
 
     file_frame.columnconfigure(1, weight=1)

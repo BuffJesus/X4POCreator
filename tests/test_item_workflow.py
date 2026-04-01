@@ -253,5 +253,60 @@ class ItemWorkflowTests(unittest.TestCase):
         self.assertNotIn("suggestion_gap_detailed_only", review["data_flags"])
 
 
+    def test_apply_suggestion_gap_review_state_applies_detailed_suggestion_when_detailed_only(self):
+        """When active suggestion is blank and detailed sales has one, the detailed values
+        should be promoted to the active suggestion and the item routed to review."""
+        item = {
+            "suggested_min": None,
+            "suggested_max": None,
+            "suggested_source": "none",
+            "detailed_suggested_min": 3,
+            "detailed_suggested_max": 6,
+            "detailed_suggestion_compare": "detailed_only",
+            "detailed_fallback_suppressed_reason": "",
+            "material_suggestion_disagreement": False,
+            "review_required": False,
+            "reason_codes": [],
+            "why": "Base reason",
+            "core_why": "Base reason",
+        }
+
+        item_workflow.apply_suggestion_gap_review_state(item)
+
+        self.assertEqual(item["suggested_min"], 3)
+        self.assertEqual(item["suggested_max"], 6)
+        self.assertEqual(item["suggested_source"], "detailed_sales_applied")
+        self.assertEqual(item["suggested_source_label"], "Detailed sales (applied)")
+        self.assertTrue(item["review_required"])
+        self.assertIn("suggestion_gap_detailed_only", item["reason_codes"])
+        self.assertIn("Review: suggestion applied from detailed sales", item["why"])
+
+    def test_apply_suggestion_gap_review_state_does_not_apply_when_receipt_heavy_suppressed(self):
+        """When the detailed fallback was suppressed because of receipt_heavy, the active
+        suggestion must remain blank and the item routed to review as before."""
+        item = {
+            "suggested_min": None,
+            "suggested_max": None,
+            "suggested_source": "none",
+            "detailed_suggested_min": 3,
+            "detailed_suggested_max": 6,
+            "detailed_suggestion_compare": "detailed_only",
+            "detailed_fallback_suppressed_reason": "receipt_heavy",
+            "material_suggestion_disagreement": False,
+            "review_required": False,
+            "reason_codes": [],
+            "why": "Base reason",
+            "core_why": "Base reason",
+        }
+
+        item_workflow.apply_suggestion_gap_review_state(item)
+
+        self.assertIsNone(item["suggested_min"])
+        self.assertIsNone(item["suggested_max"])
+        self.assertEqual(item["suggested_source"], "none")
+        self.assertTrue(item["review_required"])
+        self.assertIn("suggestion_gap_detailed_only", item["reason_codes"])
+
+
 if __name__ == "__main__":
     unittest.main()

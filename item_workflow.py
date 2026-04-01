@@ -136,9 +136,22 @@ def apply_suggestion_gap_review_state(item):
         gap_codes.append("suggestion_gap_material")
 
     if compare_code == "detailed_only":
+        receipt_heavy = item.get("detailed_fallback_suppressed_reason") == "receipt_heavy"
+        if not receipt_heavy:
+            detailed_min = item.get("detailed_suggested_min")
+            detailed_max = item.get("detailed_suggested_max")
+            if detailed_min is not None or detailed_max is not None:
+                item["suggested_min"] = detailed_min
+                item["suggested_max"] = detailed_max
+                item["suggested_source"] = "detailed_sales_applied"
+                item["suggested_source_label"] = "Detailed sales (applied)"
         item["review_required"] = True
         base_why = str(item.get("core_why", item.get("why", "")) or "").strip()
-        detail = "Review: active suggestion is blank, but detailed sales suggests stocking"
+        detail = (
+            "Review: suggestion applied from detailed sales (no X4 suggestion available)"
+            if not receipt_heavy
+            else "Review: active suggestion is blank, but detailed sales suggests stocking"
+        )
         if base_why and detail not in base_why:
             merged = f"{base_why} | {detail}"
             item["core_why"] = merged

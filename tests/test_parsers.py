@@ -106,38 +106,6 @@ class ParserSmokeTests(unittest.TestCase):
 
             self.assertEqual(lookup[("AER-", "GH781-4")], 500)
 
-    def test_parse_part_sales_csv_drops_only_identical_duplicate_rows(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            path = Path(tmp) / "sales.csv"
-            with open(path, "w", newline="", encoding="utf-8-sig") as f:
-                writer = csv.writer(f)
-                writer.writerow(["hdr", "AER-", "GH781-4", "HOSE", "5", "skip", "7"])
-                writer.writerow(["hdr", "AER-", "GH781-4", "HOSE", "5", "skip", "7"])
-                writer.writerow(["hdr2", "AER-", "GH781-4", "HOSE", "5", "skip", "7"])
-
-            rows = parsers.parse_part_sales_csv(str(path))
-
-            self.assertEqual(len(rows), 1)
-            self.assertEqual(rows[0]["qty_received"], 10)
-            self.assertEqual(rows[0]["qty_sold"], 14)
-
-    def test_parse_part_sales_csv_accepts_slash_line_code(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            path = Path(tmp) / "sales_slash.csv"
-            with open(path, "w", newline="", encoding="utf-8-sig") as f:
-                writer = csv.writer(f)
-                writer.writerow(["hdr", "B/B-", "GH781-4", "HOSE", "5", "skip", "7"])
-
-            rows = parsers.parse_part_sales_csv(str(path))
-
-            self.assertEqual(rows, [{
-                "line_code": "B/B-",
-                "item_code": "GH781-4",
-                "description": "HOSE",
-                "qty_received": 5,
-                "qty_sold": 7,
-            }])
-
     def test_parse_detailed_part_sales_and_received_parts_detail_build_summary(self):
         with tempfile.TemporaryDirectory() as tmp:
             detailed = Path(tmp) / "detailed.csv"

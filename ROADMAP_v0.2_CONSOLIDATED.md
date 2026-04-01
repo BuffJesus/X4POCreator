@@ -92,11 +92,11 @@ The goal is to keep one phased checklist that reflects what is actually done in 
   - suggestion gaps
   - receipt-heavy vs sales
 - [x] Make the detailed file pair the default/required load path and move the legacy combined `Part Sales & Receipts` report to compatibility-only status in the UI and docs.
-- [ ] Decide whether to fully remove the legacy combined `Part Sales & Receipts` path after live-file coverage is proven.
+- [x] Decide whether to fully remove the legacy combined `Part Sales & Receipts` path after live-file coverage is proven.
 - [x] Tighten live `DETAILED PART SALES.csv` parsing for edge cases where the first hyphen in the combined code token may not be the true PG/item boundary.
 - [x] Measure real-world line-code resolution coverage after live parsing and add diagnostics for unresolved detailed-sales rows.
 - [x] Decide how receipt activity should influence target-stock / reorder suppression beyond review/confidence handling.
-- [ ] Decide whether any detailed-sales suggestion cases should replace the active suggestion by default instead of remaining compare/review signals only.
+- [x] Decide whether any detailed-sales suggestion cases should replace the active suggestion by default instead of remaining compare/review signals only.
 
 ## Phase 3. Rule Model Expansion and Pack-Trigger Behavior
 

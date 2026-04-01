@@ -713,21 +713,8 @@ class POBuilderApp:
             return
 
         found = parsers.scan_directory_for_reports(folder)
-        found_detailed_pair = bool(found.get("detailedsales") and found.get("receivedparts"))
-        found_legacy_sales = bool(found.get("sales"))
-        legacy_toggle = getattr(self, "var_show_legacy_inputs", None)
-        legacy_visible = bool(legacy_toggle and legacy_toggle.get())
-        auto_enabled_legacy = False
-        hidden_legacy_sales = False
-
-        if found_legacy_sales and not found_detailed_pair and legacy_toggle and not legacy_visible:
-            legacy_toggle.set(True)
-            ui_load.refresh_load_file_sections(self)
-            legacy_visible = True
-            auto_enabled_legacy = True
 
         var_map = {
-            "sales": getattr(self, "var_sales_path", None),
             "detailedsales": getattr(self, "var_detailed_sales_path", None),
             "receivedparts": getattr(self, "var_received_parts_path", None),
             "minmax": getattr(self, "var_minmax_path", None),
@@ -738,7 +725,6 @@ class POBuilderApp:
         }
 
         report_names = {
-            "sales": "Part Sales & Receipts",
             "detailedsales": "Detailed Part Sales",
             "receivedparts": "Received Parts Detail",
             "minmax": "On Hand Min/Max Sales",
@@ -750,9 +736,6 @@ class POBuilderApp:
 
         populated = []
         for rtype, filepath in found.items():
-            if rtype == "sales" and found_detailed_pair and not legacy_visible:
-                hidden_legacy_sales = True
-                continue
             if rtype in var_map and var_map[rtype] is not None:
                 var_map[rtype].set(filepath)
                 populated.append(report_names.get(rtype, rtype))
@@ -764,23 +747,12 @@ class POBuilderApp:
         else:
             self.lbl_scan_status.config(text="No X4 report CSVs detected in that folder.")
 
-        if populated and (hidden_legacy_sales or auto_enabled_legacy):
-            status_suffix = ""
-            if hidden_legacy_sales:
-                status_suffix = " Legacy combined sales was detected but left hidden because the detailed pair is available."
-            elif auto_enabled_legacy:
-                status_suffix = " Legacy compatibility input was shown because only the combined sales report was found."
-            self.lbl_scan_status.config(
-                text=f"Found {len(populated)} report(s): {', '.join(populated)}{status_suffix}"
-            )
-
     def _browse(self, which):
         path = filedialog.askopenfilename(
             filetypes=[("CSV Files", "*.csv"), ("All Files", "*.*")]
         )
         if path:
             var_map = {
-                "sales": getattr(self, "var_sales_path", None),
                 "detailedsales": getattr(self, "var_detailed_sales_path", None),
                 "receivedparts": getattr(self, "var_received_parts_path", None),
                 "po": getattr(self, "var_po_path", None),
@@ -793,22 +765,19 @@ class POBuilderApp:
                 var_map[which].set(path)
 
     def _do_load(self):
-        sales_path = getattr(self, "var_sales_path", None)
         detailed_sales_path = getattr(self, "var_detailed_sales_path", None)
         received_parts_path = getattr(self, "var_received_parts_path", None)
-        sales_path = sales_path.get().strip() if sales_path is not None else ""
         detailed_sales_path = detailed_sales_path.get().strip() if detailed_sales_path is not None else ""
         received_parts_path = received_parts_path.get().strip() if received_parts_path is not None else ""
-        if not sales_path and not (detailed_sales_path and received_parts_path):
+        if not (detailed_sales_path and received_parts_path):
             messagebox.showerror(
                 "Missing File",
-                "Load both Detailed Part Sales and Received Parts Detail CSVs. Use Part Sales & Receipts only as a legacy fallback.",
+                "Load both Detailed Part Sales and Received Parts Detail CSVs.",
             )
             return
 
         # Gather paths before showing loading screen
         paths = {
-            "sales": sales_path,
             "detailedsales": detailed_sales_path,
             "receivedparts": received_parts_path,
             "po": getattr(self, "var_po_path", None).get().strip() if getattr(self, "var_po_path", None) is not None else "",
@@ -890,7 +859,6 @@ class POBuilderApp:
         source_mode = result.get("sales_source_mode", "none")
         source_label = {
             "detailed_pair": "Detailed sales + receiving",
-            "legacy_combined": "Legacy combined sales/receipts",
         }.get(source_mode, "")
         status_parts = [f"{len(self.sales_items)} items loaded"]
         if source_label:

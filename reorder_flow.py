@@ -39,6 +39,7 @@ def suggestion_source_label(source_code):
         "none": "No suggestion",
         "x4_mo12_sales": "X4 12-month sales",
         "detailed_sales_fallback": "Detailed sales fallback",
+        "detailed_sales_applied": "Detailed sales (applied)",
         "provided": "Provided",
     }.get(source_code or "none", source_code or "none")
 
@@ -180,6 +181,14 @@ def apply_suggestion_context(app, item, key, active_pair=None, min_annual_sales_
         key,
         min_annual_sales_for_suggestions=min_annual_sales_for_suggestions,
     )
+    # Record whether the detailed fallback was suppressed by receipt_heavy so that
+    # downstream logic (apply_suggestion_gap_review_state) can distinguish
+    # "no X4 suggestion + receipt_heavy" from "no X4 suggestion, safe to apply".
+    if active_source == "none" and (detailed_min is not None or detailed_max is not None):
+        receipt_balance = receipt_sales_balance_for_key(app, key)
+        item["detailed_fallback_suppressed_reason"] = receipt_balance.get("receipt_sales_balance", "")
+    else:
+        item["detailed_fallback_suppressed_reason"] = ""
     item["suggested_min"] = active_min
     item["suggested_max"] = active_max
     item["suggested_source"] = active_source

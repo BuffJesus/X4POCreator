@@ -21,7 +21,7 @@ class UILoadTests(unittest.TestCase):
         def set(self, value):
             self.value = value
 
-    def test_load_file_sections_hide_legacy_by_default(self):
+    def test_load_file_sections_returns_core_and_optional_sections(self):
         sections = ui_load.load_file_sections()
 
         self.assertEqual([section["title"] for section in sections], [
@@ -37,20 +37,7 @@ class UILoadTests(unittest.TestCase):
             ["onhand", "po", "susp"],
         )
 
-    def test_load_file_sections_include_legacy_when_requested(self):
-        sections = ui_load.load_file_sections(include_legacy=True)
-
-        self.assertEqual([section["title"] for section in sections], [
-            "Core Files",
-            "Optional Support Files",
-            "Legacy Compatibility",
-        ])
-        self.assertEqual(
-            [row["browse_key"] for row in sections[2]["rows"]],
-            ["sales"],
-        )
-
-    def test_ensure_load_file_vars_creates_all_file_path_vars_even_when_legacy_is_hidden(self):
+    def test_ensure_load_file_vars_creates_all_file_path_vars(self):
         fake_app = SimpleNamespace()
 
         vars_by_attr = ui_load.ensure_load_file_vars(
@@ -58,10 +45,9 @@ class UILoadTests(unittest.TestCase):
             var_factory=self.DummyVar,
         )
 
-        self.assertIn("var_sales_path", vars_by_attr)
         self.assertIn("var_detailed_sales_path", vars_by_attr)
         self.assertIn("var_received_parts_path", vars_by_attr)
-        self.assertIsInstance(getattr(fake_app, "var_sales_path"), self.DummyVar)
+        self.assertIsInstance(getattr(fake_app, "var_detailed_sales_path"), self.DummyVar)
         self.assertIsInstance(getattr(fake_app, "var_packsize_path"), self.DummyVar)
 
     def test_ensure_load_file_vars_preserves_existing_selected_paths(self):
