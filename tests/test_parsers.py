@@ -343,7 +343,34 @@ class ParserSmokeTests(unittest.TestCase):
             "vendor": "UNISELE",
         }])
 
-    def test_parse_detailed_part_sales_x4_layout_leaves_ambiguous_short_prefix_token_unresolved(self):
+    def test_parse_detailed_part_sales_x4_layout_accepts_dash_line_code_fragment(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "DETAILED PART SALES.csv"
+            with open(path, "w", newline="", encoding="utf-8-sig") as f:
+                writer = csv.writer(f)
+                writer.writerow([
+                    "Product Groups: ALL", "Branches: 1", "From: 26-Mar-2018 to 31-Mar-2026",
+                    "DETAILED PART SALES", " 8:29:38AM", "16-Mar-2026", "Sales Category: ALL",
+                    "Page -1 of 1", "Item\n\nCode", "Description", "Total\n\nQuantity", "Qty On Hand",
+                    "Extended\n\nSelling", "Extended\n\nCost", "Gross\n\nProfit", "Gross\n\nMargin",
+                    "Slmn", "BRANCH", "1", "3366629", "27,781,031.47", "18,810,903.78",
+                    "8,970,127.69", "32.29", "A-B-12345", "WIDGET", "3", "19.29", "17.54",
+                    "1.75", "9.07", "20-Nov-2019", "harley", "527394", "BROOBEST", "19.29", "1.00",
+                    "", "19.29", "17.54", "1.75", "9.07", "27",
+                ])
+
+            rows = parsers.parse_detailed_part_sales_csv(str(path))
+
+        self.assertEqual(rows, [{
+            "line_code": "A-B-",
+            "item_code": "12345",
+            "description": "WIDGET",
+            "qty_sold": 3,
+            "sale_date": "20-Nov-2019",
+        }])
+
+    def test_parse_detailed_part_sales_x4_layout_resolves_k_dash_d_prefix_as_line_code(self):
+        # K-D-1708: fixed-width split treats "K-D" as the 3-char line code fragment.
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "DETAILED PART SALES.csv"
             with open(path, "w", newline="", encoding="utf-8-sig") as f:
@@ -362,9 +389,36 @@ class ParserSmokeTests(unittest.TestCase):
             rows = parsers.parse_detailed_part_sales_csv(str(path))
 
         self.assertEqual(rows, [{
-            "line_code": "",
-            "item_code": "K-D-1708",
+            "line_code": "K-D-",
+            "item_code": "1708",
             "description": "COUPLER",
+            "qty_sold": 3,
+            "sale_date": "20-Nov-2019",
+        }])
+
+    def test_parse_detailed_part_sales_x4_layout_leaves_no_separator_token_unresolved(self):
+        # Tokens where position 3 is not '-' cannot be an X4 line-code split.
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "DETAILED PART SALES.csv"
+            with open(path, "w", newline="", encoding="utf-8-sig") as f:
+                writer = csv.writer(f)
+                writer.writerow([
+                    "Product Groups: ALL", "Branches: 1", "From: 26-Mar-2018 to 31-Mar-2026",
+                    "DETAILED PART SALES", " 8:29:38AM", "16-Mar-2026", "Sales Category: ALL",
+                    "Page -1 of 1", "Item\n\nCode", "Description", "Total\n\nQuantity", "Qty On Hand",
+                    "Extended\n\nSelling", "Extended\n\nCost", "Gross\n\nProfit", "Gross\n\nMargin",
+                    "Slmn", "BRANCH", "1", "3366629", "27,781,031.47", "18,810,903.78",
+                    "8,970,127.69", "32.29", "AB-12345", "WIDGET", "3", "19.29", "17.54",
+                    "1.75", "9.07", "20-Nov-2019", "harley", "527394", "BROOBEST", "19.29", "1.00",
+                    "", "19.29", "17.54", "1.75", "9.07", "27",
+                ])
+
+            rows = parsers.parse_detailed_part_sales_csv(str(path))
+
+        self.assertEqual(rows, [{
+            "line_code": "",
+            "item_code": "AB-12345",
+            "description": "WIDGET",
             "qty_sold": 3,
             "sale_date": "20-Nov-2019",
         }])

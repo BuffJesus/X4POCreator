@@ -44,21 +44,31 @@ def _normalize_vendor_code(value):
 
 def _looks_like_x4_line_code_fragment(value):
     fragment = str(value or "").strip().upper()
-    return bool(re.fullmatch(r"[A-Z0-9/]{3}", fragment))
+    return bool(re.fullmatch(r"[A-Z0-9/\-]{3}", fragment))
 
 
 def _split_line_code_item_token(value):
+    # X4 line codes are always exactly 3 characters (letters, digits, '/', or '-')
+    # followed by a '-' separator.  Using a fixed-width split avoids misreading the
+    # first '-' inside a dash-bearing line code (e.g. "A-B-12345") as the separator.
     token = str(value or "").strip()
-    if not token or "-" not in token:
+    if len(token) < 5:
         return "", token
-    match = re.search(r"([A-Za-z0-9/]+)\s*-\s*(.+)", token)
-    if not match:
-        return "", token
-    line_code = match.group(1).strip().upper()
-    item_code = match.group(2).strip()
-    if not _looks_like_x4_line_code_fragment(line_code) or not item_code:
-        return "", token
-    return f"{line_code}-", item_code
+    candidate = token[:3].upper()
+    if token[3] == "-" and _looks_like_x4_line_code_fragment(candidate):
+        item_code = token[4:]
+        if item_code:
+            return f"{candidate}-", item_code
+    # Fallback: handle optional whitespace around the separator for non-dash line
+    # codes (e.g. "010 - 00055062").  Only matches letter/digit/slash fragments so
+    # it does not conflict with dash-bearing line codes handled above.
+    match = re.search(r"([A-Za-z0-9/]{3})\s+-\s+(.+)", token)
+    if match:
+        lc = match.group(1).upper()
+        ic = match.group(2).strip()
+        if ic:
+            return f"{lc}-", ic
+    return "", token
 
 
 def _match_header_columns(rows, required_fields, optional_fields=()):
