@@ -1,3 +1,5 @@
+import json
+
 import bulk_remove_flow
 import session_state_flow
 
@@ -345,6 +347,7 @@ def bulk_remove_selected_rows(app, deepcopy, askyesno, event=None):
         return "break" if event is not None else None
     removed_payload = []
     resolved = []
+    expected_keys = {}
     resolve_row = getattr(app, "_resolve_bulk_row_id", None)
     for row_id in selected:
         if callable(resolve_row):
@@ -355,6 +358,12 @@ def bulk_remove_selected_rows(app, deepcopy, askyesno, event=None):
             except (TypeError, ValueError):
                 idx = None
         if idx is not None:
+            try:
+                parts = json.loads(str(row_id))
+                if isinstance(parts, list) and len(parts) == 2:
+                    expected_keys[idx] = (str(parts[0]), str(parts[1]))
+            except (ValueError, TypeError):
+                pass
             resolved.append(idx)
     for idx in sorted(set(resolved), reverse=True):
         if 0 <= idx < len(app.filtered_items):
@@ -364,6 +373,7 @@ def bulk_remove_selected_rows(app, deepcopy, askyesno, event=None):
         removed_payload,
         deepcopy,
         history_label="remove:selected_rows",
+        expected_keys=expected_keys or None,
     )
     if app.bulk_sheet:
         app.bulk_sheet.clear_selection()

@@ -42,11 +42,24 @@ Best practice
     (
         "Reports",
         "What each report means and how the app uses it.",
-        """Part Sales & Receipts
+        """Detailed Part Sales (preferred sales source)
+- Transaction-level sales report: one row per invoice line.
+- Provides per-customer, per-date, and margin data not available in the legacy combined report.
+- The app aggregates across all transactions to produce total qty sold per item.
+- Use together with Received Parts Detail for the preferred daily workflow.
+
+Received Parts Detail (preferred receiving source)
+- Transaction-level receiving report: one row per receipt line.
+- Stock-return rows (RR) are excluded automatically; only inbound receipts (RC) are counted.
+- Provides vendor codes per receipt, which the app uses for vendor suggestions.
+- Use together with Detailed Part Sales for the preferred daily workflow.
+
+Part Sales & Receipts (legacy / compatibility)
 - Closed, printed invoice sales plus receipts during the selected period.
 - This is your confirmed movement history.
-- The app uses it for demand history and suggested replenishment.
+- The app uses it for demand history and suggested replenishment when the detailed pair is unavailable.
 - Exact duplicate report rows are ignored so duplicated X4 rows do not inflate demand.
+- Use only when the Detailed Part Sales + Received Parts Detail pair is not available.
 
 POs by PG
 - Items currently on purchase orders.

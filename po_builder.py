@@ -1290,6 +1290,8 @@ class POBuilderApp:
             return True, f"candidate_preserved:{reason or 'inventory_protection'}"
         if (item.get("effective_qty_suspended", 0) or item.get("qty_suspended", 0) or 0) > 0:
             return True, "active_suspense_demand"
+        if (item.get("suspense_carry_qty", 0) or 0) > 0:
+            return True, "active_suspense_carry"
         return False, ""
 
     def _bulk_remove_not_needed_visible(self, include_assigned=None):

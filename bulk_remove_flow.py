@@ -2,7 +2,7 @@ import ui_bulk
 import session_state_flow
 
 
-def remove_filtered_rows(app, remove_indices, deepcopy, *, history_label="remove:bulk"):
+def remove_filtered_rows(app, remove_indices, deepcopy, *, history_label="remove:bulk", expected_keys=None):
     unique_indices = sorted({int(idx) for idx in remove_indices if idx is not None}, reverse=True)
     if not unique_indices:
         return []
@@ -21,6 +21,12 @@ def remove_filtered_rows(app, remove_indices, deepcopy, *, history_label="remove
     for idx in unique_indices:
         if 0 <= idx < len(filtered_items):
             item = filtered_items[idx]
+            if expected_keys is not None:
+                expected = expected_keys.get(idx)
+                if expected is not None:
+                    actual = (item.get("line_code", ""), item.get("item_code", ""))
+                    if actual != expected:
+                        continue
             protected = False
             protected_reason = ""
             if callable(protect_item):

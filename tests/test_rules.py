@@ -189,6 +189,49 @@ class RulesTests(unittest.TestCase):
         }
         self.assertIsNone(infer_minimum_packs_on_hand(item, {"max": 20}, 100))
 
+    def test_infer_minimum_packs_on_hand_returns_one_when_loaded_window_is_very_short(self):
+        item = {
+            "description": "5/16 HEX NUT",
+            "sales_health_signal": "active",
+            "performance_profile": "steady",
+            "days_since_last_sale": 3,
+            "sales_span_days": 7,
+        }
+        self.assertEqual(infer_minimum_packs_on_hand(item, {"max": 20}, 100), 1)
+
+    def test_infer_minimum_packs_on_hand_returns_two_at_minimum_window_boundary(self):
+        item = {
+            "description": "5/16 HEX NUT",
+            "sales_health_signal": "active",
+            "performance_profile": "steady",
+            "days_since_last_sale": 7,
+            "sales_span_days": 14,
+        }
+        self.assertEqual(infer_minimum_packs_on_hand(item, {"max": 20}, 100), 2)
+
+    def test_infer_minimum_packs_on_hand_returns_two_when_span_unknown(self):
+        # No sales_span_days set — backward-compatible: still returns 2.
+        item = {
+            "description": "5/16 HEX NUT",
+            "sales_health_signal": "active",
+            "performance_profile": "steady",
+            "days_since_last_sale": 14,
+        }
+        self.assertEqual(infer_minimum_packs_on_hand(item, {"max": 20}, 100), 2)
+
+    def test_infer_minimum_cover_cycles_returns_one_when_loaded_window_is_very_short(self):
+        item = {
+            "description": "5/16 HEX NUT",
+            "sales_health_signal": "active",
+            "performance_profile": "steady",
+            "days_since_last_sale": 3,
+            "reorder_cycle_weeks": 1,
+            "avg_weekly_sales_loaded": 8.0,
+            "demand_signal": 8,
+            "sales_span_days": 7,
+        }
+        self.assertEqual(infer_minimum_cover_cycles(item, {"max": 8}, 10), 1)
+
     def test_infer_minimum_cover_cycles_for_active_weekly_hardware(self):
         item = {
             "description": "5/16 HEX NUT",
@@ -471,6 +514,68 @@ class RulesTests(unittest.TestCase):
         self.assertEqual(determine_target_stock(item), 10)
         self.assertFalse(item["target_stock_hysteresis_applied"])
         self.assertEqual(item["target_basis"], "current_max")
+
+    def test_determine_target_stock_hysteresis_not_applied_when_basis_changes(self):
+        # Previous basis was suggested_max; now resolves to suggested_min — basis change,
+        # so hysteresis must not fire even if the numeric gap is small.
+        item = {
+            "inventory": {"qoh": 2, "min": None, "max": None},
+            "qty_on_po": 0,
+            "demand_signal": 3,
+            "suggested_min": 9,
+            "suggested_max": None,
+            "target_stock": 8,
+            "target_basis": "suggested_max",
+        }
+        result = determine_target_stock(item)
+        self.assertFalse(item["target_stock_hysteresis_applied"])
+        self.assertEqual(item["target_basis"], "suggested_min")
+        self.assertEqual(result, 9)
+
+    def test_determine_target_stock_hysteresis_at_absolute_gap_of_one(self):
+        # Gap is exactly 1 — the absolute threshold — so hysteresis fires.
+        item = {
+            "inventory": {"qoh": 2, "min": None, "max": None},
+            "qty_on_po": 0,
+            "demand_signal": 3,
+            "suggested_min": 4,
+            "suggested_max": 20,
+            "target_stock": 21,
+            "target_basis": "suggested_max",
+        }
+        result = determine_target_stock(item)
+        self.assertTrue(item["target_stock_hysteresis_applied"])
+        self.assertEqual(result, 21)
+
+    def test_determine_target_stock_hysteresis_not_applied_when_gap_exceeds_threshold(self):
+        # Gap is 4 on a max-target of 20 = 20%. Exceeds the 15% threshold.
+        item = {
+            "inventory": {"qoh": 2, "min": None, "max": None},
+            "qty_on_po": 0,
+            "demand_signal": 3,
+            "suggested_min": 4,
+            "suggested_max": 24,
+            "target_stock": 20,
+            "target_basis": "suggested_max",
+        }
+        result = determine_target_stock(item)
+        self.assertFalse(item["target_stock_hysteresis_applied"])
+        self.assertEqual(result, 24)
+
+    def test_determine_target_stock_hysteresis_not_applied_when_previous_target_zero(self):
+        # No previous target recorded (zero) — never hysteresise from nothing.
+        item = {
+            "inventory": {"qoh": 2, "min": None, "max": None},
+            "qty_on_po": 0,
+            "demand_signal": 3,
+            "suggested_min": 4,
+            "suggested_max": 9,
+            "target_stock": 0,
+            "target_basis": "suggested_max",
+        }
+        result = determine_target_stock(item)
+        self.assertFalse(item["target_stock_hysteresis_applied"])
+        self.assertEqual(result, 9)
 
     def test_calculate_raw_need_returns_zero_when_qoh_and_on_po_cover_target(self):
         item = {

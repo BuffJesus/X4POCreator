@@ -2,7 +2,7 @@
 
 Status: reconciled against the current workspace and test-covered behavior
 
-Current app version: `0.1.23`
+Current app version: `0.1.24`
 
 This file consolidates:
 
@@ -143,14 +143,14 @@ The goal is to keep one phased checklist that reflects what is actually done in 
 - [x] Make low-confidence recency buckets actionable in Review filters and summary text.
 - [x] Add cadence-aware heuristics for high-velocity small-pack items beyond the current two-pack hardware floor.
 - [x] Decide whether `reel_review` should remain distinct or split into `reel_auto` plus generalized replenishment-unit policies.
-- [ ] Keep negative QOH clamped to zero for ordering quantities while continuing to surface negative-balance data-quality warnings.
+- [x] Keep negative QOH clamped to zero for ordering quantities while continuing to surface negative-balance data-quality warnings.
 - [x] Add explicit candidate-preservation rules so items can enter the assignment session from inventory/min-max protection signals even when loaded sales rows are weak or absent.
 - [x] Add stronger source-confidence handling when X4 min/max, X4 12-month sales, and detailed-sales annualization materially disagree.
 - [x] Add min/max sanity normalization and review flags for invalid or suspicious source pairs such as `max < min`, negative values, or extreme jumps.
 - [x] Add churn-damping / hysteresis so small source-data changes do not unnecessarily flip reorder decisions or target-stock outcomes between runs.
 - [ ] Clarify and deepen the split between hard reorder floors and preferred operational targets so protected reorder timing can stay stable without permanently inflating routine targets.
 - [x] Replace the static hardware two-pack bias with a more dynamic hardware buffer based on available evidence such as sales window length, annualized demand, receipt cadence, and pack size.
-- [ ] Make hardware buffer heuristics get more permissive only when the loaded history window is long enough and the demand shape is stable enough to justify it.
+- [x] Make hardware buffer heuristics get more permissive only when the loaded history window is long enough and the demand shape is stable enough to justify it.
 - [x] Clean up pack semantics so "unknown pack", "no pack data", and explicit operator intent to order exact quantities are represented distinctly instead of overloading zero-like values.
 
 ## Phase 5. Vendor Shipping Policy Model
@@ -211,7 +211,7 @@ This is the next high-value shipping slice. The current model already uses `repl
   - inventory `repl_cost`
   - report-provided extended/value fields if available
   - fallback behavior when cost is missing or zero
-- [ ] Add data-quality handling for shipping-value calculations:
+- [x] Add data-quality handling for shipping-value calculations:
   - missing cost
   - zero cost
   - obviously stale or malformed cost
@@ -260,11 +260,11 @@ This is the next high-value shipping slice. The current model already uses `repl
 - [x] Check GitHub for updates on startup.
 - [x] Prompt the user when a newer release exists.
 - [x] Keep the startup update prompt covered by tests.
-- [ ] Download accepted updates to a staging location.
-- [ ] Hand off replacement to an updater helper or script after shutdown.
-- [ ] Replace the running executable safely after exit.
-- [ ] Relaunch automatically after successful replacement.
-- [ ] Keep failed download / failed swap paths recoverable and clearly explained.
+- [x] Download accepted updates to a staging location.
+- [x] Hand off replacement to an updater helper or script after shutdown.
+- [x] Replace the running executable safely after exit.
+- [x] Relaunch automatically after successful replacement.
+- [x] Keep failed download / failed swap paths recoverable and clearly explained.
 
 ## Phase 8. Bulk Editor Integrity and Large-Session Performance
 
@@ -285,10 +285,10 @@ This is the next high-value shipping slice. The current model already uses `repl
 - [x] Document and centralize final precedence between current cell, selected cells, selected rows, and right-click snapshot state.
 - [ ] Tighten undo/history boundaries so they always match the user's perceived edit unit.
 - [ ] Separate full-session, active-filtered, and visible-row performance paths more aggressively for very large sessions.
-- [ ] Require removal actions to verify stable row id plus current item identity before mutating the session, so stale UI state cannot remove the wrong candidate.
-- [ ] Add a protected removal path for items that still meet reorder-worthiness signals from inventory floors, trigger rules, suspense demand, or other protected evidence, routing them to review before deletion instead of silently dropping them.
-- [ ] Add explicit "why this item survived removal" reasoning for protected candidates so operators can distinguish true false-positives from protected-but-uncertain reorder rows.
-- [ ] Add audit visibility for session removals so a removed row can be traced back as intentional operator action rather than upstream candidate loss.
+- [x] Require removal actions to verify stable row id plus current item identity before mutating the session, so stale UI state cannot remove the wrong candidate.
+- [x] Add a protected removal path for items that still meet reorder-worthiness signals from inventory floors, trigger rules, suspense demand, or other protected evidence, routing them to review before deletion instead of silently dropping them.
+- [x] Add explicit "why this item survived removal" reasoning for protected candidates so operators can distinguish true false-positives from protected-but-uncertain reorder rows.
+- [x] Add audit visibility for session removals so a removed row can be traced back as intentional operator action rather than upstream candidate loss.
 - [x] Promote unresolved source-mapping and high inventory-coverage-gap cases into an explicit review workflow so weak upstream joins do not quietly degrade ordering correctness.
 
 ## Phase 9. Workflow Simplification and Default-First UX
@@ -350,15 +350,15 @@ These are the best next steps after reconciliation.
 - [x] Distinguish explicit critical min-rule protection from other rule-protected missing-recency cases.
 - [x] Cover weekly-order hardware cadence cases with inferred trigger-floor behavior for active small-pack hardware.
 - [x] Preserve reorder-worthy candidates that are below protected inventory floors even when they have little or no loaded sales history.
-- [ ] Replace the fixed hardware floor with evidence-weighted hardware buffer rules that improve as the loaded history window becomes longer and more stable.
-- [ ] Keep negative QOH from inflating order quantities beyond the zero-on-hand interpretation while still flagging the underlying source issue for review.
-- [ ] Add removal-protection tests for rows that still qualify through trigger rules, inventory-floor protection, suspense demand, or other protected reorder evidence.
-- [ ] Add tests covering churn-control behavior so tiny source-data changes do not reorder or suppress items needlessly.
+- [x] Replace the fixed hardware floor with evidence-weighted hardware buffer rules that improve as the loaded history window becomes longer and more stable.
+- [x] Keep negative QOH from inflating order quantities beyond the zero-on-hand interpretation while still flagging the underlying source issue for review.
+- [x] Add removal-protection tests for rows that still qualify through trigger rules, inventory-floor protection, suspense demand, or other protected reorder evidence.
+- [x] Add tests covering churn-control behavior so tiny source-data changes do not reorder or suppress items needlessly.
 - [x] Add tests covering explicit pack-state distinctions between unknown pack data, no-pack items, and deliberate exact-quantity overrides.
 - [x] Add tests covering unresolved source-mapping / inventory-coverage review routing so weak joins fail visible rather than silent.
-- [ ] Add remaining edge-case tests called out in the original `0.2.5` roadmap, especially:
-- [ ] Complete packaged-app self-update replacement flow.
-- [ ] Finish bulk edit-target integrity hardening under rapid interactions.
+- [x] Add remaining edge-case tests called out in the original `0.2.5` roadmap, especially:
+- [x] Complete packaged-app self-update replacement flow.
+- [x] Finish bulk edit-target integrity hardening under rapid interactions.
 
 ## Definition of "Done Enough" for `v0.2.x`
 

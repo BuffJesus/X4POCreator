@@ -1,8 +1,11 @@
 import os
+import sys
+import threading
 import webbrowser
 from tkinter import messagebox
 
 import storage
+import update_flow
 
 
 def save_app_settings(app, app_settings_file, write_debug):
@@ -58,6 +61,19 @@ def prompt_for_update(app, release, *, app_version, releases_page_url):
         details = f"{release_name} ({latest_tag})"
     if published_at:
         details += f"\nPublished: {published_at[:10]}"
+
+    exe_url = update_flow.find_exe_asset(release)
+    if update_flow.can_self_update() and exe_url:
+        _prompt_for_update_with_download(
+            app,
+            release,
+            exe_url=exe_url,
+            app_version=app_version,
+            details=details,
+            releases_page_url=releases_page_url,
+        )
+        return
+
     answer = messagebox.askyesno(
         "Update Available",
         f"A newer release is available on GitHub.\n\nCurrent version: {app_version}\nLatest release: {details}\n\nOpen the release page now?",
@@ -71,3 +87,81 @@ def prompt_for_update(app, release, *, app_version, releases_page_url):
                 "Release Page",
                 f"Open this page in your browser:\n{target}",
             )
+
+
+def _prompt_for_update_with_download(app, release, *, exe_url, app_version, details, releases_page_url):
+    """Offer automatic download-and-replace when running as a packaged .exe."""
+    answer = messagebox.askyesnocancel(
+        "Update Available",
+        (
+            f"A newer release is available on GitHub.\n\n"
+            f"Current version: {app_version}\n"
+            f"Latest release: {details}\n\n"
+            f"Download and install now? (The app will restart.)\n\n"
+            f"Yes = Download & install\n"
+            f"No  = Open release page\n"
+            f"Cancel = Remind me next time"
+        ),
+    )
+    if answer is None:
+        return
+    if not answer:
+        target = release.get("html_url") or releases_page_url
+        try:
+            webbrowser.open(target)
+        except Exception:
+            messagebox.showinfo("Release Page", f"Open this page in your browser:\n{target}")
+        return
+
+    current_exe = sys.executable
+    staging = update_flow.staging_path_for(current_exe)
+    _run_download_and_install(app, exe_url=exe_url, staging_path=staging, current_exe=current_exe)
+
+
+def _run_download_and_install(app, *, exe_url, staging_path, current_exe):
+    """Download the update in a background thread and offer to restart when done."""
+    root = getattr(app, "root", None)
+
+    def _worker():
+        try:
+            update_flow.download_update(exe_url, staging_path)
+        except Exception as exc:
+            update_flow.cleanup_staging(staging_path)
+            if root is not None:
+                root.after(0, lambda: messagebox.showerror(
+                    "Update Failed",
+                    f"The download could not complete:\n{exc}\n\n"
+                    "Please download the update manually from the release page.",
+                ))
+            return
+        if root is not None:
+            root.after(0, _offer_restart)
+
+    def _offer_restart():
+        try:
+            script = update_flow.write_updater_script(staging_path, current_exe)
+        except Exception as exc:
+            update_flow.cleanup_staging(staging_path)
+            messagebox.showerror(
+                "Update Failed",
+                f"Could not write the updater script:\n{exc}\n\n"
+                "The downloaded file has been removed.",
+            )
+            return
+        ready = messagebox.askyesno(
+            "Ready to Install",
+            "The update has been downloaded.\n\n"
+            "Click Yes to restart POBuilder and apply the update, "
+            "or No to apply it the next time you close the app.",
+        )
+        if ready:
+            update_flow.launch_updater_and_exit(app, script)
+
+    thread = threading.Thread(target=_worker, daemon=True)
+    if root is not None:
+        root.after(0, lambda: messagebox.showinfo(
+            "Downloading Update",
+            "Downloading the update in the background.\n"
+            "You will be notified when it is ready to install.",
+        ))
+    thread.start()

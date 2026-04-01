@@ -404,15 +404,24 @@ def bulk_remove_not_needed(app, scope, max_exceed_abs_buffer, *, include_assigne
 
     def _confirm():
         # map tree iid -> original candidate index
+        checked = list(checked_set)
         remove_indices = sorted(
-            [candidates[int(iid)][0] for iid in checked_set],
+            [candidates[int(iid)][0] for iid in checked],
             reverse=True,
         )
+        expected_keys = {
+            candidates[int(iid)][0]: (
+                candidates[int(iid)][1].get("line_code", ""),
+                candidates[int(iid)][1].get("item_code", ""),
+            )
+            for iid in checked
+        }
         removed_payload = bulk_remove_flow.remove_filtered_rows(
             app,
             remove_indices,
             copy.deepcopy,
             history_label=f"remove:not_needed:{scope}",
+            expected_keys=expected_keys,
         )
         result["removed"] = len(removed_payload)
         result["protected"] = len(getattr(app, "last_protected_bulk_items", []) or [])
@@ -432,8 +441,29 @@ def bulk_remove_not_needed(app, scope, max_exceed_abs_buffer, *, include_assigne
         app._update_bulk_summary()
     if result["removed"] > 0 or result["protected"] > 0:
         detail = f"Removed {result['removed']} item(s) from this session."
-        if result["protected"] > 0:
-            detail += f"\n\nSkipped {result['protected']} protected item(s) that still carry reorder evidence."
+        protected_items = getattr(app, "last_protected_bulk_items", []) or []
+        if protected_items:
+            detail += f"\n\nSkipped {len(protected_items)} protected item(s) that still carry reorder evidence:"
+            shown = 0
+            for _idx, pitem in protected_items:
+                lc = pitem.get("line_code", "")
+                ic = pitem.get("item_code", "")
+                raw_reason = pitem.get("_removal_protection_reason", "")
+                reason_label = {
+                    "active_suspense_demand": "active suspense demand",
+                    "active_suspense_carry": "suspense-carry demand",
+                }.get(raw_reason) or (
+                    raw_reason.replace("candidate_preserved:", "").replace("_", " ")
+                    if raw_reason.startswith("candidate_preserved:")
+                    else (raw_reason or "reorder evidence present")
+                )
+                detail += f"\n  {lc}{ic}: {reason_label}"
+                shown += 1
+                if shown >= 8:
+                    remaining = len(protected_items) - shown
+                    if remaining > 0:
+                        detail += f"\n  … and {remaining} more"
+                    break
         messagebox.showinfo("Removed", detail)
 
 

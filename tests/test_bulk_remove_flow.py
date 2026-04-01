@@ -145,6 +145,92 @@ class BulkRemoveFlowTests(unittest.TestCase):
         )
         self.assertEqual(len(events), 1)
 
+    def test_remove_filtered_rows_skips_index_when_expected_key_mismatches(self):
+        app = SimpleNamespace(
+            filtered_items=[
+                {"line_code": "AER-", "item_code": "A"},
+                {"line_code": "AER-", "item_code": "B"},
+                {"line_code": "AER-", "item_code": "C"},
+            ],
+            last_removed_bulk_items=[],
+            last_protected_bulk_items=[],
+            _capture_bulk_history_state=lambda capture_spec=None: {},
+            _finalize_bulk_history_action=lambda label, before, capture_spec=None: None,
+        )
+
+        # Index 1 is "B" but we claim it should be "Z" — mismatch, so skip it.
+        removed = bulk_remove_flow.remove_filtered_rows(
+            app,
+            [2, 1, 0],
+            lambda value: dict(value),
+            history_label="remove:selected_rows",
+            expected_keys={2: ("AER-", "C"), 1: ("AER-", "Z"), 0: ("AER-", "A")},
+        )
+
+        # Only indices 2 (C) and 0 (A) matched; index 1 (B vs expected Z) was skipped.
+        removed_items = [item["item_code"] for _idx, item in removed]
+        self.assertIn("C", removed_items)
+        self.assertIn("A", removed_items)
+        self.assertNotIn("B", removed_items)
+        self.assertEqual(app.filtered_items, [{"line_code": "AER-", "item_code": "B"}])
+
+    def test_remove_filtered_rows_passes_when_expected_keys_all_match(self):
+        app = SimpleNamespace(
+            filtered_items=[
+                {"line_code": "AER-", "item_code": "A"},
+                {"line_code": "AER-", "item_code": "B"},
+            ],
+            last_removed_bulk_items=[],
+            last_protected_bulk_items=[],
+            _capture_bulk_history_state=lambda capture_spec=None: {},
+            _finalize_bulk_history_action=lambda label, before, capture_spec=None: None,
+        )
+
+        removed = bulk_remove_flow.remove_filtered_rows(
+            app,
+            [1, 0],
+            lambda value: dict(value),
+            history_label="remove:selected_rows",
+            expected_keys={0: ("AER-", "A"), 1: ("AER-", "B")},
+        )
+
+        self.assertEqual(len(removed), 2)
+        self.assertEqual(app.filtered_items, [])
+
+    def test_remove_filtered_rows_skips_protection_for_suspense_carry(self):
+        app = SimpleNamespace(
+            filtered_items=[
+                {"line_code": "AER-", "item_code": "A", "suspense_carry_qty": 2},
+                {"line_code": "AER-", "item_code": "B"},
+            ],
+            last_removed_bulk_items=[],
+            last_protected_bulk_items=[],
+            _capture_bulk_history_state=lambda capture_spec=None: {},
+            _finalize_bulk_history_action=lambda label, before, capture_spec=None: None,
+            _is_bulk_removal_protected=lambda item, history_label="": (
+                (item.get("suspense_carry_qty", 0) or 0) > 0
+                and str(history_label).startswith("remove:not_needed"),
+                "active_suspense_carry" if (item.get("suspense_carry_qty", 0) or 0) > 0 else "",
+            ),
+        )
+
+        removed = bulk_remove_flow.remove_filtered_rows(
+            app,
+            [1, 0],
+            lambda value: dict(value),
+            history_label="remove:not_needed:filtered",
+        )
+
+        # Item A (suspense carry) is protected; only B is removed.
+        self.assertEqual(len(removed), 1)
+        self.assertEqual(removed[0][1]["item_code"], "B")
+        self.assertEqual(len(app.last_protected_bulk_items), 1)
+        self.assertEqual(app.last_protected_bulk_items[0][1]["item_code"], "A")
+        self.assertEqual(
+            app.last_protected_bulk_items[0][1]["_removal_protection_reason"],
+            "active_suspense_carry",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

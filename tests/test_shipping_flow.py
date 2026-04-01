@@ -331,6 +331,60 @@ class ShippingFlowTests(unittest.TestCase):
         self.assertEqual(zero["source_label"], "Zero inventory repl_cost")
         self.assertEqual(invalid["source_label"], "Invalid inventory repl_cost")
 
+    def test_item_cost_data_classifies_suspicious_cost(self):
+        # Costs above $500k or below $0.0001 are suspicious (possible stale/data-entry error)
+        inventory_lookup = {
+            ("AER-", "HUGE"): {"repl_cost": 500_001.0},
+            ("AER-", "TINY"): {"repl_cost": 0.00005},
+            ("AER-", "EDGE_HI"): {"repl_cost": 500_000.0},
+            ("AER-", "EDGE_LO"): {"repl_cost": 0.0001},
+        }
+
+        huge = shipping_flow.item_cost_data(
+            {"line_code": "AER-", "item_code": "HUGE", "final_qty": 1},
+            inventory_lookup,
+        )
+        tiny = shipping_flow.item_cost_data(
+            {"line_code": "AER-", "item_code": "TINY", "final_qty": 1},
+            inventory_lookup,
+        )
+        edge_hi = shipping_flow.item_cost_data(
+            {"line_code": "AER-", "item_code": "EDGE_HI", "final_qty": 1},
+            inventory_lookup,
+        )
+        edge_lo = shipping_flow.item_cost_data(
+            {"line_code": "AER-", "item_code": "EDGE_LO", "final_qty": 1},
+            inventory_lookup,
+        )
+
+        self.assertEqual(huge["source"], "suspicious_repl_cost")
+        self.assertEqual(tiny["source"], "suspicious_repl_cost")
+        # Boundary values are not suspicious
+        self.assertEqual(edge_hi["source"], "inventory_repl_cost")
+        self.assertEqual(edge_lo["source"], "inventory_repl_cost")
+        # Suspicious costs yield zero estimated value (not usable for shipping calculations)
+        self.assertEqual(huge["estimated_order_value"], 0.0)
+        self.assertEqual(tiny["estimated_order_value"], 0.0)
+
+    def test_build_vendor_value_coverage_tracks_suspicious_cost(self):
+        coverage = shipping_flow.build_vendor_value_coverage(
+            [
+                {"vendor": "MOTION", "line_code": "AER-", "item_code": "GOOD", "final_qty": 2},
+                {"vendor": "MOTION", "line_code": "AER-", "item_code": "HUGE", "final_qty": 2},
+                {"vendor": "MOTION", "line_code": "AER-", "item_code": "TINY", "final_qty": 2},
+            ],
+            {
+                ("AER-", "GOOD"): {"repl_cost": 5.0},
+                ("AER-", "HUGE"): {"repl_cost": 999_999.0},
+                ("AER-", "TINY"): {"repl_cost": 0.000001},
+            },
+        )
+
+        entry = coverage["MOTION"]
+        self.assertEqual(entry["suspicious_cost"], 2)
+        self.assertEqual(entry["known"], 1)
+        self.assertEqual(entry["unknown"], 2)
+
     def test_build_vendor_value_coverage_tracks_confidence_and_cost_issue_counts(self):
         coverage = shipping_flow.build_vendor_value_coverage(
             [

@@ -123,6 +123,85 @@ class BulkSheetActionsFlowTests(unittest.TestCase):
         self.assertEqual(context["row_ids"], [row_id_a, row_id_b])
         self.assertEqual(context["row_source"], "selection_including_right_click")
 
+    def test_resolve_bulk_edit_context_falls_back_to_explicit_selected_rows_when_target_rows_empty(self):
+        # When selected_target_row_ids yields nothing (e.g. no editable col active),
+        # explicit_selected_row_ids is the next fallback — important for keyboard-nav
+        # edit-target integrity when the column focus has drifted.
+        row_id_a = ui_bulk.bulk_row_id({"line_code": "AER-", "item_code": "A"})
+        row_id_b = ui_bulk.bulk_row_id({"line_code": "AER-", "item_code": "B"})
+        fake_app = SimpleNamespace(
+            bulk_sheet=SimpleNamespace(
+                selected_editable_column_name=lambda: "",
+                current_editable_column_name=lambda: "",
+                selected_target_row_ids=lambda col_name: (),
+                explicit_selected_row_ids=lambda: (row_id_a, row_id_b),
+                selected_row_ids=lambda: (),
+                current_row_id=lambda: row_id_a,
+            ),
+            _right_click_bulk_context=None,
+        )
+
+        context = bulk_sheet_actions_flow.resolve_bulk_edit_context(fake_app)
+
+        self.assertEqual(context["row_ids"], [row_id_a, row_id_b])
+        self.assertEqual(context["row_source"], "explicit_rows")
+
+    def test_resolve_bulk_edit_context_falls_back_to_selected_row_ids_when_explicit_empty(self):
+        row_id_a = ui_bulk.bulk_row_id({"line_code": "AER-", "item_code": "A"})
+        fake_app = SimpleNamespace(
+            bulk_sheet=SimpleNamespace(
+                selected_editable_column_name=lambda: "",
+                current_editable_column_name=lambda: "",
+                selected_target_row_ids=lambda col_name: (),
+                explicit_selected_row_ids=lambda: (),
+                selected_row_ids=lambda: (row_id_a,),
+                current_row_id=lambda: row_id_a,
+            ),
+            _right_click_bulk_context=None,
+        )
+
+        context = bulk_sheet_actions_flow.resolve_bulk_edit_context(fake_app)
+
+        self.assertEqual(context["row_ids"], [row_id_a])
+        self.assertEqual(context["row_source"], "selected_rows")
+
+    def test_resolve_bulk_edit_context_falls_back_to_current_row_when_include_current_row_true(self):
+        row_id_a = ui_bulk.bulk_row_id({"line_code": "AER-", "item_code": "A"})
+        fake_app = SimpleNamespace(
+            bulk_sheet=SimpleNamespace(
+                selected_editable_column_name=lambda: "",
+                current_editable_column_name=lambda: "",
+                selected_target_row_ids=lambda col_name: (),
+                explicit_selected_row_ids=lambda: (),
+                selected_row_ids=lambda: (),
+                current_row_id=lambda: row_id_a,
+            ),
+            _right_click_bulk_context=None,
+        )
+
+        # Without include_current_row, current_row is not used
+        ctx_no_current = bulk_sheet_actions_flow.resolve_bulk_edit_context(fake_app)
+        self.assertEqual(ctx_no_current["row_ids"], [])
+
+        # With include_current_row=True, falls back to the current cell's row
+        ctx_with_current = bulk_sheet_actions_flow.resolve_bulk_edit_context(fake_app, include_current_row=True)
+        self.assertEqual(ctx_with_current["row_ids"], [row_id_a])
+        self.assertEqual(ctx_with_current["row_source"], "current_row")
+
+    def test_resolve_bulk_edit_context_returns_empty_when_no_bulk_sheet(self):
+        row_id_b = ui_bulk.bulk_row_id({"line_code": "AER-", "item_code": "B"})
+        fake_app = SimpleNamespace(
+            bulk_sheet=None,
+            _right_click_bulk_context={"row_id": row_id_b, "col_name": "vendor"},
+        )
+
+        context = bulk_sheet_actions_flow.resolve_bulk_edit_context(fake_app, include_current_row=True)
+
+        self.assertEqual(context["row_ids"], [])
+        self.assertEqual(context["row_source"], "none")
+        # clicked_row_id is still populated from right-click context even without sheet
+        self.assertEqual(context["clicked_row_id"], row_id_b)
+
     def test_bulk_begin_edit_opens_buy_rule_editor_from_right_click(self):
         events = []
         row_id = ui_bulk.bulk_row_id({"line_code": "AER-", "item_code": "GH781-4"})

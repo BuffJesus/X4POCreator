@@ -258,6 +258,7 @@ def estimated_value_source_label(source):
         "missing_repl_cost": "Missing inventory repl_cost",
         "zero_repl_cost": "Zero inventory repl_cost",
         "invalid_repl_cost": "Invalid inventory repl_cost",
+        "suspicious_repl_cost": "Suspicious inventory repl_cost (possible stale or data-entry error)",
     }.get(source or "", source or "")
 
 
@@ -285,7 +286,12 @@ def item_cost_data(item, inventory_lookup):
             unit_cost = None
         else:
             if unit_cost > 0:
-                source = "inventory_repl_cost"
+                # Flag costs that are implausibly extreme: above $500,000/unit or
+                # below $0.0001/unit (but nonzero) are almost certainly data errors.
+                if unit_cost > 500_000 or unit_cost < 0.0001:
+                    source = "suspicious_repl_cost"
+                else:
+                    source = "inventory_repl_cost"
             elif unit_cost == 0:
                 source = "zero_repl_cost"
                 unit_cost = 0.0
@@ -328,6 +334,7 @@ def build_vendor_value_coverage(items, inventory_lookup):
         entry.setdefault("missing_cost", 0)
         entry.setdefault("zero_cost", 0)
         entry.setdefault("invalid_cost", 0)
+        entry.setdefault("suspicious_cost", 0)
         if cost_data["source"] == "inventory_repl_cost":
             entry["known"] += 1
         else:
@@ -336,6 +343,8 @@ def build_vendor_value_coverage(items, inventory_lookup):
                 entry["missing_cost"] += 1
             elif cost_data["source"] == "zero_repl_cost":
                 entry["zero_cost"] += 1
+            elif cost_data["source"] == "suspicious_repl_cost":
+                entry["suspicious_cost"] += 1
             else:
                 entry["invalid_cost"] += 1
     for vendor, entry in coverage.items():

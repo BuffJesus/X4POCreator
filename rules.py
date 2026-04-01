@@ -313,6 +313,10 @@ def infer_minimum_packs_on_hand(item, inv, pack_qty):
         and detailed_shape in ("", "steady_repeat", "routine_mixed")
     ):
         return 3
+    # A very short loaded window (< 14 days) does not provide enough history to
+    # confidently assert a two-pack floor.  Use a single-pack conservative buffer.
+    if isinstance(sales_span_days, (int, float)) and sales_span_days < 14:
+        return 1
     return 2
 
 
@@ -370,6 +374,10 @@ def infer_minimum_cover_cycles(item, inv, pack_qty):
         and detailed_shape in ("", "steady_repeat", "routine_mixed")
     ):
         return 3
+    # A very short loaded window (< 14 days) does not provide enough history to
+    # confidently assert a two-cycle cover floor.  Use a single-cycle buffer.
+    if isinstance(sales_span_days, (int, float)) and sales_span_days < 14:
+        return 1
     return 2
 
 
