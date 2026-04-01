@@ -334,7 +334,7 @@ def scan_directory_for_reports(directory):
 def _find_lc_column(row):
     for i, c in enumerate(row):
         val = c.strip()
-        if val.endswith("-") and 2 <= len(val) <= 5 and re.fullmatch(r"[A-Za-z0-9/]+", val[:-1]):
+        if val.endswith("-") and 2 <= len(val) <= 5 and re.fullmatch(r"[A-Za-z0-9/\-]+", val[:-1]):
             return i
     return None
 
