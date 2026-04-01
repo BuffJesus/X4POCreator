@@ -113,15 +113,16 @@ def not_needed_reason(app, item, max_exceed_abs_buffer):
     else:
         _, sug_max = app._suggest_min_max(key)
 
+    effective_order_floor = item.get("effective_order_floor", effective_target_stock)
     if (
-        isinstance(effective_target_stock, (int, float))
-        and effective_target_stock > 0
+        isinstance(effective_order_floor, (int, float))
+        and effective_order_floor > 0
         and (
             not isinstance(target_stock, (int, float))
-            or effective_target_stock > target_stock
+            or effective_order_floor > target_stock
         )
     ):
-        target_stock = effective_target_stock
+        target_stock = effective_order_floor
 
     if target_stock and inventory_position >= target_stock and final_qty > 0:
         reasons.append(

@@ -440,6 +440,7 @@ class POBuilderTests(unittest.TestCase):
                 "_capture_spec": capture_spec,
             }],
             bulk_redo_stack=[],
+            bulk_sheet=None,
             _capture_bulk_history_state=lambda capture_spec=None: capture_specs.append(capture_spec) or {"filtered_items": [{"item_code": "LIVE"}]},
             _restore_bulk_history_state=lambda state: calls.append(("restore", state)),
         )
@@ -460,6 +461,7 @@ class POBuilderTests(unittest.TestCase):
                 "_capture_spec": capture_spec,
             }],
             bulk_redo_stack=[],
+            bulk_sheet=None,
             _capture_bulk_history_state=lambda capture_spec=None: {"filtered_items_rows": [("0", {"vendor": "LIVE"})]},
             _restore_bulk_history_state=lambda state, capture_spec=None: restore_specs.append((state, capture_spec)),
         )
@@ -478,6 +480,7 @@ class POBuilderTests(unittest.TestCase):
                 "_capture_spec": capture_spec,
             }],
             bulk_redo_stack=[],
+            bulk_sheet=None,
             _capture_bulk_history_state=lambda capture_spec=None: {"filtered_items_rows": [("0", {"vendor": "LIVE", "why": "keep"})]},
             _restore_bulk_history_state=lambda state, capture_spec=None: None,
         )
@@ -503,6 +506,7 @@ class POBuilderTests(unittest.TestCase):
                 "after": {"filtered_items_rows": [("0", {"vendor": "MOTION"})]},
                 "_capture_spec": capture_spec,
             }],
+            bulk_sheet=None,
             _capture_bulk_history_state=lambda capture_spec=None: {"filtered_items_rows": [("0", {"vendor": "", "why": "keep"})]},
             _restore_bulk_history_state=lambda state, capture_spec=None: None,
         )

@@ -888,7 +888,8 @@ class RulesTests(unittest.TestCase):
         self.assertTrue(item["reorder_needed"])
         self.assertEqual(item["reorder_trigger_threshold"], 60)
         self.assertEqual(item["reorder_trigger_basis"], "minimum_cover_cycles")
-        self.assertEqual(item["effective_target_stock"], 60)
+        self.assertEqual(item["effective_order_floor"], 60)
+        self.assertEqual(item["effective_target_stock"], 20)
         self.assertIn("Minimum cover cycles: 2", item["why"])
 
     def test_enrich_item_with_minimum_cover_days_raises_effective_reorder_floor(self):
@@ -913,7 +914,8 @@ class RulesTests(unittest.TestCase):
         self.assertTrue(item["reorder_needed"])
         self.assertEqual(item["reorder_trigger_threshold"], 45)
         self.assertEqual(item["reorder_trigger_basis"], "minimum_cover_days")
-        self.assertEqual(item["effective_target_stock"], 45)
+        self.assertEqual(item["effective_order_floor"], 45)
+        self.assertEqual(item["effective_target_stock"], 20)
         self.assertIn("Minimum cover days: 21", item["why"])
 
     def test_enrich_item_infers_weekly_hardware_cover_cycles_and_pack_trigger(self):
@@ -1027,7 +1029,8 @@ class RulesTests(unittest.TestCase):
         self.assertTrue(item["reorder_needed"])
         self.assertEqual(item["reorder_trigger_threshold"], 200)
         self.assertEqual(item["reorder_trigger_basis"], "minimum_packs_on_hand")
-        self.assertEqual(item["effective_target_stock"], 200)
+        self.assertEqual(item["effective_order_floor"], 200)
+        self.assertEqual(item["effective_target_stock"], 20)
         self.assertEqual(item["raw_need"], 50)
         self.assertEqual(item["suggested_qty"], 100)
         self.assertIn("trigger_minimum_packs_on_hand", item["reason_codes"])

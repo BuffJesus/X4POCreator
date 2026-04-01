@@ -2,7 +2,7 @@
 
 Status: reconciled against the current workspace and test-covered behavior
 
-Current app version: `0.1.24`
+Current app version: `0.1.25`
 
 This file consolidates:
 
@@ -148,7 +148,7 @@ The goal is to keep one phased checklist that reflects what is actually done in 
 - [x] Add stronger source-confidence handling when X4 min/max, X4 12-month sales, and detailed-sales annualization materially disagree.
 - [x] Add min/max sanity normalization and review flags for invalid or suspicious source pairs such as `max < min`, negative values, or extreme jumps.
 - [x] Add churn-damping / hysteresis so small source-data changes do not unnecessarily flip reorder decisions or target-stock outcomes between runs.
-- [ ] Clarify and deepen the split between hard reorder floors and preferred operational targets so protected reorder timing can stay stable without permanently inflating routine targets.
+- [x] Clarify and deepen the split between hard reorder floors and preferred operational targets so protected reorder timing can stay stable without permanently inflating routine targets.
 - [x] Replace the static hardware two-pack bias with a more dynamic hardware buffer based on available evidence such as sales window length, annualized demand, receipt cadence, and pack size.
 - [x] Make hardware buffer heuristics get more permissive only when the loaded history window is long enough and the demand shape is stable enough to justify it.
 - [x] Clean up pack semantics so "unknown pack", "no pack data", and explicit operator intent to order exact quantities are represented distinctly instead of overloading zero-like values.
@@ -280,11 +280,11 @@ This is the next high-value shipping slice. The current model already uses `repl
 - [x] Route bulk removal operations through the same undo/redo history capture path as other bulk actions.
 - [x] Make the dedicated remove-undo path respect the real bulk history stack before falling back to legacy payload restore.
 - [x] Flush queued edits before mouse-driven selection and right-click context changes so click-away paths respect the same edit boundary model.
-- [ ] Eliminate remaining previous-cell / rapid-click commit bleed under real timing pressure.
-- [ ] Guarantee edit-target integrity under rapid click-edit, keyboard-edit, filtered, sorted, and multi-selection workflows.
+- [x] Eliminate remaining previous-cell / rapid-click commit bleed under real timing pressure.
+- [x] Guarantee edit-target integrity under rapid click-edit, keyboard-edit, filtered, sorted, and multi-selection workflows.
 - [x] Document and centralize final precedence between current cell, selected cells, selected rows, and right-click snapshot state.
-- [ ] Tighten undo/history boundaries so they always match the user's perceived edit unit.
-- [ ] Separate full-session, active-filtered, and visible-row performance paths more aggressively for very large sessions.
+- [x] Tighten undo/history boundaries so they always match the user's perceived edit unit.
+- [x] Separate full-session, active-filtered, and visible-row performance paths more aggressively for very large sessions.
 - [x] Require removal actions to verify stable row id plus current item identity before mutating the session, so stale UI state cannot remove the wrong candidate.
 - [x] Add a protected removal path for items that still meet reorder-worthiness signals from inventory floors, trigger rules, suspense demand, or other protected evidence, routing them to review before deletion instead of silently dropping them.
 - [x] Add explicit "why this item survived removal" reasoning for protected candidates so operators can distinguish true false-positives from protected-but-uncertain reorder rows.

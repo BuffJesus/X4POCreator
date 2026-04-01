@@ -667,7 +667,9 @@ def determine_acceptable_overstock_qty(item):
 def assess_post_receipt_overstock(item, suggested_qty):
     """Compare projected post-receipt stock against the effective target plus tolerated overstock."""
     inventory_position = item.get("inventory_position", 0) or 0
-    effective_target_stock = item.get("effective_target_stock", item.get("target_stock", 0)) or 0
+    # Use effective_order_floor when present so trigger-driven orders to a high floor are not
+    # incorrectly flagged as overstock relative to the lower operational display target.
+    effective_target_stock = item.get("effective_order_floor", item.get("effective_target_stock", item.get("target_stock", 0))) or 0
     acceptable_overstock = item.get("acceptable_overstock_qty_effective", 0) or 0
     resulting_stock = inventory_position + max(0, suggested_qty or 0)
     overstock_qty = max(0, resulting_stock - effective_target_stock)
@@ -782,14 +784,21 @@ def calculate_raw_need(item):
     determine_target_stock(item)
     if not evaluate_reorder_trigger(item):
         item["effective_target_stock"] = item.get("target_stock", 0)
+        item["effective_order_floor"] = item.get("target_stock", 0)
         return 0
     target_stock = item.get("target_stock", 0)
     trigger_threshold = item.get("reorder_trigger_threshold")
-    effective_target_stock = target_stock
-    if isinstance(trigger_threshold, (int, float)) and trigger_threshold > effective_target_stock:
-        effective_target_stock = trigger_threshold
-    item["effective_target_stock"] = effective_target_stock
-    return max(0, int(math.ceil(effective_target_stock - inventory_position)))
+    # effective_target_stock is the preferred operational target and is never inflated by the
+    # trigger threshold so that downstream display and reporting remain accurate.
+    item["effective_target_stock"] = target_stock
+    # effective_order_floor is the quantity basis for this order cycle: when a trigger threshold
+    # sits above the operational target (e.g. minimum_packs_on_hand > max), we order enough to
+    # clear the floor rather than leaving inventory below the trigger level.
+    effective_order_floor = target_stock
+    if isinstance(trigger_threshold, (int, float)) and trigger_threshold > effective_order_floor:
+        effective_order_floor = trigger_threshold
+    item["effective_order_floor"] = effective_order_floor
+    return max(0, int(math.ceil(effective_order_floor - inventory_position)))
 
 
 def determine_order_policy(item, inv, pack_qty, rule):
@@ -997,6 +1006,7 @@ def enrich_item(item, inv, pack_qty, rule):
     inventory_position = item.get("inventory_position", 0)
     target_stock = item.get("target_stock", 0)
     effective_target_stock = item.get("effective_target_stock", target_stock)
+    effective_order_floor = item.get("effective_order_floor", effective_target_stock)
     if raw_need <= 0:
         reason_codes.append("inventory_covers_target")
     else:
@@ -1075,8 +1085,8 @@ def enrich_item(item, inv, pack_qty, rule):
         detail_parts.append(f"Package profile: {package_profile_label(item['package_profile'])}")
     if replenishment_unit_mode:
         detail_parts.append(f"Replenishment mode: {replenishment_unit_mode_label(replenishment_unit_mode)}")
-    if effective_target_stock != target_stock:
-        detail_parts.append(f"Effective reorder floor: {effective_target_stock:g}")
+    if effective_order_floor != target_stock:
+        detail_parts.append(f"Effective reorder floor: {effective_order_floor:g}")
     if target_basis:
         basis_labels = {
             "current_max": "Based on current max",

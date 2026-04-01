@@ -1315,6 +1315,10 @@ class POBuilderApp:
         session_state_flow.restore_bulk_history_state(self, state, capture_spec=capture_spec)
 
     def _bulk_undo(self, event=None):
+        # Drain any in-flight async edit before inspecting or restoring state so
+        # a queued after(1,...) callback cannot replay over the undo result.
+        if self.bulk_sheet:
+            self.bulk_sheet.flush_pending_edit()
         if not self.bulk_undo_stack:
             return "break" if event is not None else None
         entry = self.bulk_undo_stack.pop()
@@ -1341,6 +1345,9 @@ class POBuilderApp:
         return "break" if event is not None else None
 
     def _bulk_redo(self, event=None):
+        # Drain any in-flight async edit before restoring state (mirrors _bulk_undo).
+        if self.bulk_sheet:
+            self.bulk_sheet.flush_pending_edit()
         if not self.bulk_redo_stack:
             return "break" if event is not None else None
         entry = self.bulk_redo_stack.pop()

@@ -402,6 +402,7 @@ class BulkSheetStatusTests(unittest.TestCase):
         fake_app = SimpleNamespace(
             bulk_undo_stack=[{"label": "edit:pack_size", "before": {"filtered_items": [{"item_code": "A"}]}, "after": {"filtered_items": [{"item_code": "B"}]}}],
             bulk_redo_stack=[],
+            bulk_sheet=None,
             _capture_bulk_history_state=lambda: {"filtered_items": [{"item_code": "LIVE"}]},
             _restore_bulk_history_state=lambda state: calls.append(("restore", state)),
         )
@@ -418,6 +419,7 @@ class BulkSheetStatusTests(unittest.TestCase):
         fake_app = SimpleNamespace(
             bulk_undo_stack=[],
             bulk_redo_stack=[{"label": "edit:pack_size", "before": {"filtered_items": [{"item_code": "A"}]}, "after": {"filtered_items": [{"item_code": "B"}]}}],
+            bulk_sheet=None,
             _capture_bulk_history_state=lambda: {"filtered_items": [{"item_code": "LIVE"}]},
             _restore_bulk_history_state=lambda state: calls.append(("restore", state)),
         )
@@ -428,6 +430,40 @@ class BulkSheetStatusTests(unittest.TestCase):
         self.assertEqual(calls, [("restore", {"filtered_items": [{"item_code": "B"}]})])
         self.assertEqual(fake_app.bulk_redo_stack, [])
         self.assertEqual(fake_app.bulk_undo_stack[0]["before"], {"filtered_items": [{"item_code": "LIVE"}]})
+
+    def test_bulk_undo_flushes_pending_edit_before_restoring(self):
+        """Undo must drain any queued async edit first so the after(1,...) callback
+        cannot replay over the restored state."""
+        calls = []
+        fake_sheet = SimpleNamespace(flush_pending_edit=lambda: calls.append(("flush",)))
+        fake_app = SimpleNamespace(
+            bulk_undo_stack=[{"label": "edit:vendor", "before": {"filtered_items": []}, "after": {"filtered_items": []}}],
+            bulk_redo_stack=[],
+            bulk_sheet=fake_sheet,
+            _capture_bulk_history_state=lambda: {"filtered_items": []},
+            _restore_bulk_history_state=lambda state: calls.append(("restore",)),
+        )
+
+        po_builder.POBuilderApp._bulk_undo(fake_app)
+
+        self.assertIn(("flush",), calls)
+        self.assertTrue(calls.index(("flush",)) < calls.index(("restore",)))
+
+    def test_bulk_redo_flushes_pending_edit_before_restoring(self):
+        calls = []
+        fake_sheet = SimpleNamespace(flush_pending_edit=lambda: calls.append(("flush",)))
+        fake_app = SimpleNamespace(
+            bulk_undo_stack=[],
+            bulk_redo_stack=[{"label": "edit:vendor", "before": {"filtered_items": []}, "after": {"filtered_items": []}}],
+            bulk_sheet=fake_sheet,
+            _capture_bulk_history_state=lambda: {"filtered_items": []},
+            _restore_bulk_history_state=lambda state: calls.append(("restore",)),
+        )
+
+        po_builder.POBuilderApp._bulk_redo(fake_app)
+
+        self.assertIn(("flush",), calls)
+        self.assertTrue(calls.index(("flush",)) < calls.index(("restore",)))
 
 
 class BulkSheetViewTests(unittest.TestCase):
@@ -475,6 +511,49 @@ class BulkSheetViewTests(unittest.TestCase):
         self.assertEqual(view.row_ids, ["0"])
         self.assertEqual(view.row_lookup, {"0": 0})
         self.assertEqual(calls, [("status",)])
+
+    def test_set_rows_bumps_selection_serial_on_data_change(self):
+        """A data-changing set_rows call must increment _selection_serial so
+        history entries queued before the refresh cannot coalesce with entries
+        queued after it."""
+        view = BulkSheetView.__new__(BulkSheetView)
+        view.labels = {"vendor": "Vendor", "pack_size": "Pack"}
+        view.columns = ("vendor", "pack_size")
+        view._rendered_row_ids = ()
+        view._rendered_rows = ()
+        view._selection_serial = 3
+        view.app = SimpleNamespace(
+            _right_click_bulk_context=None,
+            _update_bulk_sheet_status=lambda: None,
+        )
+        view.sheet = SimpleNamespace(
+            set_sheet_data=lambda *args, **kwargs: None,
+            headers=lambda *args, **kwargs: None,
+            display_rows=lambda *args, **kwargs: None,
+        )
+
+        result = view.set_rows([["VENDOR", "5"]], ["0"])
+
+        self.assertTrue(result)
+        self.assertGreater(view._selection_serial, 3)
+
+    def test_set_rows_does_not_bump_selection_serial_when_rows_unchanged(self):
+        view = BulkSheetView.__new__(BulkSheetView)
+        view.labels = {"vendor": "Vendor", "pack_size": "Pack"}
+        view.columns = ("vendor", "pack_size")
+        view._rendered_row_ids = ("0",)
+        view._rendered_rows = (("VENDOR", "5"),)
+        view._selection_serial = 3
+        view.app = SimpleNamespace(
+            _right_click_bulk_context=None,
+            _update_bulk_sheet_status=lambda: None,
+        )
+        view.sheet = SimpleNamespace()
+
+        result = view.set_rows([["VENDOR", "5"]], ["0"])
+
+        self.assertFalse(result)
+        self.assertEqual(view._selection_serial, 3)
 
     def test_clear_selection_flushes_pending_edit_before_deselecting(self):
         calls = []

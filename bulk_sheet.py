@@ -257,8 +257,12 @@ class BulkSheetView:
             row_id = pending.get("row_id")
             col_name = pending.get("col_name")
             value = pending.get("committed_value", "")
+            # Re-lookup row position by stable row_id in case the sheet was re-rendered
+            # between edit-fire and the async post-edit callback, so the debug read targets
+            # the right cell rather than whatever is now at the original positional index.
+            live_row = getattr(self, "row_lookup", {}).get(str(row_id)) if row_id is not None else None
             try:
-                sheet_value = self.sheet.get_cell_data(row, col)
+                sheet_value = self.sheet.get_cell_data(live_row if live_row is not None else row, col)
             except Exception:
                 sheet_value = ""
             if value is None:
@@ -424,6 +428,9 @@ class BulkSheetView:
         if getattr(self.app, "_right_click_bulk_context", None):
             self.app._right_click_bulk_context = None
             write_debug("bulk_sheet.set_rows.clear_right_click_context")
+        # Bump selection serial on every data change so history entries that were
+        # queued before this render do not coalesce with entries queued after it.
+        self._selection_serial = getattr(self, "_selection_serial", 0) + 1
         self._selection_snapshot = {"cells": (), "rows": (), "columns": (), "current": (None, None)}
         self.sheet.set_sheet_data(rows, reset_col_positions=False, reset_row_positions=True)
         self.sheet.headers([self.labels[col] for col in self.columns], redraw=False)
