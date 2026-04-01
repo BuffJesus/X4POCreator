@@ -515,7 +515,7 @@ class BulkSheetView:
         """Return row ids from the selection snapshot taken at right-click time.
         Use this instead of explicit_selected_row_ids() inside context menu
         commands, because tksheet clears the live selection before the command fires."""
-        rows = self._selection_snapshot.get("rows", ())
+        rows = getattr(self, "_selection_snapshot", {}).get("rows", ())
         return tuple(str(self.row_ids[r]) for r in rows if 0 <= r < len(self.row_ids))
 
     def selected_row_ids(self):
@@ -585,6 +585,11 @@ class BulkSheetView:
         explicit_rows = self.explicit_selected_row_ids()
         if explicit_rows:
             return explicit_rows
+        # tksheet clears the live selection before firing context menu commands;
+        # fall back to the snapshot captured at right-click time.
+        snap_rows = self.snapshot_row_ids()
+        if snap_rows:
+            return snap_rows
         selected_cells = self.selected_cells()
         if selected_cells:
             matching_rows = {r for r, c in selected_cells if c == col_idx}

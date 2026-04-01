@@ -335,6 +335,12 @@ def bulk_remove_selected_rows(app, deepcopy, askyesno, event=None):
     if app.bulk_sheet:
         selected = list(app.bulk_sheet.explicit_selected_row_ids())
         if not selected:
+            # tksheet clears the live selection before firing context menu commands;
+            # use the snapshot captured at right-click time.
+            snap_fn = getattr(app.bulk_sheet, "snapshot_row_ids", None)
+            if callable(snap_fn):
+                selected = list(snap_fn())
+        if not selected:
             ctx = getattr(app, "_right_click_bulk_context", None) or {}
             row_id = ctx.get("row_id") or app.bulk_sheet.current_row_id()
             if row_id is not None:

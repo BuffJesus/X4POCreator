@@ -186,7 +186,7 @@ class UIBulkTests(unittest.TestCase):
         self.assertIsNone(fake_app._bulk_row_index_cache)
         self.assertEqual(fake_app._bulk_row_index_generation, 1)
         self.assertEqual(list(fake_app._bulk_row_render_cache.keys()), [ui_bulk.bulk_row_id(keep_item)])
-        self.assertEqual(fake_app._bulk_summary_counts, {"total": 1, "assigned": 1, "review": 1, "warning": 0})
+        self.assertEqual(fake_app._bulk_summary_counts, {"total": 1, "assigned": 1, "review": 1, "warning": 0, "skip": 0})
         self.assertEqual(fake_app._bulk_line_code_values, ["AER-"])
         self.assertEqual(fake_app._bulk_items_by_assignment_status, {"Assigned": (keep_item,)})
         self.assertEqual(fake_app._bulk_items_by_item_status, {"Review": (keep_item,)})
@@ -592,7 +592,7 @@ class UIBulkTests(unittest.TestCase):
         self.assertEqual(captured[0], ("flush",))
         self.assertEqual(captured[1][1], [ui_bulk.bulk_row_id(fake_app.filtered_items[0])])
         self.assertEqual(captured[1][0][0][2], "A")
-        self.assertEqual(fake_app._bulk_summary_counts, {"total": 2, "assigned": 2, "review": 0, "warning": 0})
+        self.assertEqual(fake_app._bulk_summary_counts, {"total": 2, "assigned": 2, "review": 0, "warning": 0, "skip": 0})
 
     def test_apply_bulk_filter_default_path_skips_matcher_scan(self):
         captured = []

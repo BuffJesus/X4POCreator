@@ -221,7 +221,7 @@ def build_bulk_tab(app, editable_cols):
         textvariable=app.var_bulk_item_status,
         state="readonly",
         width=11,
-        values=["ALL", "OK", "Review", "Warning", "No Pack"],
+        values=["ALL", "OK", "Review", "Warning", "No Pack", "Skip"],
     )
     app.combo_bulk_item_status.pack(side=tk.LEFT, padx=2)
     app.combo_bulk_item_status.bind("<<ComboboxSelected>>", lambda e: app._apply_bulk_filter())
@@ -619,7 +619,7 @@ def set_combobox_values_if_changed(combo, values):
 
 
 def _blank_summary_counts(total=0):
-    return {"total": total, "assigned": 0, "review": 0, "warning": 0}
+    return {"total": total, "assigned": 0, "review": 0, "warning": 0, "skip": 0}
 
 
 def _accumulate_summary_counts(counts, item, sign=1):
@@ -629,6 +629,8 @@ def _accumulate_summary_counts(counts, item, sign=1):
         counts["review"] += sign
     if item.get("status") == "warning":
         counts["warning"] += sign
+    if item.get("status") == "skip":
+        counts["skip"] += sign
 
 
 def _recompute_summary_counts(items):
@@ -650,6 +652,7 @@ def bulk_item_status(item):
         "ok": "OK",
         "review": "Review",
         "warning": "Warning",
+        "skip": "Skip",
     }.get(status)
 
 
@@ -903,12 +906,15 @@ def update_bulk_summary(app, counts=None):
     assigned = counts["assigned"]
     review_count = counts["review"]
     warning_count = counts["warning"]
+    skip_count = counts.get("skip", 0)
     unassigned = total - assigned
     parts = [f"{total} total", f"{assigned} assigned", f"{unassigned} unassigned"]
     if review_count:
         parts.append(f"{review_count} review")
     if warning_count:
         parts.append(f"{warning_count} warning")
+    if skip_count:
+        parts.append(f"{skip_count} skip")
     label = getattr(app, "lbl_bulk_summary", None)
     if label is not None and hasattr(label, "config"):
         label.config(text="  ·  ".join(parts))
@@ -1038,6 +1044,8 @@ def item_matches_bulk_filter(item, filter_state):
         if filter_state["item_status"] == "Warning" and item_status != "warning":
             return False
         if filter_state["item_status"] == "No Pack" and "missing_pack" not in item.get("data_flags", []):
+            return False
+        if filter_state["item_status"] == "Skip" and item.get("status", "ok") != "skip":
             return False
     if filter_state["performance"] != "ALL":
         performance = (item.get("performance_profile", "") or "").lower()
