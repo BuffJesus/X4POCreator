@@ -540,3 +540,72 @@ def extract_full_order_history(snapshots):
                 "created_at": created_at,
             })
     return dict(history)
+
+
+def _parse_snapshot_date(value):
+    """Parse an ISO-format created_at string from a session snapshot into a datetime."""
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(str(value))
+    except Exception:
+        return None
+
+
+def infer_vendor_lead_times(snapshots):
+    """
+    Infer per-vendor estimated lead times from session snapshot history.
+
+    Scans consecutive snapshot pairs (chronological order).  For each pair,
+    finds items that had qty_on_po > 0 in the earlier session and
+    qty_received > 0 in the later session.  The elapsed calendar days between
+    the two sessions is recorded as one lead-time observation for that vendor.
+
+    Returns {vendor_code (str): median_lead_days (int)}.
+    Vendors with no qualifying observations are omitted.
+    Returns {} when fewer than 2 snapshots are supplied.
+
+    Snapshots should be most-recent-first (as returned by load_session_snapshots).
+    """
+    if len(snapshots) < 2:
+        return {}
+    ordered = list(reversed(snapshots))
+    observations = defaultdict(list)
+    for i in range(len(ordered) - 1):
+        snap_a = ordered[i]
+        snap_b = ordered[i + 1]
+        date_a = _parse_snapshot_date(snap_a.get("created_at", ""))
+        date_b = _parse_snapshot_date(snap_b.get("created_at", ""))
+        if date_a is None or date_b is None:
+            continue
+        elapsed_days = (date_b - date_a).days
+        if elapsed_days <= 0:
+            continue
+        on_po_vendors = {}
+        for item in (snap_a.get("assigned_items") or []):
+            lc = item.get("line_code") or ""
+            ic = item.get("item_code") or ""
+            vendor = str(item.get("vendor") or "").strip().upper()
+            if not lc or not ic or not vendor:
+                continue
+            if (item.get("qty_on_po") or 0) > 0:
+                on_po_vendors[(lc, ic)] = vendor
+        if not on_po_vendors:
+            continue
+        for item in (snap_b.get("assigned_items") or []):
+            lc = item.get("line_code") or ""
+            ic = item.get("item_code") or ""
+            if (item.get("qty_received") or 0) > 0 and (lc, ic) in on_po_vendors:
+                observations[on_po_vendors[(lc, ic)]].append(elapsed_days)
+    if not observations:
+        return {}
+    result = {}
+    for vendor, days_list in observations.items():
+        sorted_days = sorted(days_list)
+        mid = len(sorted_days) // 2
+        if len(sorted_days) % 2 != 0:
+            median = sorted_days[mid]
+        else:
+            median = (sorted_days[mid - 1] + sorted_days[mid]) // 2
+        result[vendor] = max(1, median)
+    return result

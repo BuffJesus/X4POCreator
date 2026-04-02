@@ -58,6 +58,9 @@ def apply_vendor_policy_changes(app, vendor, *, shipping_policy, weekdays, thres
         "urgent_release_mode": urgent_mode,
         "release_lead_business_days": release_lead_days,
     })
+    existing_lead = (app.vendor_policies.get(normalized_vendor) or {}).get("estimated_lead_days")
+    if existing_lead is not None:
+        normalized_policy["estimated_lead_days"] = existing_lead
     has_meaningful_values = any((
         normalized_policy.get("shipping_policy", "release_immediately") != "release_immediately",
         normalized_policy.get("preferred_free_ship_weekdays"),
@@ -128,6 +131,8 @@ def open_vendor_policy_editor(app, vendor, parent):
     preset_options = shipping_flow.vendor_policy_preset_options()
     preset_by_label = {label: key for key, label in preset_options}
     var_preset = tk.StringVar(value=default_preset.get("label", "") if not saved_policy else "")
+    inferred_lead = saved_policy.get("estimated_lead_days")
+    inferred_lead_text = f"{inferred_lead} days (from session history)" if inferred_lead is not None else "— (no history yet)"
     widgets = {
         "preset": (
             ttk.Label(grid, text="Preset"),
@@ -141,6 +146,10 @@ def open_vendor_policy_editor(app, vendor, parent):
                 "hold_for_threshold",
                 "hybrid_free_day_threshold",
             ], width=28),
+        ),
+        "inferred_lead": (
+            ttk.Label(grid, text="Inferred Lead Time"),
+            ttk.Label(grid, text=inferred_lead_text, style="SubHeader.TLabel"),
         ),
         "weekdays": (
             ttk.Label(grid, text="Free-Ship Days"),
@@ -207,6 +216,8 @@ def open_vendor_policy_editor(app, vendor, parent):
         _place_row(row_idx, "preset")
         row_idx += 1
         _place_row(row_idx, "policy")
+        row_idx += 1
+        _place_row(row_idx, "inferred_lead")
         row_idx += 1
 
         advanced_toggle.grid(row=row_idx, column=0, columnspan=2, sticky="w", pady=(2, 4))

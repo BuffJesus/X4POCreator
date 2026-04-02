@@ -92,11 +92,11 @@ Items with no sales movement over several sessions are candidates for discontinu
 
 Vendor lead time is not currently modeled. The stockout risk score (Phase 2) needs a lead-time estimate; right now it would use a flat default. Session history contains enough data to infer per-vendor lead times from receipt gaps.
 
-- [ ] Infer per-vendor `estimated_lead_days` from session snapshots: median elapsed days between an item appearing on an open PO and its next receipt in a subsequent session.
-- [ ] Store inferred lead times in `vendor_policies.json` alongside shipping/release policies.
-- [ ] Surface inferred lead time in the vendor policy editor.
-- [ ] Use inferred lead time in the stockout risk score (Phase 2) instead of the flat default.
-- [ ] Add tests for lead time inference with synthetic multi-session history.
+- [x] Infer per-vendor `estimated_lead_days` from session snapshots: median elapsed days between an item appearing on an open PO and its next receipt in a subsequent session.
+- [x] Store inferred lead times in `vendor_policies.json` alongside shipping/release policies.
+- [x] Surface inferred lead time in the vendor policy editor.
+- [x] Use inferred lead time in the stockout risk score (Phase 2) instead of the flat default.
+- [x] Add tests for lead time inference with synthetic multi-session history.
 
 ---
 

@@ -287,7 +287,9 @@ def prepare_assignment_session(
             item["suggestion_override_pattern"] = _compute_override_pattern(full_entries)
         else:
             item["suggestion_override_pattern"] = None
-        enrich_item(item, inv, item.get("pack_size"), rule)
+        _vendor = str(item.get("vendor") or "").strip().upper()
+        _vp = (getattr(session, "vendor_policies", None) or {}).get(_vendor, {})
+        enrich_item(item, inv, item.get("pack_size"), rule, lead_time_days=_vp.get("estimated_lead_days"))
         preserved_reason = str(item.get("candidate_preserved_reason", "") or "").strip()
         if preserved_reason:
             detail = {

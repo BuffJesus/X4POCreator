@@ -834,6 +834,11 @@ def apply_load_result(session, result, *, parsers_module=parsers):
     snapshots = storage.load_session_snapshots(sessions_dir, max_count=3)
     session.session_history = storage.extract_order_history(snapshots)
     session.full_order_history = storage.extract_full_order_history(snapshots)
+    inferred_lead_times = storage.infer_vendor_lead_times(snapshots)
+    for vendor, lead_days in inferred_lead_times.items():
+        policy = dict(session.vendor_policies.get(vendor, {}))
+        policy["estimated_lead_days"] = lead_days
+        session.vendor_policies[vendor] = policy
     return session
 
 

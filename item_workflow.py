@@ -115,7 +115,12 @@ def recalculate_item(item, inventory_lookup, order_rules, suggest_min_max, get_r
     else:
         item["suggested_min"] = sug_min
         item["suggested_max"] = sug_max
-    enrich_item(item, inventory_lookup.get(key, {}), item.get("pack_size"), rule)
+    _lead_time_days = None
+    if suggestion_context_app is not None:
+        _vendor = str(item.get("vendor") or "").strip().upper()
+        _vp = (getattr(suggestion_context_app, "vendor_policies", None) or {}).get(_vendor, {})
+        _lead_time_days = _vp.get("estimated_lead_days")
+    enrich_item(item, inventory_lookup.get(key, {}), item.get("pack_size"), rule, lead_time_days=_lead_time_days)
     if suggestion_context_app is not None:
         reorder_flow.append_suggestion_comparison_reason(item)
         apply_suggestion_gap_review_state(item)

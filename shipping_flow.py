@@ -115,6 +115,14 @@ def normalize_vendor_policy(policy):
     threshold = max(0.0, _safe_float(policy.get("free_freight_threshold"), 0.0))
     urgent_floor = max(0.0, _safe_float(policy.get("urgent_release_floor"), 0.0))
     release_lead_business_days = _safe_nonnegative_int(policy.get("release_lead_business_days"), 1)
+    raw_lead = policy.get("estimated_lead_days")
+    if raw_lead is not None:
+        try:
+            estimated_lead_days = max(1, int(raw_lead))
+        except (TypeError, ValueError):
+            estimated_lead_days = None
+    else:
+        estimated_lead_days = None
     if shipping_policy == "release_immediately":
         weekdays = []
         threshold = 0.0
@@ -132,6 +140,8 @@ def normalize_vendor_policy(policy):
         "urgent_release_mode": urgent_release_mode,
         "release_lead_business_days": release_lead_business_days,
     }
+    if estimated_lead_days is not None:
+        normalized["estimated_lead_days"] = estimated_lead_days
     return normalized
 
 

@@ -1189,7 +1189,7 @@ def _apply_confirmed_stocking(item, inv, rule):
     rule["confirmed_stocking_sessions_without_evidence"] = new_count
 
 
-def enrich_item(item, inv, pack_qty, rule):
+def enrich_item(item, inv, pack_qty, rule, lead_time_days=None):
     """
     Orchestrate the full enrichment pipeline for a single item.
     Mutates the item dict in place with calculated fields.
@@ -1215,7 +1215,7 @@ def enrich_item(item, inv, pack_qty, rule):
     _apply_confirmed_stocking(item, inv or {}, rule)
     calculate_inventory_position(item)
     determine_target_stock(item)
-    item["stockout_risk_score"] = compute_stockout_risk_score(item)
+    item["stockout_risk_score"] = compute_stockout_risk_score(item, lead_time_days=lead_time_days)
     item["dead_stock"] = classify_dead_stock(item)
     item["reorder_needed"] = evaluate_reorder_trigger(item)
     raw_need = calculate_raw_need(item)

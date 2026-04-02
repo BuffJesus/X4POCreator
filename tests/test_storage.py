@@ -403,5 +403,135 @@ class StorageTests(unittest.TestCase):
         self.assertNotIn(("AER-", "X1"), history)
 
 
+class InferVendorLeadTimesTests(unittest.TestCase):
+    def _snap(self, created_at, items):
+        return {"created_at": created_at, "assigned_items": items}
+
+    def _item(self, lc, ic, vendor="ACME", qty_on_po=0, qty_received=0):
+        return {
+            "line_code": lc, "item_code": ic, "vendor": vendor,
+            "qty_on_po": qty_on_po, "qty_received": qty_received,
+        }
+
+    def test_single_snapshot_returns_empty(self):
+        snaps = [self._snap("2026-01-20T10:00:00", [self._item("AER-", "X1", qty_on_po=5)])]
+        self.assertEqual(storage.infer_vendor_lead_times(snaps), {})
+
+    def test_no_snapshots_returns_empty(self):
+        self.assertEqual(storage.infer_vendor_lead_times([]), {})
+
+    def test_basic_lead_time_inferred(self):
+        # Item on PO in snap_a (older), received in snap_b (newer), 21 days apart
+        # snapshots passed most-recent-first
+        snap_b = self._snap("2026-02-10T10:00:00", [self._item("AER-", "X1", vendor="ACME", qty_received=10)])
+        snap_a = self._snap("2026-01-20T10:00:00", [self._item("AER-", "X1", vendor="ACME", qty_on_po=5)])
+        result = storage.infer_vendor_lead_times([snap_b, snap_a])
+        self.assertEqual(result.get("ACME"), 21)
+
+    def test_no_receipt_in_later_snapshot_omits_vendor(self):
+        snap_b = self._snap("2026-02-10T10:00:00", [self._item("AER-", "X1", vendor="ACME", qty_received=0)])
+        snap_a = self._snap("2026-01-20T10:00:00", [self._item("AER-", "X1", vendor="ACME", qty_on_po=5)])
+        self.assertEqual(storage.infer_vendor_lead_times([snap_b, snap_a]), {})
+
+    def test_no_open_po_in_earlier_snapshot_omits_vendor(self):
+        snap_b = self._snap("2026-02-10T10:00:00", [self._item("AER-", "X1", vendor="ACME", qty_received=10)])
+        snap_a = self._snap("2026-01-20T10:00:00", [self._item("AER-", "X1", vendor="ACME", qty_on_po=0)])
+        self.assertEqual(storage.infer_vendor_lead_times([snap_b, snap_a]), {})
+
+    def test_different_item_in_later_snapshot_omits_vendor(self):
+        # Received X2, but X1 was on PO — no match
+        snap_b = self._snap("2026-02-10T10:00:00", [self._item("AER-", "X2", vendor="ACME", qty_received=10)])
+        snap_a = self._snap("2026-01-20T10:00:00", [self._item("AER-", "X1", vendor="ACME", qty_on_po=5)])
+        self.assertEqual(storage.infer_vendor_lead_times([snap_b, snap_a]), {})
+
+    def test_vendor_code_normalized_to_uppercase(self):
+        snap_b = self._snap("2026-02-10T10:00:00", [self._item("AER-", "X1", vendor="acme", qty_received=5)])
+        snap_a = self._snap("2026-01-20T10:00:00", [self._item("AER-", "X1", vendor="acme", qty_on_po=5)])
+        result = storage.infer_vendor_lead_times([snap_b, snap_a])
+        self.assertIn("ACME", result)
+
+    def test_median_computed_over_multiple_observations(self):
+        # Three items received from ACME: gaps of 10, 20, 30 days → median 20
+        snap_a = self._snap("2026-01-01T00:00:00", [
+            self._item("AER-", "A", vendor="ACME", qty_on_po=1),
+            self._item("AER-", "B", vendor="ACME", qty_on_po=1),
+            self._item("AER-", "C", vendor="ACME", qty_on_po=1),
+        ])
+        snap_b = self._snap("2026-01-21T00:00:00", [
+            self._item("AER-", "A", vendor="ACME", qty_received=1),
+            self._item("AER-", "B", vendor="ACME", qty_received=1),
+            self._item("AER-", "C", vendor="ACME", qty_received=1),
+        ])
+        result = storage.infer_vendor_lead_times([snap_b, snap_a])
+        self.assertEqual(result.get("ACME"), 20)
+
+    def test_multiple_vendors_inferred_independently(self):
+        snap_a = self._snap("2026-01-01T00:00:00", [
+            self._item("AER-", "X1", vendor="ACME", qty_on_po=1),
+            self._item("AER-", "X2", vendor="BETA", qty_on_po=1),
+        ])
+        snap_b = self._snap("2026-01-15T00:00:00", [
+            self._item("AER-", "X1", vendor="ACME", qty_received=1),
+            self._item("AER-", "X2", vendor="BETA", qty_received=1),
+        ])
+        result = storage.infer_vendor_lead_times([snap_b, snap_a])
+        self.assertEqual(result.get("ACME"), 14)
+        self.assertEqual(result.get("BETA"), 14)
+
+    def test_elapsed_days_clamped_to_minimum_1(self):
+        # Snapshots on same day should still produce elapsed = 0, skipped
+        snap_a = self._snap("2026-01-10T08:00:00", [self._item("AER-", "X1", vendor="ACME", qty_on_po=1)])
+        snap_b = self._snap("2026-01-10T10:00:00", [self._item("AER-", "X1", vendor="ACME", qty_received=1)])
+        # elapsed_days = 0 → skipped → empty
+        self.assertEqual(storage.infer_vendor_lead_times([snap_b, snap_a]), {})
+
+    def test_missing_created_at_skips_pair(self):
+        snap_a = {"assigned_items": [self._item("AER-", "X1", vendor="ACME", qty_on_po=5)]}
+        snap_b = self._snap("2026-02-01T00:00:00", [self._item("AER-", "X1", vendor="ACME", qty_received=5)])
+        self.assertEqual(storage.infer_vendor_lead_times([snap_b, snap_a]), {})
+
+    def test_three_snapshots_uses_consecutive_pairs(self):
+        # snap_oldest → snap_mid: 14 days, snap_mid → snap_newest: 10 days
+        # X1 on PO in oldest, received in mid → 14 days
+        # X2 on PO in mid, received in newest → 10 days
+        snap_oldest = self._snap("2026-01-01T00:00:00", [self._item("AER-", "X1", vendor="ACME", qty_on_po=1)])
+        snap_mid = self._snap("2026-01-15T00:00:00", [
+            self._item("AER-", "X1", vendor="ACME", qty_received=1),
+            self._item("AER-", "X2", vendor="ACME", qty_on_po=1),
+        ])
+        snap_newest = self._snap("2026-01-25T00:00:00", [self._item("AER-", "X2", vendor="ACME", qty_received=1)])
+        result = storage.infer_vendor_lead_times([snap_newest, snap_mid, snap_oldest])
+        # observations: [14, 10], median of sorted [10, 14] → (10+14)//2 = 12
+        self.assertEqual(result.get("ACME"), 12)
+
+    def test_vendor_policies_round_trip_preserves_estimated_lead_days(self):
+        import tempfile
+        from pathlib import Path
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "vendor_policies.json"
+            payload = {
+                "ACME": {
+                    "shipping_policy": "hold_for_free_day",
+                    "preferred_free_ship_weekdays": ["Friday"],
+                    "estimated_lead_days": 18,
+                }
+            }
+            storage.save_vendor_policies(str(path), payload)
+            loaded = storage.load_vendor_policies(str(path))
+            self.assertEqual(loaded["ACME"]["estimated_lead_days"], 18)
+
+    def test_normalize_vendor_policy_strips_invalid_estimated_lead_days(self):
+        import shipping_flow
+        policy = {"estimated_lead_days": "bad"}
+        result = shipping_flow.normalize_vendor_policy(policy)
+        self.assertNotIn("estimated_lead_days", result)
+
+    def test_normalize_vendor_policy_clamps_estimated_lead_days_minimum_1(self):
+        import shipping_flow
+        policy = {"estimated_lead_days": 0}
+        result = shipping_flow.normalize_vendor_policy(policy)
+        self.assertEqual(result["estimated_lead_days"], 1)
+
+
 if __name__ == "__main__":
     unittest.main()
