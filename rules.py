@@ -971,7 +971,7 @@ def calculate_suggested_qty(raw_need, pack_qty, policy, rule, inv):
 def evaluate_item_status(item):
     """
     Evaluate the status of an item and set data_flags.
-    Returns (status, data_flags) where status is 'ok', 'review', 'warning', 'error'
+    Returns (status, data_flags) where status is 'ok', 'review', 'warning', 'skip'
     """
     flags = []
     status = "ok"

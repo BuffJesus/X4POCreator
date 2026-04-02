@@ -25,7 +25,7 @@ def apply_editor_value(app, row_id, col_name, raw, editable_cols, get_rule_key, 
     key = (item["line_code"], item["item_code"])
     inv = app.inventory_lookup.get(key, {})
     if col_name == "vendor":
-        new_val = raw.upper()
+        new_val = raw.strip().upper()
         if new_val:
             item["vendor"] = new_val
             app._remember_vendor_code(new_val)
@@ -67,8 +67,10 @@ def apply_editor_value(app, row_id, col_name, raw, editable_cols, get_rule_key, 
             write_debug("bulk_apply_editor_value.error", row_id=row_id, col_name=col_name, raw=str(raw), reason="value_error")
     elif col_name in ("cur_min", "cur_max"):
         if key not in app.inventory_lookup:
+            qoh_adj = getattr(app, "qoh_adjustments", {}).get(key, {})
+            qoh = qoh_adj.get("new", 0)
             app.inventory_lookup[key] = {
-                "qoh": 0, "repl_cost": 0, "min": None, "max": None,
+                "qoh": qoh, "repl_cost": 0, "min": None, "max": None,
                 "ytd_sales": 0, "mo12_sales": 0, "supplier": "",
                 "last_receipt": "", "last_sale": "",
             }

@@ -1037,7 +1037,9 @@ def item_matches_bulk_filter(item, filter_state):
             return False
     if filter_state["item_status"] != "ALL":
         item_status = item.get("status", "ok")
-        if filter_state["item_status"] == "OK" and item_status != "ok":
+        if filter_state["item_status"] == "OK" and (
+            item_status != "ok" or "missing_pack" in item.get("data_flags", [])
+        ):
             return False
         if filter_state["item_status"] == "Review" and item_status != "review":
             return False
