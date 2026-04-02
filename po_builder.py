@@ -51,6 +51,7 @@ import ui_individual
 import ui_load
 import ui_review
 import ui_vendor_manager
+import ui_session_history
 from maintenance import build_maintenance_report
 from models import AppSessionState, ItemKey, MaintenanceCandidate, SessionItemState, SourceItemState, SuggestedItemState
 from rules import (
@@ -711,6 +712,9 @@ class POBuilderApp:
 
     def _build_tab_load(self):
         ui_load.build_load_tab(self)
+
+    def _open_session_history(self):
+        ui_session_history.open_session_history(self, SESSIONS_DIR)
 
     def _browse_folder(self):
         path = filedialog.askdirectory(title="Select Folder Containing X4 Report CSVs")

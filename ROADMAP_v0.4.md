@@ -1,8 +1,8 @@
 # PO Builder Roadmap — v0.4.x
 
-Status: Planning
+Status: Phase 6 complete — Phase 7 (manual QA) remaining
 
-Current app version: `0.3.0`
+Current app version: `0.4.1`
 
 ---
 
@@ -126,11 +126,11 @@ Vendor lead time is not currently modeled. The stockout risk score (Phase 2) nee
 
 Past sessions are stored as JSON snapshots but are inaccessible from the UI. Operators who want to audit a past export or check what was ordered for a specific item must open JSON files manually.
 
-- [ ] Add a `Session History` tab (or dialog accessible from the Load tab) that lists recent session snapshots with date, item count, and vendor count.
-- [ ] Allow expanding a session to see its items: line code, item code, vendor, final qty, suggested qty, policy at time of export.
-- [ ] Allow filtering the history view by item code or vendor.
-- [ ] Add a "Copy item history" button that copies the selected item's order history rows as tab-separated text for pasting into other tools.
-- [ ] No new file I/O beyond what `storage.py` already supports for snapshot loading.
+- [x] Add a `Session History` tab (or dialog accessible from the Load tab) that lists recent session snapshots with date, item count, and vendor count.
+- [x] Allow expanding a session to see its items: line code, item code, vendor, final qty, suggested qty, policy at time of export.
+- [x] Allow filtering the history view by item code or vendor.
+- [x] Add a "Copy item history" button that copies the selected item's order history rows as tab-separated text for pasting into other tools.
+- [x] No new file I/O beyond what `storage.py` already supports for snapshot loading.
 
 ---
 
