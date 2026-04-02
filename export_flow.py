@@ -222,6 +222,30 @@ def do_export(
     selected_export_items = select_export_items(app, exportable_items, selection_mode=selection_mode)
     if not selected_export_items:
         return
+
+    # Reset scope overrides so the preview dialog can set them fresh
+    if hasattr(app, "_vendor_export_scope_overrides"):
+        app._vendor_export_scope_overrides = {}
+
+    # Apply any pre-existing vendor scope overrides before preview
+    selected_export_items = apply_vendor_scope_overrides(app, selected_export_items)
+    if not selected_export_items:
+        return
+
+    # Show export preview dialog; user can set per-vendor scope overrides there
+    preview = build_export_preview(selected_export_items)
+    try:
+        import ui_review as _ui_review
+        if not _ui_review.show_export_preview_dialog(app, preview):
+            return  # user cancelled
+    except Exception:
+        pass  # if UI not available (e.g. tests), skip preview
+
+    # Apply vendor scope overrides set by the preview dialog
+    selected_export_items = apply_vendor_scope_overrides(app, selected_export_items)
+    if not selected_export_items:
+        return
+
     audited_export_items = build_export_audit_items(selected_export_items, export_scope_label)
 
     planned_items = [item for item in selected_export_items if export_bucket(item) == "planned_today"]
@@ -343,6 +367,57 @@ def build_session_snapshot(app, output_dir, created_files, maintenance_issues, *
         exported_items=exported_items,
         export_scope_label=export_scope_label,
     )
+
+
+def build_export_preview(items):
+    """
+    Build a preview summary for the given export candidate items.
+    Returns a dict with vendor_summaries, total_item_count, total_estimated_value.
+    """
+    vendor_items = defaultdict(list)
+    for item in items:
+        vendor = item.get("vendor") or "UNKNOWN"
+        vendor_items[vendor].append(item)
+
+    vendor_summaries = []
+    total_value = 0.0
+    total_count = 0
+    for vendor, vitems in sorted(vendor_items.items()):
+        est_value = sum(
+            (item.get("final_qty") or 0) * (item.get("repl_cost") or 0)
+            for item in vitems
+        )
+        vendor_summaries.append({
+            "vendor": vendor,
+            "item_count": len(vitems),
+            "estimated_value": est_value,
+        })
+        total_value += est_value
+        total_count += len(vitems)
+
+    return {
+        "vendor_summaries": vendor_summaries,
+        "total_item_count": total_count,
+        "total_estimated_value": total_value,
+    }
+
+
+def apply_vendor_scope_overrides(app, items):
+    """
+    Filter items according to per-vendor scope overrides stored on app.
+    Overrides dict: {vendor: "include" | "defer" | "skip"}
+    "include" (default) — included in this export
+    "defer" — excluded now, remains in session for a later export
+    "skip" — excluded for the rest of this session
+    Returns the filtered list.
+    """
+    overrides = getattr(app, "_vendor_export_scope_overrides", {})
+    if not overrides:
+        return list(items)
+    return [
+        item for item in items
+        if overrides.get(item.get("vendor") or "", "include") == "include"
+    ]
 
 
 def export_maintenance_csv(issues, output_dir):

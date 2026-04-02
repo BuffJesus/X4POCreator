@@ -1,6 +1,6 @@
 # PO Builder Roadmap — v0.3.x
 
-Status: v0.3.0 released — Phases 2–6 complete
+Status: v0.3.0 released — Phases 2–8 complete (Phase 1 pending manual QA)
 
 Current app version: `0.3.0`
 
@@ -63,7 +63,7 @@ Session snapshots are written but never read. The `recent_orders` field is popul
 - [x] Add a `historical_order_qty` field to enriched items: the median or mode of order quantities from recent sessions.
 - [x] Surface `historical_order_qty` in item details and the bulk editor as a reference column (non-editable).
 - [x] When `historical_order_qty` exists and the current computed suggestion diverges by more than a configurable threshold, flag it as `suggestion_vs_history_gap` and route to review.
-- [ ] Use `recent_local_order_qty` (already populated per-item) in the same comparison when no snapshot history is available.
+- [x] Use `recent_local_order_qty` (already populated per-item) in the same comparison when no snapshot history is available.
 - [x] Add tests covering history loading, gap detection, and review routing.
 - [x] Decide how many sessions to retain for history averaging (default: last 3).
 
@@ -79,7 +79,7 @@ Data quality warnings are collected during load but only surfaced in the review 
   - items with missing `last_sale` and `last_receipt`
   - items where detailed-sales and X4 min/max materially disagree
 - [x] Gate the assignment tab activation on a user acknowledgment if the data quality score is below a configurable threshold (e.g. >10% unresolved items).
-- [ ] Add an "Export Data Quality Report" button that writes a CSV of all flagged items with their flag reasons, for sharing with the data-source owner.
+- [x] Add an "Export Data Quality Report" button that writes a CSV of all flagged items with their flag reasons, for sharing with the data-source owner.
 - [x] Keep the existing startup warning rows behavior intact — the new dashboard is additive.
 - [x] Add tests for the quality scoring and gate logic.
 
@@ -91,7 +91,7 @@ Bulk-editor filter state and sort order reset on every app restart. Operators wh
 
 - [x] Save the active bulk filter state (line-code filter, status filter, vendor filter, search text) to `po_builder_settings.json` on change.
 - [x] Restore the saved filter state on startup when a session is active.
-- [ ] Allow operators to save named filter presets ("My review items", "All AER- unassigned") and switch between them.
+- [x] Allow operators to save named filter presets ("My review items", "All AER- unassigned") and switch between them.
 - [x] Persist the active sort column and direction.
 - [x] Add tests for save/restore round-trips.
 
@@ -108,11 +108,11 @@ Key fixed constants currently in `rules.py`:
 - Cover-cycle inference multipliers
 
 Items:
-- [ ] Move all heuristic thresholds into a named-constant block at the top of `rules.py` with comments explaining each value's intent and the evidence that would justify raising or lowering it.
-- [ ] Add a `heuristic_confidence` score to enriched items that reflects how much loaded evidence supports the inferred hardware policy, distinct from `recency_confidence`.
-- [ ] When `heuristic_confidence` is high and recent history supports a higher buffer, allow the inferred `minimum_packs_on_hand` to exceed 2 without requiring an explicit rule.
-- [ ] When history is short or demand is volatile, cap inferred buffers conservatively.
-- [ ] Add tests for evidence-weighted buffer adjustment.
+- [x] Move all heuristic thresholds into a named-constant block at the top of `rules.py` with comments explaining each value's intent and the evidence that would justify raising or lowering it.
+- [x] Add a `heuristic_confidence` score to enriched items that reflects how much loaded evidence supports the inferred hardware policy, distinct from `recency_confidence`.
+- [x] When `heuristic_confidence` is high and recent history supports a higher buffer, allow the inferred `minimum_packs_on_hand` to exceed 2 without requiring an explicit rule.
+- [x] When history is short or demand is volatile, cap inferred buffers conservatively.
+- [x] Add tests for evidence-weighted buffer adjustment.
 
 ---
 
@@ -120,11 +120,11 @@ Items:
 
 The current export writes fixed-column X4 import files. Operators have requested column selection, vendor grouping control, and export preview.
 
-- [ ] Add an export preview dialog that shows the row count, vendor list, and total estimated order value before writing files.
-- [ ] Add a "Column notes" or "PO memo" field that operators can fill in once per export session; it is written to a notes column in each exported file.
-- [ ] Add a per-vendor export scope override: include this vendor in the current export, defer to next session, or skip permanently.
-- [ ] Keep the default export behavior (immediate-release items only) unchanged; scope overrides are opt-in.
-- [ ] Add tests for preview data and scope override logic.
+- [x] Add an export preview dialog that shows the row count, vendor list, and total estimated order value before writing files.
+- [x] Add a "Column notes" or "PO memo" field that operators can fill in once per export session; it is written to a notes column in each exported file.
+- [x] Add a per-vendor export scope override: include this vendor in the current export, defer to next session, or skip permanently.
+- [x] Keep the default export behavior (immediate-release items only) unchanged; scope overrides are opt-in.
+- [x] Add tests for preview data and scope override logic.
 
 ---
 

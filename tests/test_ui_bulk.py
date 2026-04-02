@@ -1736,5 +1736,138 @@ class UIBulkTests(unittest.TestCase):
         ui_bulk.save_bulk_filter_sort_state(app)
 
 
+class BulkFilterPresetTests(unittest.TestCase):
+    def _make_app(self):
+        from types import SimpleNamespace
+        saved = []
+
+        def save_fn():
+            saved.append(1)
+
+        app = SimpleNamespace(
+            app_settings={},
+            _save_app_settings=save_fn,
+            combo_bulk_preset=None,
+            var_bulk_lc_filter=None,
+            var_bulk_status_filter=None,
+            var_bulk_source_filter=None,
+            var_bulk_item_status=None,
+            var_bulk_performance_filter=None,
+            var_bulk_sales_health_filter=None,
+            var_bulk_attention_filter=None,
+        )
+        app._saved = saved
+        return app
+
+    def test_save_bulk_filter_preset_persists(self):
+        app = self._make_app()
+        # Manually set a filter state via var stubs
+        class _Var:
+            def __init__(self, v):
+                self._v = v
+            def get(self):
+                return self._v
+            def set(self, v):
+                self._v = v
+
+        app.var_bulk_lc_filter = _Var("AER-")
+        app.var_bulk_status_filter = _Var("Unassigned")
+        app.var_bulk_source_filter = _Var("ALL")
+        app.var_bulk_item_status = _Var("ALL")
+        app.var_bulk_performance_filter = _Var("Top")
+        app.var_bulk_sales_health_filter = _Var("ALL")
+        app.var_bulk_attention_filter = _Var("ALL")
+
+        ui_bulk.save_bulk_filter_preset(app, "MyPreset")
+
+        presets = ui_bulk.get_bulk_filter_presets(app)
+        self.assertIn("MyPreset", presets)
+        self.assertEqual(presets["MyPreset"]["lc"], "AER-")
+        self.assertEqual(presets["MyPreset"]["status"], "Unassigned")
+        self.assertEqual(presets["MyPreset"]["performance"], "Top")
+        self.assertTrue(len(app._saved) >= 1)
+
+    def test_apply_bulk_filter_preset_sets_vars(self):
+        app = self._make_app()
+
+        class _Var:
+            def __init__(self, v):
+                self._v = v
+            def get(self):
+                return self._v
+            def set(self, v):
+                self._v = v
+
+        app.var_bulk_lc_filter = _Var("ALL")
+        app.var_bulk_status_filter = _Var("ALL")
+        app.var_bulk_source_filter = _Var("ALL")
+        app.var_bulk_item_status = _Var("ALL")
+        app.var_bulk_performance_filter = _Var("ALL")
+        app.var_bulk_sales_health_filter = _Var("ALL")
+        app.var_bulk_attention_filter = _Var("ALL")
+
+        app.app_settings["bulk_filter_presets"] = {
+            "TestPreset": {
+                "lc": "AMS-",
+                "status": "Assigned",
+                "source": "Sales",
+                "item_status": "Review",
+                "performance": "Steady",
+                "sales_health": "Active",
+                "attention": "Normal",
+            }
+        }
+
+        apply_calls = []
+
+        with patch("ui_bulk.apply_bulk_filter", side_effect=lambda a: apply_calls.append(a)):
+            ui_bulk.apply_bulk_filter_preset(app, "TestPreset")
+
+        self.assertEqual(app.var_bulk_lc_filter.get(), "AMS-")
+        self.assertEqual(app.var_bulk_status_filter.get(), "Assigned")
+        self.assertEqual(app.var_bulk_source_filter.get(), "Sales")
+        self.assertEqual(app.var_bulk_item_status.get(), "Review")
+        self.assertEqual(app.var_bulk_performance_filter.get(), "Steady")
+        self.assertEqual(app.var_bulk_sales_health_filter.get(), "Active")
+        self.assertEqual(app.var_bulk_attention_filter.get(), "Normal")
+        self.assertEqual(len(apply_calls), 1)
+
+    def test_delete_bulk_filter_preset_removes_entry(self):
+        app = self._make_app()
+        app.app_settings["bulk_filter_presets"] = {
+            "Keep": {"lc": "ALL", "status": "ALL", "source": "ALL",
+                     "item_status": "ALL", "performance": "ALL",
+                     "sales_health": "ALL", "attention": "ALL"},
+            "Delete": {"lc": "AER-", "status": "ALL", "source": "ALL",
+                       "item_status": "ALL", "performance": "ALL",
+                       "sales_health": "ALL", "attention": "ALL"},
+        }
+
+        ui_bulk.delete_bulk_filter_preset(app, "Delete")
+
+        presets = ui_bulk.get_bulk_filter_presets(app)
+        self.assertIn("Keep", presets)
+        self.assertNotIn("Delete", presets)
+        self.assertTrue(len(app._saved) >= 1)
+
+    def test_apply_nonexistent_preset_is_noop(self):
+        app = self._make_app()
+        app.app_settings["bulk_filter_presets"] = {}
+
+        class _Var:
+            def __init__(self, v):
+                self._v = v
+            def get(self):
+                return self._v
+            def set(self, v):
+                self._v = v
+
+        app.var_bulk_lc_filter = _Var("AER-")
+
+        # Should not raise, should not change any var
+        ui_bulk.apply_bulk_filter_preset(app, "DoesNotExist")
+        self.assertEqual(app.var_bulk_lc_filter.get(), "AER-")
+
+
 if __name__ == "__main__":
     unittest.main()

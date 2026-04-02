@@ -284,6 +284,37 @@ def build_bulk_tab(app, editable_cols):
     lookback_spin.bind("<Return>", lambda e: app._refresh_recent_orders())
     lookback_spin.bind("<FocusOut>", lambda e: app._refresh_recent_orders())
 
+    filter_row_4 = ttk.Frame(filter_frame)
+    filter_row_4.pack(fill=tk.X, pady=(2, 0))
+
+    ttk.Label(filter_row_4, text="Preset:").pack(side=tk.LEFT, padx=(0, 2))
+    app.var_bulk_preset = tk.StringVar(value="")
+    app.combo_bulk_preset = ttk.Combobox(
+        filter_row_4,
+        textvariable=app.var_bulk_preset,
+        state="readonly",
+        width=18,
+        values=[""],
+    )
+    app.combo_bulk_preset.pack(side=tk.LEFT, padx=2)
+    # Applying a preset must NOT trigger save_bulk_filter_sort_state automatically
+    app.combo_bulk_preset.bind(
+        "<<ComboboxSelected>>",
+        lambda e: apply_bulk_filter_preset(app, app.var_bulk_preset.get()) if app.var_bulk_preset.get() else None,
+    )
+
+    ttk.Button(
+        filter_row_4,
+        text="Save Preset\u2026",
+        command=lambda: _save_preset_dialog(app),
+    ).pack(side=tk.LEFT, padx=(8, 2))
+
+    ttk.Button(
+        filter_row_4,
+        text="Delete Preset",
+        command=lambda: delete_bulk_filter_preset(app, app.var_bulk_preset.get()) if app.var_bulk_preset.get() else None,
+    ).pack(side=tk.LEFT, padx=2)
+
     status_text = "Active edit column: none | Selected rows: 0" if HAS_TKSHEET else "Bulk sheet unavailable"
     app.lbl_bulk_cell_status = ttk.Label(frame, text=status_text, style="Info.TLabel")
     app.lbl_bulk_cell_status.pack(anchor="w", pady=(0, 4))
@@ -1225,6 +1256,7 @@ def restore_bulk_filter_sort_state(app):
     if sort_col:
         app._bulk_sort_col = sort_col
         app._bulk_sort_reverse = bool(app_settings.get("bulk_sort_reverse", False))
+    refresh_preset_combobox(app)
 
 
 def apply_bulk_filter(app):
@@ -1329,3 +1361,78 @@ def bulk_sort_value(app, item, col):
     if col == "why":
         return item.get("why", "")
     return ""
+
+
+# ─── Named Filter Presets ─────────────────────────────────────────────────────
+
+def get_bulk_filter_presets(app):
+    """Return the saved preset dict from app_settings, or {} if none."""
+    settings = getattr(app, "app_settings", None) or {}
+    return dict(settings.get("bulk_filter_presets") or {})
+
+
+def save_bulk_filter_preset(app, name):
+    """Save the current filter state under the given name."""
+    settings = getattr(app, "app_settings", None)
+    if settings is None:
+        return
+    presets = dict(settings.get("bulk_filter_presets") or {})
+    presets[name] = bulk_filter_state(app)
+    settings["bulk_filter_presets"] = presets
+    save_fn = getattr(app, "_save_app_settings", None)
+    if callable(save_fn):
+        save_fn()
+    refresh_preset_combobox(app)
+
+
+def delete_bulk_filter_preset(app, name):
+    """Delete the named preset."""
+    settings = getattr(app, "app_settings", None)
+    if settings is None:
+        return
+    presets = dict(settings.get("bulk_filter_presets") or {})
+    presets.pop(name, None)
+    settings["bulk_filter_presets"] = presets
+    save_fn = getattr(app, "_save_app_settings", None)
+    if callable(save_fn):
+        save_fn()
+    refresh_preset_combobox(app)
+
+
+def apply_bulk_filter_preset(app, name):
+    """Apply the named preset to the filter vars and refresh the view."""
+    presets = get_bulk_filter_presets(app)
+    state = presets.get(name)
+    if not state:
+        return
+    var_map = {
+        "lc": "var_bulk_lc_filter",
+        "status": "var_bulk_status_filter",
+        "source": "var_bulk_source_filter",
+        "item_status": "var_bulk_item_status",
+        "performance": "var_bulk_performance_filter",
+        "sales_health": "var_bulk_sales_health_filter",
+        "attention": "var_bulk_attention_filter",
+    }
+    for key, var_name in var_map.items():
+        var = getattr(app, var_name, None)
+        if var is not None and key in state:
+            var.set(state[key])
+    apply_bulk_filter(app)
+
+
+def refresh_preset_combobox(app):
+    """Repopulate the preset combobox from current settings."""
+    combo = getattr(app, "combo_bulk_preset", None)
+    if combo is None:
+        return
+    presets = get_bulk_filter_presets(app)
+    names = sorted(presets.keys())
+    set_combobox_values_if_changed(combo, [""] + names)
+
+
+def _save_preset_dialog(app):
+    from tkinter import simpledialog
+    name = simpledialog.askstring("Save Filter Preset", "Preset name:", parent=getattr(app, "root", None))
+    if name and name.strip():
+        save_bulk_filter_preset(app, name.strip())

@@ -214,6 +214,13 @@ def build_load_tab(app):
         state="disabled",
     )
     app.btn_export_startup_warnings.grid(row=0, column=0, sticky="w")
+    app.btn_export_dq_report = ttk.Button(
+        footer,
+        text="Export Data Quality Report",
+        command=app._export_data_quality_report_csv,
+        state="disabled",
+    )
+    app.btn_export_dq_report.grid(row=1, column=0, sticky="w", pady=(4, 0))
     ttk.Button(footer, text="Load Files & Continue ->", style="Big.TButton", command=app._do_load).grid(
         row=0, column=2, sticky="e"
     )
@@ -263,6 +270,12 @@ def refresh_data_quality_card(app, summary):
     )
 
     frame.pack(fill=tk.X, pady=(8, 0))
+
+    # Enable the Export DQ Report button when any flags are present.
+    has_flags = unresolved > 0 or missing_sale > 0 or missing_receipt > 0 or conflicts > 0
+    btn_dq = getattr(app, "btn_export_dq_report", None)
+    if btn_dq is not None:
+        btn_dq.config(state="normal" if has_flags else "disabled")
 
 
 def _add_file_row(app, parent, row, label, attr_name, browse_key, hint):

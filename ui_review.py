@@ -428,6 +428,100 @@ def export_review_recommended(app):
     )
 
 
+def show_export_preview_dialog(app, preview_data):
+    """
+    Show a modal preview dialog before export. Returns True to proceed, False to cancel.
+    """
+    result = [False]
+    root = getattr(app, "root", None)
+    dlg = tk.Toplevel(root)
+    dlg.title("Export Preview")
+    dlg.resizable(True, True)
+    dlg.grab_set()
+
+    summaries = preview_data.get("vendor_summaries", [])
+    total_count = preview_data.get("total_item_count", 0)
+    total_value = preview_data.get("total_estimated_value", 0.0)
+
+    ttk.Label(dlg, text=f"Ready to export {total_count} item(s) across {len(summaries)} vendor(s).").pack(padx=12, pady=(12, 4), anchor="w")
+
+    canvas_frame = ttk.Frame(dlg)
+    canvas_frame.pack(fill=tk.BOTH, expand=True, padx=12, pady=4)
+
+    canvas = tk.Canvas(canvas_frame, height=min(len(summaries) * 28 + 32, 300))
+    scrollbar = ttk.Scrollbar(canvas_frame, orient="vertical", command=canvas.yview)
+    canvas.configure(yscrollcommand=scrollbar.set)
+    scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+    canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+    scroll_frame = ttk.Frame(canvas)
+    scroll_frame_id = canvas.create_window((0, 0), window=scroll_frame, anchor="nw")
+
+    def _on_frame_configure(e):
+        canvas.configure(scrollregion=canvas.bbox("all"))
+
+    scroll_frame.bind("<Configure>", _on_frame_configure)
+
+    def _on_canvas_configure(e):
+        canvas.itemconfig(scroll_frame_id, width=e.width)
+
+    canvas.bind("<Configure>", _on_canvas_configure)
+
+    # Header row
+    hdr = ttk.Frame(scroll_frame)
+    hdr.pack(fill=tk.X, pady=(0, 2))
+    ttk.Label(hdr, text="Vendor", width=14, anchor="w", font=("", 9, "bold")).pack(side=tk.LEFT)
+    ttk.Label(hdr, text="Items", width=6, anchor="center", font=("", 9, "bold")).pack(side=tk.LEFT)
+    ttk.Label(hdr, text="Est. Value", width=12, anchor="e", font=("", 9, "bold")).pack(side=tk.LEFT)
+    ttk.Label(hdr, text="Scope", width=10, anchor="w", font=("", 9, "bold")).pack(side=tk.LEFT, padx=(8, 0))
+
+    vendor_rows = {}  # vendor -> StringVar
+    for s in summaries:
+        row = ttk.Frame(scroll_frame)
+        row.pack(fill=tk.X, pady=1)
+        var = tk.StringVar(value="Include")
+        vendor_rows[s["vendor"]] = var
+        ttk.Label(row, text=s["vendor"], width=14, anchor="w").pack(side=tk.LEFT)
+        ttk.Label(row, text=str(s["item_count"]), width=6, anchor="center").pack(side=tk.LEFT)
+        val_str = f"${s['estimated_value']:,.2f}" if s["estimated_value"] > 0 else "\u2014"
+        ttk.Label(row, text=val_str, width=12, anchor="e").pack(side=tk.LEFT)
+        ttk.Combobox(row, textvariable=var, values=["Include", "Defer", "Skip"],
+                     state="readonly", width=8).pack(side=tk.LEFT, padx=(8, 0))
+
+    # Total row
+    total_row = ttk.Frame(scroll_frame)
+    total_row.pack(fill=tk.X, pady=(4, 0))
+    total_val_str = f"${total_value:,.2f}" if total_value > 0 else "\u2014"
+    ttk.Label(total_row, text="TOTAL", width=14, anchor="w", font=("", 9, "bold")).pack(side=tk.LEFT)
+    ttk.Label(total_row, text=str(total_count), width=6, anchor="center", font=("", 9, "bold")).pack(side=tk.LEFT)
+    ttk.Label(total_row, text=total_val_str, width=12, anchor="e", font=("", 9, "bold")).pack(side=tk.LEFT)
+
+    btn_frame = ttk.Frame(dlg)
+    btn_frame.pack(fill=tk.X, padx=12, pady=(4, 12))
+
+    def proceed():
+        overrides = {}
+        for vendor, var in vendor_rows.items():
+            choice = var.get().lower()  # "include", "defer", or "skip"
+            if choice != "include":
+                overrides[vendor] = choice
+        if hasattr(app, "_vendor_export_scope_overrides"):
+            app._vendor_export_scope_overrides = overrides
+        result[0] = True
+        dlg.destroy()
+
+    def cancel():
+        dlg.destroy()
+
+    ttk.Button(btn_frame, text="Export", command=proceed).pack(side=tk.RIGHT, padx=(4, 0))
+    ttk.Button(btn_frame, text="Cancel", command=cancel).pack(side=tk.RIGHT)
+
+    if root:
+        dlg.geometry(f"+{root.winfo_x() + 80}+{root.winfo_y() + 80}")
+    dlg.wait_window()
+    return result[0]
+
+
 def show_release_plan(app):
     rows = build_vendor_release_plan_rows(app)
     if not rows:
@@ -867,6 +961,14 @@ def build_review_tab(app):
         app._review_apply_editor_value,
         app._review_refresh_editor_row,
     )
+
+    memo_frame = ttk.Frame(frame)
+    memo_frame.pack(fill=tk.X, pady=(0, 4))
+    ttk.Label(memo_frame, text="PO Memo:").pack(side=tk.LEFT, padx=(0, 4))
+    if getattr(app, "var_po_memo", None) is None:
+        app.var_po_memo = tk.StringVar(value="")
+    ttk.Entry(memo_frame, textvariable=app.var_po_memo, width=48).pack(side=tk.LEFT, fill=tk.X, expand=True)
+    ttk.Label(memo_frame, text="(written to Notes column in exported files)", style="Hint.TLabel").pack(side=tk.LEFT, padx=(6, 0))
 
     btn_frame = ttk.Frame(frame)
     btn_frame.pack(fill=tk.X, pady=8)

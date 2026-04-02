@@ -628,5 +628,104 @@ class ExportFlowTests(unittest.TestCase):
         self.assertEqual([item["item_code"] for item in exported_items], ["GH781-4"])
 
 
+class ExportPreviewTests(unittest.TestCase):
+    def test_build_export_preview_groups_by_vendor(self):
+        items = [
+            {"vendor": "MOTION", "final_qty": 5, "repl_cost": 10.0, "release_decision": "release_now"},
+            {"vendor": "SOURCE", "final_qty": 2, "repl_cost": 20.0, "release_decision": "release_now"},
+            {"vendor": "MOTION", "final_qty": 3, "repl_cost": 5.0, "release_decision": "release_now"},
+        ]
+        preview = export_flow.build_export_preview(items)
+        vendors = [s["vendor"] for s in preview["vendor_summaries"]]
+        self.assertIn("MOTION", vendors)
+        self.assertIn("SOURCE", vendors)
+        motion_summary = next(s for s in preview["vendor_summaries"] if s["vendor"] == "MOTION")
+        self.assertEqual(motion_summary["item_count"], 2)
+
+    def test_build_export_preview_sums_values(self):
+        items = [
+            {"vendor": "MOTION", "final_qty": 5, "repl_cost": 10.0, "release_decision": "release_now"},
+            {"vendor": "MOTION", "final_qty": 3, "repl_cost": 5.0, "release_decision": "release_now"},
+        ]
+        preview = export_flow.build_export_preview(items)
+        motion_summary = next(s for s in preview["vendor_summaries"] if s["vendor"] == "MOTION")
+        self.assertAlmostEqual(motion_summary["estimated_value"], 65.0)
+        self.assertAlmostEqual(preview["total_estimated_value"], 65.0)
+        self.assertEqual(preview["total_item_count"], 2)
+
+    def test_build_export_preview_handles_missing_cost(self):
+        items = [
+            {"vendor": "MOTION", "final_qty": 5, "release_decision": "release_now"},
+            {"vendor": "MOTION", "final_qty": None, "repl_cost": None, "release_decision": "release_now"},
+        ]
+        preview = export_flow.build_export_preview(items)
+        motion_summary = next(s for s in preview["vendor_summaries"] if s["vendor"] == "MOTION")
+        self.assertAlmostEqual(motion_summary["estimated_value"], 0.0)
+
+    def test_build_export_preview_empty_items(self):
+        preview = export_flow.build_export_preview([])
+        self.assertEqual(preview["vendor_summaries"], [])
+        self.assertEqual(preview["total_item_count"], 0)
+        self.assertAlmostEqual(preview["total_estimated_value"], 0.0)
+
+    def test_po_memo_written_to_export_rows(self):
+        # Import the actual export_vendor_po from po_builder
+        import sys
+        sys.path.insert(0, str(ROOT))
+        import po_builder
+        import tempfile, openpyxl
+
+        items = [
+            {"line_code": "AER-", "item_code": "GH781-4", "order_qty": 5},
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            path = po_builder.export_vendor_po("MOTION", items, tmp, po_memo="Test Memo")
+            wb = openpyxl.load_workbook(path)
+            ws = wb.active
+            headers = [ws.cell(row=1, column=c).value for c in range(1, 5)]
+            row2 = [ws.cell(row=2, column=c).value for c in range(1, 5)]
+
+        self.assertIn("Notes", headers)
+        self.assertEqual(row2[3], "Test Memo")
+
+    def test_apply_vendor_scope_overrides_excludes_deferred(self):
+        app = SimpleNamespace(_vendor_export_scope_overrides={"MOTION": "defer"})
+        items = [
+            {"vendor": "MOTION", "item_code": "A"},
+            {"vendor": "SOURCE", "item_code": "B"},
+        ]
+        result = export_flow.apply_vendor_scope_overrides(app, items)
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0]["item_code"], "B")
+
+    def test_apply_vendor_scope_overrides_excludes_skipped(self):
+        app = SimpleNamespace(_vendor_export_scope_overrides={"SOURCE": "skip"})
+        items = [
+            {"vendor": "MOTION", "item_code": "A"},
+            {"vendor": "SOURCE", "item_code": "B"},
+        ]
+        result = export_flow.apply_vendor_scope_overrides(app, items)
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0]["item_code"], "A")
+
+    def test_apply_vendor_scope_overrides_includes_default(self):
+        app = SimpleNamespace(_vendor_export_scope_overrides={"OTHER": "skip"})
+        items = [
+            {"vendor": "MOTION", "item_code": "A"},
+        ]
+        result = export_flow.apply_vendor_scope_overrides(app, items)
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0]["item_code"], "A")
+
+    def test_apply_vendor_scope_overrides_empty_overrides_includes_all(self):
+        app = SimpleNamespace(_vendor_export_scope_overrides={})
+        items = [
+            {"vendor": "MOTION", "item_code": "A"},
+            {"vendor": "SOURCE", "item_code": "B"},
+        ]
+        result = export_flow.apply_vendor_scope_overrides(app, items)
+        self.assertEqual(len(result), 2)
+
+
 if __name__ == "__main__":
     unittest.main()

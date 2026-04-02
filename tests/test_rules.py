@@ -1662,6 +1662,207 @@ class RulesTests(unittest.TestCase):
         if item.get("order_policy") == "manual_only":
             self.assertFalse(item.get("suggestion_vs_history_gap"))
 
+    # --- Item 2: recent_local_order_qty fallback ---
+
+    def test_recent_local_order_qty_fallback_gap_flags_review(self):
+        """No historical_order_qty, but local avg diverges far from suggestion → gap flagged."""
+        item = self._standard_item()
+        # suggestion will be ~20 (pack=10, need fills to max=20)
+        item["recent_local_order_qty"] = 200   # avg 100 per order
+        item["recent_local_order_count"] = 2
+        enrich_item(item, {"qoh": 0, "max": 20, "last_sale": "01-Mar-2026", "last_receipt": "15-Feb-2026"}, 10, None)
+        self.assertTrue(item.get("suggestion_vs_history_gap"))
+        self.assertIn("suggestion_vs_history_gap", item.get("reason_codes", []))
+        self.assertIn("Local PO history gap", item.get("why", ""))
+
+    def test_recent_local_order_qty_fallback_no_gap(self):
+        """No historical_order_qty, local avg close to suggestion → no gap."""
+        item = self._standard_item()
+        # suggestion ~20, local avg 20 → ratio=0
+        item["recent_local_order_qty"] = 40
+        item["recent_local_order_count"] = 2
+        enrich_item(item, {"qoh": 0, "max": 20, "last_sale": "01-Mar-2026", "last_receipt": "15-Feb-2026"}, 10, None)
+        self.assertFalse(item.get("suggestion_vs_history_gap"))
+
+    def test_recent_local_order_qty_not_used_when_historical_present(self):
+        """When historical_order_qty is present, the local fallback should not run."""
+        item = self._standard_item()
+        item["historical_order_qty"] = 20   # matches suggestion closely
+        item["recent_local_order_qty"] = 200  # would diverge if used
+        item["recent_local_order_count"] = 2
+        enrich_item(item, {"qoh": 0, "max": 20, "last_sale": "01-Mar-2026", "last_receipt": "15-Feb-2026"}, 10, None)
+        # historical matches → no gap
+        self.assertFalse(item.get("suggestion_vs_history_gap"))
+
+    # --- Item 4: heuristic_confidence ---
+
+    def test_heuristic_confidence_all_signals_high(self):
+        """All favourable signals → score near 1.0."""
+        from rules import compute_heuristic_confidence
+        item = {
+            "sales_span_days": 365,
+            "recency_confidence": "high",
+            "performance_profile": "top_performer",
+            "sales_health_signal": "active",
+            "detailed_sales_shape": "steady_repeat",
+            "days_since_last_sale": 5,
+        }
+        score = compute_heuristic_confidence(item)
+        self.assertGreaterEqual(score, 0.9)
+        self.assertLessEqual(score, 1.0)
+
+    def test_heuristic_confidence_short_span_hard_cap(self):
+        """Span < 14 days → score capped at 0.3 regardless of other signals."""
+        from rules import compute_heuristic_confidence
+        item = {
+            "sales_span_days": 7,
+            "recency_confidence": "high",
+            "performance_profile": "top_performer",
+            "sales_health_signal": "active",
+            "detailed_sales_shape": "steady_repeat",
+            "days_since_last_sale": 2,
+        }
+        score = compute_heuristic_confidence(item)
+        self.assertLessEqual(score, 0.3)
+
+    def test_heuristic_confidence_no_signals(self):
+        """No signals present → score is 0.0."""
+        from rules import compute_heuristic_confidence
+        item = {}
+        score = compute_heuristic_confidence(item)
+        self.assertEqual(score, 0.0)
+
+    # --- Item 5: elevated buffer via high confidence + history ---
+
+    def _hardware_item_base(self):
+        """Item that qualifies for infer_minimum_packs_on_hand logic."""
+        return {
+            "description": "BOLT KIT",  # hardware pack
+            "qty_sold": 50,
+            "qty_suspended": 0,
+            "qty_received": 50,
+            "qty_on_po": 0,
+            "pack_size": 100,
+            "demand_signal": 50,
+            "sales_health_signal": "active",
+            "performance_profile": "steady",
+            "days_since_last_sale": 5,
+            "sales_span_days": 365,
+            "avg_weekly_sales_loaded": 10,
+            "annualized_sales_loaded": 520,
+        }
+
+    def test_high_confidence_and_history_elevates_buffer_to_3(self):
+        """High heuristic_confidence + order history of >=2 packs → min_packs=3."""
+        from rules import infer_minimum_packs_on_hand, compute_heuristic_confidence
+        item = self._hardware_item_base()
+        item["recency_confidence"] = "high"
+        item["detailed_sales_shape"] = "steady_repeat"
+        item["heuristic_confidence"] = 0.80
+        item["historical_order_qty"] = 200  # >= pack*2=200
+        inv = {"max": 10, "min": 5}  # pack(100) > max(10)*3 → qualifies
+        result = infer_minimum_packs_on_hand(item, inv, 100)
+        self.assertEqual(result, 3)
+        self.assertIn("heuristic_confidence_elevated_buffer", item.get("reason_codes", []))
+
+    def test_high_confidence_without_history_stays_at_2(self):
+        """High heuristic_confidence but no order history → not elevated."""
+        from rules import infer_minimum_packs_on_hand
+        item = self._hardware_item_base()
+        item["heuristic_confidence"] = 0.80
+        # no historical_order_qty, no recent_local_order_qty
+        inv = {"max": 10, "min": 5}
+        result = infer_minimum_packs_on_hand(item, inv, 100)
+        self.assertEqual(result, 2)
+
+    def test_below_confidence_threshold_stays_at_2(self):
+        """Confidence below threshold → elevated buffer not triggered."""
+        from rules import infer_minimum_packs_on_hand
+        item = self._hardware_item_base()
+        item["heuristic_confidence"] = 0.50
+        item["historical_order_qty"] = 200
+        inv = {"max": 10, "min": 5}
+        result = infer_minimum_packs_on_hand(item, inv, 100)
+        self.assertEqual(result, 2)
+
+    # --- Item 6: volatile demand caps ---
+
+    def test_volatile_demand_erratic_caps_min_packs_at_1(self):
+        """Erratic detailed_sales_shape → minimum_packs_on_hand capped at 1."""
+        from rules import infer_minimum_packs_on_hand
+        item = self._hardware_item_base()
+        item["detailed_sales_shape"] = "erratic"
+        item["heuristic_confidence"] = 0.0
+        inv = {"max": 10, "min": 5}
+        result = infer_minimum_packs_on_hand(item, inv, 100)
+        self.assertEqual(result, 1)
+
+    def test_volatile_demand_dormant_caps_min_packs_at_1(self):
+        """Dormant sales_health_signal → would normally disqualify (returns None), check volatile path."""
+        from rules import infer_minimum_packs_on_hand
+        item = self._hardware_item_base()
+        item["sales_health_signal"] = "dormant"
+        item["heuristic_confidence"] = 0.0
+        inv = {"max": 10, "min": 5}
+        # dormant health → returns None (not active/stable) before volatile check
+        result = infer_minimum_packs_on_hand(item, inv, 100)
+        self.assertIsNone(result)
+
+    def test_volatile_intermittent_short_span_caps_at_1(self):
+        """Intermittent performance + short span → _demand_is_volatile returns True → cap at 1."""
+        from rules import infer_minimum_packs_on_hand
+        item = self._hardware_item_base()
+        item["performance_profile"] = "intermittent"
+        item["sales_span_days"] = 90  # < HEURISTIC_MIN_SALES_SPAN_DAYS
+        item["heuristic_confidence"] = 0.0
+        inv = {"max": 10, "min": 5}
+        result = infer_minimum_packs_on_hand(item, inv, 100)
+        self.assertEqual(result, 1)
+
+    def test_non_volatile_steady_not_capped(self):
+        """Steady performance, active health → not capped to 1."""
+        from rules import infer_minimum_packs_on_hand
+        item = self._hardware_item_base()
+        item["heuristic_confidence"] = 0.0
+        inv = {"max": 10, "min": 5}
+        result = infer_minimum_packs_on_hand(item, inv, 100)
+        self.assertEqual(result, 2)
+
+    def test_short_span_caps_cover_cycles_at_1(self):
+        """Short sales span → infer_minimum_cover_cycles returns 1."""
+        from rules import infer_minimum_cover_cycles
+        item = {
+            "description": "BOLT KIT",
+            "sales_health_signal": "active",
+            "performance_profile": "steady",
+            "days_since_last_sale": 5,
+            "sales_span_days": 7,  # < 14
+            "avg_weekly_sales_loaded": 10,
+            "annualized_sales_loaded": 520,
+            "reorder_cycle_weeks": 1,
+        }
+        inv = {"max": 10}
+        result = infer_minimum_cover_cycles(item, inv, 5)
+        self.assertEqual(result, 1)
+
+    def test_volatile_caps_cover_cycles_at_1(self):
+        """Erratic shape → infer_minimum_cover_cycles returns 1."""
+        from rules import infer_minimum_cover_cycles
+        item = {
+            "description": "BOLT KIT",
+            "sales_health_signal": "active",
+            "performance_profile": "steady",
+            "days_since_last_sale": 5,
+            "sales_span_days": 60,
+            "avg_weekly_sales_loaded": 10,
+            "annualized_sales_loaded": 520,
+            "detailed_sales_shape": "erratic",
+            "reorder_cycle_weeks": 1,
+        }
+        inv = {"max": 10}
+        result = infer_minimum_cover_cycles(item, inv, 5)
+        self.assertEqual(result, 1)
+
 
 if __name__ == "__main__":
     unittest.main()

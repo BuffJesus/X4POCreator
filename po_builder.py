@@ -280,10 +280,12 @@ KNOWN_VENDORS = [
 
 # ─── Excel Export ─────────────────────────────────────────────────────────────
 
-def export_vendor_po(vendor_code, items, output_dir):
+def export_vendor_po(vendor_code, items, output_dir, po_memo=""):
     """
     Export a single vendor PO as an .xlsx file in X4 import format.
     Headers: product group, item code, order qty
+    When po_memo is non-empty, a Notes column is added to the header and every data row.
+    # NOTE: The Notes column is for human reference. Verify X4 import tolerates extra columns before using.
     """
     wb = openpyxl.Workbook()
     ws = wb.active
@@ -301,6 +303,9 @@ def export_vendor_po(vendor_code, items, output_dir):
     )
 
     headers = ["product group", "item code", "order quantity"]
+    include_notes = bool(po_memo)
+    if include_notes:
+        headers.append("Notes")
     for col_idx, header in enumerate(headers, 1):
         cell = ws.cell(row=1, column=col_idx, value=header)
         cell.font = header_font_white
@@ -318,11 +323,16 @@ def export_vendor_po(vendor_code, items, output_dir):
         # Force item code as text to preserve leading zeros
         ic_cell.number_format = "@"
         qty_cell.alignment = Alignment(horizontal="center")
+        if include_notes:
+            notes_cell = ws.cell(row=row_idx, column=4, value=po_memo)
+            notes_cell.border = thin_border
 
     # Column widths
     ws.column_dimensions["A"].width = 16
     ws.column_dimensions["B"].width = 20
     ws.column_dimensions["C"].width = 16
+    if include_notes:
+        ws.column_dimensions["D"].width = 32
 
     safe_name = "".join(c if c.isalnum() or c in "-_ " else "_" for c in vendor_code)
     timestamp = datetime.now().strftime("%Y%m%d")
@@ -961,6 +971,28 @@ class POBuilderApp:
         except Exception as e:
             messagebox.showerror("Export Error", f"Failed to export startup warnings CSV:\n{e}")
 
+    def _export_data_quality_report_csv(self):
+        """Export data quality flag details to CSV."""
+        rows = load_flow.build_data_quality_report_rows(self.session)
+        if not rows:
+            messagebox.showinfo("Export Data Quality Report", "No data quality flags to export.", parent=self.root)
+            return
+        path = filedialog.asksaveasfilename(
+            parent=self.root,
+            title="Save Data Quality Report",
+            defaultextension=".csv",
+            filetypes=[("CSV files", "*.csv"), ("All files", "*.*")],
+            initialfile="data_quality_report.csv",
+        )
+        if not path:
+            return
+        fieldnames = ["Flag Type", "Line Code", "Item Code", "Description", "Details"]
+        with open(path, "w", newline="", encoding="utf-8-sig") as f:
+            writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
+            writer.writeheader()
+            writer.writerows(rows)
+        messagebox.showinfo("Export Data Quality Report", f"Wrote {len(rows)} row(s) to:\n{path}", parent=self.root)
+
     def _parse_all_files(self, paths, progress_callback=None):
         """Parse all CSV files (runs in background thread)."""
         return load_flow.parse_all_files(
@@ -1092,6 +1124,7 @@ class POBuilderApp:
         self._loaded_vendor_codes = list(self.vendor_codes_used)
         self.last_removed_bulk_items = []
         self.last_protected_bulk_items = []
+        self._vendor_export_scope_overrides = {}
         try:
             self._refresh_vendor_inputs()
             ui_bulk.restore_bulk_filter_sort_state(self)
@@ -1717,7 +1750,8 @@ class POBuilderApp:
         ui_review.show_maintenance_report(self, output_dir, issues)
 
     def _export_vendor_po(self, vendor, items, output_dir):
-        return export_vendor_po(vendor, items, output_dir)
+        po_memo = getattr(getattr(self, "var_po_memo", None), "get", lambda: "")() or ""
+        return export_vendor_po(vendor, items, output_dir, po_memo=po_memo)
 
 
 # ─── Entry Point ─────────────────────────────────────────────────────────────

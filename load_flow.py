@@ -886,3 +886,61 @@ def compute_data_quality_summary(session):
         "quality_score": quality_score,
         "gate_required": gate_required,
     }
+
+
+def build_data_quality_report_rows(session):
+    """
+    Build a list of data-quality flag rows for CSV export.
+    Each row is a dict with keys: Flag Type, Line Code, Item Code, Description, Details.
+    Returns an empty list when no flags exist.
+    """
+    rows = []
+
+    # Unresolved detailed-sales item codes
+    unresolved = getattr(session, "unresolved_detailed_item_codes", set()) or set()
+    for item_code in sorted(unresolved):
+        rows.append({
+            "Flag Type": "Unresolved sales item code",
+            "Line Code": "",
+            "Item Code": item_code,
+            "Description": "",
+            "Details": "Item code could not be resolved to a known line code",
+        })
+
+    # Inventory: missing last sale / last receipt
+    inv_lookup = getattr(session, "inventory_lookup", {}) or {}
+    for (line_code, item_code), inv in sorted(inv_lookup.items()):
+        inv = inv or {}
+        if not inv.get("last_sale"):
+            rows.append({
+                "Flag Type": "Missing last sale date",
+                "Line Code": line_code,
+                "Item Code": item_code,
+                "Description": inv.get("description", ""),
+                "Details": "No last sale date in inventory record",
+            })
+        if not inv.get("last_receipt"):
+            rows.append({
+                "Flag Type": "Missing last receipt date",
+                "Line Code": line_code,
+                "Item Code": item_code,
+                "Description": inv.get("description", ""),
+                "Details": "No last receipt date in inventory record",
+            })
+
+    # Conflicting items
+    conflict_keys = getattr(session, "detailed_sales_conflict_keys", set()) or set()
+    for key in sorted(conflict_keys):
+        if isinstance(key, (tuple, list)) and len(key) >= 2:
+            line_code, item_code = key[0], key[1]
+        else:
+            line_code, item_code = "", str(key)
+        rows.append({
+            "Flag Type": "Detailed sales conflict",
+            "Line Code": line_code,
+            "Item Code": item_code,
+            "Description": "",
+            "Details": "Detailed-sales and X4 min/max signals disagree for this item",
+        })
+
+    return rows

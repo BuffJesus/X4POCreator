@@ -8,6 +8,21 @@ CONFIRMED_STOCKING_MAX_SESSIONS_WITHOUT_EVIDENCE = 3
 # A current suggestion that deviates from historical_order_qty by more than this
 # fraction triggers suggestion_vs_history_gap review routing.
 SUGGESTION_VS_HISTORY_GAP_THRESHOLD = 0.5
+
+# --- Heuristic inference constants ---
+PACK_MAX_RATIO_FOR_LARGE_PACK       = 3      # pack_qty > mx * 3 → large-pack territory
+HEURISTIC_WEEKLY_PACK_RATIO         = 0.75   # weekly demand >= pack * 0.75 threshold
+HEURISTIC_WEEKLY_MAX_RATIO          = 1.5    # weekly demand >= mx * 1.5 threshold
+HEURISTIC_ANNUAL_PACK_RATIO         = 18.0   # annualized demand >= pack * 18
+HEURISTIC_ANNUAL_MAX_RATIO          = 24.0   # annualized demand >= mx * 24
+HEURISTIC_MIN_SALES_SPAN_DAYS       = 180    # minimum span for high-confidence heuristic
+HEURISTIC_SHORT_SPAN_DAYS           = 14     # below this span → conservative single-pack buffer
+HEURISTIC_COVER_WEEKLY_PACK_RATIO   = 0.85
+HEURISTIC_COVER_WEEKLY_MAX_RATIO    = 1.75
+HEURISTIC_COVER_ANNUAL_PACK_RATIO   = 26.0
+HEURISTIC_COVER_ANNUAL_MAX_RATIO    = 40.0
+HEURISTIC_MAX_DAYS_SINCE_SALE       = 120    # days_since_last_sale > this → skip buffer
+HEURISTIC_HIGH_CONFIDENCE_THRESHOLD = 0.75   # heuristic_confidence >= this → elevated buffer allowed
 REEL_BLOCKLIST = (
     "BELT",
     "BOLT",
@@ -179,7 +194,7 @@ def should_large_pack_review(item, inv, pack_qty):
         return False
     if pack_qty < LARGE_PACK_REVIEW_MIN_PACK_QTY:
         return False
-    if pack_qty <= mx * 3:
+    if pack_qty <= mx * PACK_MAX_RATIO_FOR_LARGE_PACK:
         return False
     if looks_like_reel_item(item, inv or {}):
         return False
@@ -280,6 +295,63 @@ def has_pack_trigger_fields(rule):
     )
 
 
+def _demand_is_volatile(item):
+    """Return True when demand shape or signals indicate volatile/unreliable demand."""
+    shape = (item.get("detailed_sales_shape") or "").lower()
+    if shape in ("erratic", "lumpy"):
+        return True
+    health = (item.get("sales_health_signal") or "").lower()
+    if health in ("declining", "dormant"):
+        return True
+    profile = (item.get("performance_profile") or "").lower()
+    span = item.get("sales_span_days") or 0
+    if profile == "intermittent" and span < HEURISTIC_MIN_SALES_SPAN_DAYS:
+        return True
+    return False
+
+
+def _recent_history_supports_higher_buffer(item, pack_qty):
+    """Return True if order history suggests the item regularly needs >= 2 packs."""
+    if not pack_qty or pack_qty <= 0:
+        return False
+    hist = item.get("historical_order_qty")
+    if isinstance(hist, (int, float)) and hist >= pack_qty * 2:
+        return True
+    local_qty = item.get("recent_local_order_qty") or 0
+    local_count = item.get("recent_local_order_count") or 0
+    if local_count > 0 and (local_qty / local_count) >= pack_qty * 2:
+        return True
+    return False
+
+
+def compute_heuristic_confidence(item):
+    """
+    Return a float in [0, 1] reflecting how much loaded evidence supports
+    the inferred hardware buffer policy for this item.
+    Independently of recency_confidence (which governs review gating).
+    """
+    score = 0.0
+    span = item.get("sales_span_days") or 0
+    if span >= HEURISTIC_MIN_SALES_SPAN_DAYS:
+        score += 0.25
+    if item.get("recency_confidence") == "high":
+        score += 0.25
+    if item.get("performance_profile") in ("top_performer", "steady"):
+        score += 0.20
+    if item.get("sales_health_signal") == "active":
+        score += 0.15
+    if item.get("detailed_sales_shape") in ("steady_repeat", "routine_mixed"):
+        score += 0.10
+    days_since = item.get("days_since_last_sale")
+    if isinstance(days_since, (int, float)) and days_since < 30:
+        score += 0.05
+    score = min(score, 1.0)
+    # Hard-cap at 0.3 when sales window is too short to be meaningful
+    if span < HEURISTIC_SHORT_SPAN_DAYS:
+        score = min(score, 0.3)
+    return score
+
+
 def infer_minimum_packs_on_hand(item, inv, pack_qty):
     """Infer a conservative hardware pack floor for active hardware with extreme pack/max mismatch."""
     mx = inv.get("max") if inv else None
@@ -289,7 +361,7 @@ def infer_minimum_packs_on_hand(item, inv, pack_qty):
         return None
     if should_large_pack_review(item, inv or {}, pack_qty):
         return None
-    if pack_qty <= mx * 3:
+    if pack_qty <= mx * PACK_MAX_RATIO_FOR_LARGE_PACK:
         return None
 
     sales_health = item.get("sales_health_signal", "")
@@ -300,8 +372,11 @@ def infer_minimum_packs_on_hand(item, inv, pack_qty):
         return None
     if performance not in ("steady", "top_performer", "intermittent", ""):
         return None
-    if isinstance(days_since_last_sale, (int, float)) and days_since_last_sale > 120:
+    if isinstance(days_since_last_sale, (int, float)) and days_since_last_sale > HEURISTIC_MAX_DAYS_SINCE_SALE:
         return None
+
+    if _demand_is_volatile(item):
+        return 1
 
     sales_span_days = item.get("sales_span_days")
     weekly_demand = item.get("avg_weekly_sales_loaded")
@@ -312,18 +387,27 @@ def infer_minimum_packs_on_hand(item, inv, pack_qty):
 
     if (
         isinstance(sales_span_days, (int, float))
-        and sales_span_days >= 180
+        and sales_span_days >= HEURISTIC_MIN_SALES_SPAN_DAYS
         and isinstance(weekly_demand, (int, float))
-        and weekly_demand >= max(float(pack_qty) * 0.75, float(mx) * 1.5)
+        and weekly_demand >= max(float(pack_qty) * HEURISTIC_WEEKLY_PACK_RATIO, float(mx) * HEURISTIC_WEEKLY_MAX_RATIO)
         and isinstance(annualized_demand, (int, float))
-        and annualized_demand >= max(float(pack_qty) * 18.0, float(mx) * 24.0)
+        and annualized_demand >= max(float(pack_qty) * HEURISTIC_ANNUAL_PACK_RATIO, float(mx) * HEURISTIC_ANNUAL_MAX_RATIO)
         and performance in ("steady", "top_performer")
         and detailed_shape in ("", "steady_repeat", "routine_mixed")
     ):
         return 3
-    # A very short loaded window (< 14 days) does not provide enough history to
-    # confidently assert a two-pack floor.  Use a single-pack conservative buffer.
-    if isinstance(sales_span_days, (int, float)) and sales_span_days < 14:
+    # Elevated buffer path: high heuristic confidence + history support
+    if (
+        item.get("heuristic_confidence", 0) >= HEURISTIC_HIGH_CONFIDENCE_THRESHOLD
+        and _recent_history_supports_higher_buffer(item, pack_qty)
+    ):
+        item.setdefault("reason_codes", [])
+        if "heuristic_confidence_elevated_buffer" not in item.get("reason_codes", []):
+            item["reason_codes"] = item.get("reason_codes", []) + ["heuristic_confidence_elevated_buffer"]
+        return 3
+    # A very short loaded window does not provide enough history to confidently
+    # assert a two-pack floor.  Use a single-pack conservative buffer.
+    if isinstance(sales_span_days, (int, float)) and sales_span_days < HEURISTIC_SHORT_SPAN_DAYS:
         return 1
     return 2
 
@@ -342,7 +426,7 @@ def infer_minimum_cover_cycles(item, inv, pack_qty):
         and mx > 0
     ):
         return None
-    if pack_qty > mx * 3:
+    if pack_qty > mx * PACK_MAX_RATIO_FOR_LARGE_PACK:
         return None
     if not looks_like_hardware_pack_item(item, inv or {}):
         return None
@@ -356,8 +440,14 @@ def infer_minimum_cover_cycles(item, inv, pack_qty):
         return None
     if performance not in ("steady", "top_performer", "intermittent", ""):
         return None
-    if isinstance(days_since_last_sale, (int, float)) and days_since_last_sale > 120:
+    if isinstance(days_since_last_sale, (int, float)) and days_since_last_sale > HEURISTIC_MAX_DAYS_SINCE_SALE:
         return None
+
+    sales_span_days = item.get("sales_span_days")
+    if isinstance(sales_span_days, (int, float)) and sales_span_days < HEURISTIC_SHORT_SPAN_DAYS:
+        return 1
+    if _demand_is_volatile(item):
+        return 1
 
     weekly_demand = item.get("avg_weekly_sales_loaded")
     if not isinstance(weekly_demand, (int, float)) or weekly_demand <= 0:
@@ -369,23 +459,18 @@ def infer_minimum_cover_cycles(item, inv, pack_qty):
     if weekly_demand < max(1.0, pack_qty * 0.5):
         return None
 
-    sales_span_days = item.get("sales_span_days")
     annualized_demand = item.get("annualized_sales_loaded")
     detailed_shape = str(item.get("detailed_sales_shape", "") or "").strip().lower()
     if (
         isinstance(sales_span_days, (int, float))
-        and sales_span_days >= 180
-        and weekly_demand >= max(float(pack_qty) * 0.85, float(mx) * 1.75)
+        and sales_span_days >= HEURISTIC_MIN_SALES_SPAN_DAYS
+        and weekly_demand >= max(float(pack_qty) * HEURISTIC_COVER_WEEKLY_PACK_RATIO, float(mx) * HEURISTIC_COVER_WEEKLY_MAX_RATIO)
         and isinstance(annualized_demand, (int, float))
-        and annualized_demand >= max(float(pack_qty) * 26.0, float(mx) * 40.0)
+        and annualized_demand >= max(float(pack_qty) * HEURISTIC_COVER_ANNUAL_PACK_RATIO, float(mx) * HEURISTIC_COVER_ANNUAL_MAX_RATIO)
         and performance in ("steady", "top_performer")
         and detailed_shape in ("", "steady_repeat", "routine_mixed")
     ):
         return 3
-    # A very short loaded window (< 14 days) does not provide enough history to
-    # confidently assert a two-cycle cover floor.  Use a single-cycle buffer.
-    if isinstance(sales_span_days, (int, float)) and sales_span_days < 14:
-        return 1
     return 2
 
 
@@ -881,7 +966,7 @@ def determine_order_policy(item, inv, pack_qty, rule):
         mx
         and mx > 0
         and pack_qty >= REEL_REVIEW_MIN_PACK_QTY
-        and pack_qty > mx * 3
+        and pack_qty > mx * PACK_MAX_RATIO_FOR_LARGE_PACK
         and package_profile == "reel_stock"
     ):
         if _qualifies_for_review_policy_graduation(item, inv, pack_qty, rule):
@@ -901,7 +986,7 @@ def determine_order_policy(item, inv, pack_qty, rule):
         and mx > 0
         and pack_qty
         and pack_qty >= LARGE_PACK_REVIEW_MIN_PACK_QTY
-        and pack_qty > mx * 3
+        and pack_qty > mx * PACK_MAX_RATIO_FOR_LARGE_PACK
     ):
         return "pack_trigger"
 
@@ -1054,6 +1139,10 @@ def enrich_item(item, inv, pack_qty, rule):
     item["exact_qty_override"] = has_exact_qty_override(rule)
     item["package_profile"] = classify_package_profile(item, inv or {}, pack_qty)
     apply_rule_fields(item, rule)
+    # Classify recency confidence first so compute_heuristic_confidence can use it.
+    classify_recency_confidence(item, inv or {}, rule)
+    classify_low_confidence_recency(item, inv or {}, rule)
+    item["heuristic_confidence"] = compute_heuristic_confidence(item)
     if item.get("minimum_packs_on_hand") is None:
         inferred_min_packs = infer_minimum_packs_on_hand(item, inv or {}, pack_qty)
         if inferred_min_packs is not None:
@@ -1064,8 +1153,6 @@ def enrich_item(item, inv, pack_qty, rule):
         if inferred_cover_cycles is not None:
             item["minimum_cover_cycles"] = inferred_cover_cycles
             item["minimum_cover_cycles_source"] = "heuristic"
-    classify_recency_confidence(item, inv or {}, rule)
-    classify_low_confidence_recency(item, inv or {}, rule)
     _apply_confirmed_stocking(item, inv or {}, rule)
     calculate_inventory_position(item)
     determine_target_stock(item)
@@ -1379,7 +1466,40 @@ def enrich_item(item, inv, pack_qty, rule):
             detail = f"History gap: current suggestion {suggested:g} deviates from historical median {historical_order_qty:g}"
             item["why"] = item["why"] + f" | {detail}" if item.get("why") else detail
     else:
-        item["suggestion_vs_history_gap"] = False
+        # Secondary fallback: use recent local PO history when no session snapshot history exists.
+        local_qty = item.get("recent_local_order_qty") or 0
+        local_count = item.get("recent_local_order_count") or 0
+        if (
+            local_count > 0
+            and local_qty > 0
+            and policy not in ("reel_review", "large_pack_review", "manual_only")
+        ):
+            per_order_avg = local_qty / local_count
+            suggestion = item.get("suggested_qty") or suggested or 0
+            if per_order_avg > 0 and suggestion > 0:
+                ratio = abs(suggestion - per_order_avg) / per_order_avg
+                if ratio > SUGGESTION_VS_HISTORY_GAP_THRESHOLD:
+                    item["suggestion_vs_history_gap"] = True
+                    item["review_required"] = True
+                    reason_codes = list(item.get("reason_codes", []))
+                    if "suggestion_vs_history_gap" not in reason_codes:
+                        reason_codes.append("suggestion_vs_history_gap")
+                    item["reason_codes"] = reason_codes
+                    gap_pct = int(ratio * 100)
+                    direction = "above" if suggestion > per_order_avg else "below"
+                    local_note = (
+                        f"Local PO history gap: suggestion {gap_pct}% {direction} "
+                        f"recent local avg ({int(per_order_avg)})"
+                    )
+                    item["why"] = item["why"] + f" | {local_note}" if item.get("why") else local_note
+                    if item.get("item_status") not in ("review", "warning"):
+                        item["item_status"] = "review"
+                else:
+                    item["suggestion_vs_history_gap"] = False
+            else:
+                item["suggestion_vs_history_gap"] = False
+        else:
+            item["suggestion_vs_history_gap"] = False
 
     status, flags = evaluate_item_status(item)
     for code in reason_codes:

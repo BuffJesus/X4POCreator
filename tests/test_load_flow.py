@@ -788,6 +788,36 @@ class LoadFlowTests(unittest.TestCase):
         self.assertAlmostEqual(summary["quality_score"], 1.0)
         self.assertFalse(summary["gate_required"])
 
+    # --- Item 3d: build_data_quality_report_rows ---
+
+    def test_build_data_quality_report_rows_empty_session(self):
+        """Clean session yields an empty row list."""
+        session = AppSessionState()
+        rows = load_flow.build_data_quality_report_rows(session)
+        self.assertEqual(rows, [])
+
+    def test_build_data_quality_report_rows_unresolved_item(self):
+        """An unresolved item code produces a row with the correct flag type."""
+        session = AppSessionState()
+        session.unresolved_detailed_item_codes = {"XYZ123"}
+        rows = load_flow.build_data_quality_report_rows(session)
+        flag_types = [r["Flag Type"] for r in rows]
+        self.assertIn("Unresolved sales item code", flag_types)
+        unresolved_rows = [r for r in rows if r["Flag Type"] == "Unresolved sales item code"]
+        self.assertEqual(unresolved_rows[0]["Item Code"], "XYZ123")
+
+    def test_build_data_quality_report_rows_missing_last_sale(self):
+        """An inventory record with no last_sale produces a missing-last-sale row."""
+        session = AppSessionState()
+        session.inventory_lookup = {
+            ("AER-", "ITEM1"): {"last_sale": None, "last_receipt": "01-Mar-2026", "description": "Widget"},
+        }
+        rows = load_flow.build_data_quality_report_rows(session)
+        flag_types = [r["Flag Type"] for r in rows]
+        self.assertIn("Missing last sale date", flag_types)
+        sale_rows = [r for r in rows if r["Flag Type"] == "Missing last sale date"]
+        self.assertEqual(sale_rows[0]["Item Code"], "ITEM1")
+
 
 if __name__ == "__main__":
     unittest.main()
