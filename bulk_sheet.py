@@ -112,7 +112,10 @@ class BulkSheetView:
         # Snapshot the selection BEFORE set_currently_selected() can clear it.
         # If the right-clicked row is already part of the selection, keep the
         # whole selection intact.  Only move focus if clicking outside it.
+        # get_selected_rows() returns row-header selections only; normal
+        # shift-click / drag selection populates get_selected_cells() instead.
         current_selected_rows = set(self.sheet.get_selected_rows())
+        current_selected_rows |= {r for r, _c in self.sheet.get_selected_cells()}
         if row not in current_selected_rows:
             try:
                 self.sheet.set_currently_selected(row=row, column=col)
@@ -151,6 +154,8 @@ class BulkSheetView:
         self.context_menu.add_command(label="Ignore Item", command=self.app._ignore_from_bulk)
         self.context_menu.add_command(label="Mark Review Resolved", command=self.app._resolve_review_from_bulk)
         self.context_menu.add_command(label="Dismiss duplicate warning", command=self.app._dismiss_duplicate_from_bulk)
+        self.context_menu.add_separator()
+        self.context_menu.add_command(label="Flag for Discontinue Review", command=self.app._flag_discontinue_from_bulk)
         self.context_menu.add_separator()
         self.context_menu.add_command(label="Select Current Row", command=self.app._bulk_select_current_row)
         self.context_menu.add_command(label="Select Current Column", command=self.app._bulk_select_current_column)
@@ -514,8 +519,13 @@ class BulkSheetView:
     def snapshot_row_ids(self):
         """Return row ids from the selection snapshot taken at right-click time.
         Use this instead of explicit_selected_row_ids() inside context menu
-        commands, because tksheet clears the live selection before the command fires."""
-        rows = getattr(self, "_selection_snapshot", {}).get("rows", ())
+        commands, because tksheet clears the live selection before the command fires.
+        Falls back to deriving unique rows from cell selections when no row-header
+        selection exists (normal shift-click / drag populates cells, not rows)."""
+        snap = getattr(self, "_selection_snapshot", {})
+        rows = snap.get("rows", ())
+        if not rows:
+            rows = sorted({r for r, _c in snap.get("cells", ())})
         return tuple(str(self.row_ids[r]) for r in rows if 0 <= r < len(self.row_ids))
 
     def selected_row_ids(self):

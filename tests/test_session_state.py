@@ -49,7 +49,7 @@ class SessionStateTests(unittest.TestCase):
         self.assertIsNone(fake_app._bulk_row_index_cache)
         self.assertEqual(fake_app._bulk_row_index_generation, 1)
         self.assertEqual(list(fake_app._bulk_row_render_cache.keys()), [po_builder.ui_bulk.bulk_row_id(keep_item)])
-        self.assertEqual(fake_app._bulk_summary_counts, {"total": 1, "assigned": 0, "review": 0, "warning": 0, "skip": 0})
+        self.assertEqual(fake_app._bulk_summary_counts, {"total": 1, "assigned": 0, "review": 0, "warning": 0, "skip": 0, "dead_stock": 0})
         self.assertEqual(fake_app._bulk_line_code_values, ["AER-"])
 
     def test_po_builder_mapping_properties_proxy_to_session_state(self):

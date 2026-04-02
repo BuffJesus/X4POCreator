@@ -34,6 +34,9 @@ from rules import (
     package_profile_label,
     replenishment_unit_mode_label,
     should_large_pack_review,
+    compute_stockout_risk_score,
+    classify_dead_stock,
+    DEAD_STOCK_MIN_DAYS_SINCE_SALE,
 )
 
 
@@ -1862,6 +1865,157 @@ class RulesTests(unittest.TestCase):
         inv = {"max": 10}
         result = infer_minimum_cover_cycles(item, inv, 5)
         self.assertEqual(result, 1)
+
+
+class StockoutRiskScoreTests(unittest.TestCase):
+    def test_zero_demand_returns_zero(self):
+        item = {"demand_signal": 0, "inventory_position": 0, "recency_confidence": "high"}
+        self.assertEqual(compute_stockout_risk_score(item), 0.0)
+
+    def test_no_demand_key_returns_zero(self):
+        item = {"inventory_position": 50}
+        self.assertEqual(compute_stockout_risk_score(item), 0.0)
+
+    def test_zero_inventory_with_active_demand_is_high_risk(self):
+        item = {
+            "demand_signal": 365,  # 1 unit/day
+            "inventory_position": 0,
+            "recency_confidence": "high",
+        }
+        score = compute_stockout_risk_score(item, lead_time_days=14)
+        # coverage_risk = 1.0 (zero cover), recency_weight = 0 → score = 1.0
+        self.assertEqual(score, 1.0)
+
+    def test_cover_equal_to_2x_lead_returns_zero_coverage_risk(self):
+        # demand = 365/day=1, inventory = 28 = 2×14 days of cover
+        item = {
+            "demand_signal": 365,
+            "inventory_position": 28,
+            "recency_confidence": "high",
+        }
+        score = compute_stockout_risk_score(item, lead_time_days=14)
+        self.assertEqual(score, 0.0)
+
+    def test_partial_cover_gives_intermediate_score(self):
+        # demand = 365/year = 1/day, inventory = 14 = 1× lead time = half of buffer
+        item = {
+            "demand_signal": 365,
+            "inventory_position": 14,
+            "recency_confidence": "high",
+        }
+        score = compute_stockout_risk_score(item, lead_time_days=14)
+        # days_of_cover=14, buffer=28, coverage_risk = 1 - 14/28 = 0.5
+        # recency_weight = 0 → score = 0.5
+        self.assertAlmostEqual(score, 0.5, places=2)
+
+    def test_low_recency_confidence_increases_score(self):
+        item = {
+            "demand_signal": 365,
+            "inventory_position": 28,  # full cover — coverage_risk = 0
+            "recency_confidence": "low",
+        }
+        score = compute_stockout_risk_score(item, lead_time_days=14)
+        # coverage_risk = 0, recency_weight = 0.20, score = 0 + 0.20*(1-0) = 0.2
+        self.assertAlmostEqual(score, 0.2, places=3)
+
+    def test_medium_recency_confidence_gives_moderate_penalty(self):
+        item = {
+            "demand_signal": 365,
+            "inventory_position": 28,
+            "recency_confidence": "medium",
+        }
+        score = compute_stockout_risk_score(item, lead_time_days=14)
+        self.assertAlmostEqual(score, 0.1, places=3)
+
+    def test_score_clamped_to_1(self):
+        item = {
+            "demand_signal": 36500,  # very high demand
+            "inventory_position": 0,
+            "recency_confidence": "low",
+        }
+        score = compute_stockout_risk_score(item, lead_time_days=14)
+        self.assertEqual(score, 1.0)
+
+    def test_score_clamped_to_0(self):
+        item = {
+            "demand_signal": 1,
+            "inventory_position": 999999,
+            "recency_confidence": "high",
+        }
+        score = compute_stockout_risk_score(item, lead_time_days=14)
+        self.assertEqual(score, 0.0)
+
+    def test_enrich_item_stamps_stockout_risk_score(self):
+        item = {
+            "line_code": "AER-", "item_code": "X1",
+            "description": "Test", "qty_sold": 365, "qty_suspended": 0,
+            "qty_on_po": 0, "order_qty": 0,
+        }
+        inv = {"qoh": 0, "min": None, "max": None, "repl_cost": 1.0,
+               "supplier": "", "last_sale": "2025-01-01", "last_receipt": "2025-01-01"}
+        enrich_item(item, inv, pack_qty=None, rule={})
+        self.assertIn("stockout_risk_score", item)
+        self.assertIsInstance(item["stockout_risk_score"], float)
+        self.assertGreaterEqual(item["stockout_risk_score"], 0.0)
+        self.assertLessEqual(item["stockout_risk_score"], 1.0)
+
+
+class ClassifyDeadStockTests(unittest.TestCase):
+    def test_returns_true_when_no_sale_over_threshold_and_no_pending_demand(self):
+        item = {
+            "days_since_last_sale": DEAD_STOCK_MIN_DAYS_SINCE_SALE,
+            "effective_qty_suspended": 0,
+            "qty_suspended": 0,
+            "qty_on_po": 0,
+        }
+        self.assertTrue(classify_dead_stock(item))
+
+    def test_returns_false_when_days_below_threshold(self):
+        item = {
+            "days_since_last_sale": DEAD_STOCK_MIN_DAYS_SINCE_SALE - 1,
+            "qty_on_po": 0,
+        }
+        self.assertFalse(classify_dead_stock(item))
+
+    def test_returns_false_when_days_since_sale_is_none(self):
+        item = {"days_since_last_sale": None, "qty_on_po": 0}
+        self.assertFalse(classify_dead_stock(item))
+
+    def test_returns_false_when_open_po_exists(self):
+        item = {
+            "days_since_last_sale": DEAD_STOCK_MIN_DAYS_SINCE_SALE + 10,
+            "qty_on_po": 5,
+        }
+        self.assertFalse(classify_dead_stock(item))
+
+    def test_returns_false_when_suspended_demand_exists(self):
+        item = {
+            "days_since_last_sale": DEAD_STOCK_MIN_DAYS_SINCE_SALE + 10,
+            "qty_suspended": 2,
+            "qty_on_po": 0,
+        }
+        self.assertFalse(classify_dead_stock(item))
+
+    def test_effective_qty_suspended_also_blocks_classification(self):
+        item = {
+            "days_since_last_sale": DEAD_STOCK_MIN_DAYS_SINCE_SALE + 10,
+            "effective_qty_suspended": 3,
+            "qty_on_po": 0,
+        }
+        self.assertFalse(classify_dead_stock(item))
+
+    def test_enrich_item_stamps_dead_stock_field(self):
+        item = {
+            "line_code": "AER-", "item_code": "X1",
+            "description": "Test", "qty_sold": 0, "qty_suspended": 0,
+            "qty_on_po": 0, "order_qty": 0,
+            "days_since_last_sale": DEAD_STOCK_MIN_DAYS_SINCE_SALE + 50,
+        }
+        inv = {"qoh": 5, "min": None, "max": None, "repl_cost": 1.0,
+               "supplier": "", "last_sale": "", "last_receipt": ""}
+        enrich_item(item, inv, pack_qty=None, rule={})
+        self.assertIn("dead_stock", item)
+        self.assertIsInstance(item["dead_stock"], bool)
 
 
 if __name__ == "__main__":

@@ -1065,28 +1065,45 @@ def edit_buy_rule_from_bulk(app):
 
 def resolve_review_from_bulk(app):
     flush_pending_bulk_sheet_edit(app)
-    row_id = getattr(app, "_right_click_row_id", None) or (
-        app.bulk_sheet.current_row_id() if getattr(app, "bulk_sheet", None) else None
-    )
-    if row_id is None:
+    right_click_context = getattr(app, "_right_click_bulk_context", None) or {}
+    clicked_row_id = right_click_context.get("row_id")
+    # Resolve all rows in the snapshot when the right-clicked row is part of it.
+    row_ids = []
+    if clicked_row_id is not None and getattr(app, "bulk_sheet", None) and hasattr(app.bulk_sheet, "snapshot_row_ids"):
+        snap_ids = list(app.bulk_sheet.snapshot_row_ids())
+        if snap_ids and clicked_row_id in snap_ids:
+            row_ids = snap_ids
+        else:
+            row_ids = [clicked_row_id]
+    elif clicked_row_id is not None:
+        row_ids = [clicked_row_id]
+    elif getattr(app, "bulk_sheet", None) and app.bulk_sheet.current_row_id() is not None:
+        row_ids = [app.bulk_sheet.current_row_id()]
+    if not row_ids:
         return
-    idx, item = resolve_bulk_row(app, row_id)
-    if idx is None or item is None:
-        return
-    item["review_resolved"] = True
-    item["status"], item["data_flags"] = evaluate_item_status(item)
-    if item.get("review_required") and item.get("review_resolved"):
-        item["status"] = "ok"
-    if getattr(app, "bulk_sheet", None):
-        app.bulk_sheet.refresh_row(row_id, app._bulk_row_values(item))
-    else:
-        app.bulk_tree.item(row_id, values=app._bulk_row_values(item))
-    app._update_bulk_summary()
+    refreshed = []
+    for row_id in row_ids:
+        idx, item = resolve_bulk_row(app, row_id)
+        if idx is None or item is None:
+            continue
+        item["review_resolved"] = True
+        item["status"], item["data_flags"] = evaluate_item_status(item)
+        if item.get("review_required") and item.get("review_resolved"):
+            item["status"] = "ok"
+        refreshed.append((row_id, item))
+    for row_id, item in refreshed:
+        if getattr(app, "bulk_sheet", None):
+            app.bulk_sheet.refresh_row(row_id, app._bulk_row_values(item))
+        else:
+            app.bulk_tree.item(row_id, values=app._bulk_row_values(item))
+    if refreshed:
+        app._update_bulk_summary()
 
 
 def dismiss_duplicate_from_bulk(app):
     flush_pending_bulk_sheet_edit(app)
-    row_id = getattr(app, "_right_click_row_id", None) or (
+    right_click_context = getattr(app, "_right_click_bulk_context", None) or {}
+    row_id = right_click_context.get("row_id") or (
         app.bulk_sheet.current_row_id() if getattr(app, "bulk_sheet", None) else None
     )
     if row_id is None:

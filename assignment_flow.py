@@ -10,6 +10,27 @@ from item_workflow import apply_recent_order_context
 from rules import enrich_item, get_rule_float, get_rule_int, get_rule_pack_size, has_exact_qty_override
 
 
+def _compute_override_pattern(entries):
+    """Return 'always_up', 'always_down', 'mixed', or None based on full order history entries."""
+    directions = []
+    for e in entries:
+        final = e.get("final_qty")
+        suggested = e.get("suggested_qty")
+        if final is None or suggested is None:
+            continue
+        if final > suggested:
+            directions.append("up")
+        elif final < suggested:
+            directions.append("down")
+    if not directions:
+        return None
+    if all(d == "up" for d in directions):
+        return "always_up"
+    if all(d == "down" for d in directions):
+        return "always_down"
+    return "mixed"
+
+
 def prepare_assignment_session(
     session,
     *,
@@ -260,6 +281,12 @@ def prepare_assignment_session(
             sorted_qtys = sorted(history_qtys)
             mid = len(sorted_qtys) // 2
             item["historical_order_qty"] = sorted_qtys[mid] if len(sorted_qtys) % 2 != 0 else (sorted_qtys[mid - 1] + sorted_qtys[mid]) // 2
+        full_order_history = getattr(session, "full_order_history", {}) or {}
+        full_entries = full_order_history.get(key, [])
+        if len(full_entries) >= 2:
+            item["suggestion_override_pattern"] = _compute_override_pattern(full_entries)
+        else:
+            item["suggestion_override_pattern"] = None
         enrich_item(item, inv, item.get("pack_size"), rule)
         preserved_reason = str(item.get("candidate_preserved_reason", "") or "").strip()
         if preserved_reason:

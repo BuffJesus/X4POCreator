@@ -6,7 +6,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from maintenance import build_maintenance_report
+from maintenance import build_maintenance_report, build_dead_stock_report_rows
 from models import (
     ItemKey,
     MaintenanceCandidate,
@@ -90,6 +90,55 @@ class MaintenanceReportTests(unittest.TestCase):
         ])
         self.assertEqual(len(issues), 1)
         self.assertIn("QOH adjusted: 2 -> 5", issues[0].issue)
+
+
+class DeadStockReportTests(unittest.TestCase):
+    def _item(self, line_code="AER-", item_code="X1", dead_stock=True, days=400, on_po=0, qoh=5):
+        return {
+            "line_code": line_code,
+            "item_code": item_code,
+            "description": "Test Part",
+            "dead_stock": dead_stock,
+            "days_since_last_sale": days,
+            "qty_on_po": on_po,
+            "inventory": {"qoh": qoh},
+        }
+
+    def test_dead_stock_items_appear_in_report(self):
+        items = [self._item()]
+        rows = build_dead_stock_report_rows(items)
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["Line Code"], "AER-")
+        self.assertEqual(rows[0]["Item Code"], "X1")
+        self.assertEqual(rows[0]["Days Since Last Sale"], 400)
+
+    def test_non_dead_stock_items_excluded(self):
+        items = [self._item(dead_stock=False)]
+        rows = build_dead_stock_report_rows(items)
+        self.assertEqual(rows, [])
+
+    def test_discontinue_flagged_shows_yes_when_rule_set(self):
+        items = [self._item()]
+        order_rules = {"AER-:X1": {"discontinue_candidate": True}}
+        rows = build_dead_stock_report_rows(items, order_rules=order_rules)
+        self.assertEqual(rows[0]["Discontinue Flagged"], "Yes")
+
+    def test_discontinue_flagged_blank_when_not_set(self):
+        items = [self._item()]
+        rows = build_dead_stock_report_rows(items)
+        self.assertEqual(rows[0]["Discontinue Flagged"], "")
+
+    def test_rows_sorted_by_line_code_then_item_code(self):
+        items = [
+            self._item(line_code="ZZZ-", item_code="A"),
+            self._item(line_code="AAA-", item_code="B"),
+        ]
+        rows = build_dead_stock_report_rows(items)
+        self.assertEqual(rows[0]["Line Code"], "AAA-")
+        self.assertEqual(rows[1]["Line Code"], "ZZZ-")
+
+    def test_empty_items_returns_empty(self):
+        self.assertEqual(build_dead_stock_report_rows([]), [])
 
 
 if __name__ == "__main__":

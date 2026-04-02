@@ -221,7 +221,7 @@ def build_bulk_tab(app, editable_cols):
         textvariable=app.var_bulk_item_status,
         state="readonly",
         width=11,
-        values=["ALL", "OK", "Review", "Warning", "No Pack", "Skip"],
+        values=["ALL", "OK", "Review", "Warning", "No Pack", "Skip", "Dead Stock"],
     )
     app.combo_bulk_item_status.pack(side=tk.LEFT, padx=2)
     app.combo_bulk_item_status.bind("<<ComboboxSelected>>", lambda e: app._apply_bulk_filter())
@@ -260,7 +260,7 @@ def build_bulk_tab(app, editable_cols):
         textvariable=app.var_bulk_attention_filter,
         state="readonly",
         width=14,
-        values=["ALL", "Normal", "Missed Reorder"],
+        values=["ALL", "Normal", "Missed Reorder", "High Risk"],
     )
     app.combo_bulk_attention.pack(side=tk.LEFT, padx=2)
     app.combo_bulk_attention.bind("<<ComboboxSelected>>", lambda e: app._apply_bulk_filter())
@@ -326,13 +326,14 @@ def build_bulk_tab(app, editable_cols):
         "vendor", "line_code", "item_code", "description", "source",
         "status", "raw_need", "suggested_qty", "final_qty", "buy_rule",
         "qoh", "cur_min", "cur_max", "sug_min", "sug_max",
-        "pack_size", "supplier", "why",
+        "pack_size", "supplier", "why", "risk",
     )
     widths = {
         "vendor": 80, "line_code": 48, "item_code": 92, "description": 150,
         "source": 40, "status": 52, "raw_need": 44, "suggested_qty": 54, "final_qty": 64,
         "buy_rule": 72, "qoh": 44, "cur_min": 44, "cur_max": 44,
         "sug_min": 48, "sug_max": 48, "pack_size": 40, "supplier": 72, "why": 180,
+        "risk": 44,
     }
     labels = {
         "vendor": "Vendor", "line_code": "LC", "item_code": "Item Code",
@@ -340,7 +341,7 @@ def build_bulk_tab(app, editable_cols):
         "raw_need": "Qty Needed Before Pack", "suggested_qty": "Suggested Qty", "final_qty": "Final Qty",
         "buy_rule": "Buy Rule", "qoh": "QOH", "cur_min": "Min", "cur_max": "Max",
         "sug_min": "Sug Min", "sug_max": "Sug Max", "pack_size": "Pack",
-        "supplier": "Supplier", "why": "Why This Qty",
+        "supplier": "Supplier", "why": "Why This Qty", "risk": "Risk",
     }
 
     app.bulk_tree_labels = labels
@@ -591,6 +592,8 @@ def bulk_row_values(app, item):
     rule = app.order_rules.get(rule_key)
     buy_rule = get_buy_rule_summary(item, rule)
     why = item.get("why", "")
+    risk_score = item.get("stockout_risk_score")
+    risk_display = f"{int(round(risk_score * 100))}%" if isinstance(risk_score, float) else ""
     return (
         item.get("vendor", ""),
         item["line_code"],
@@ -610,6 +613,7 @@ def bulk_row_values(app, item):
         pack_size if pack_size else "",
         supplier,
         why,
+        risk_display,
     )
 
 
@@ -650,7 +654,7 @@ def set_combobox_values_if_changed(combo, values):
 
 
 def _blank_summary_counts(total=0):
-    return {"total": total, "assigned": 0, "review": 0, "warning": 0, "skip": 0}
+    return {"total": total, "assigned": 0, "review": 0, "warning": 0, "skip": 0, "dead_stock": 0}
 
 
 def _accumulate_summary_counts(counts, item, sign=1):
@@ -662,6 +666,8 @@ def _accumulate_summary_counts(counts, item, sign=1):
         counts["warning"] += sign
     if item.get("status") == "skip":
         counts["skip"] += sign
+    if item.get("dead_stock"):
+        counts["dead_stock"] += sign
 
 
 def _recompute_summary_counts(items):
@@ -678,6 +684,8 @@ def bulk_assignment_status(item):
 def bulk_item_status(item):
     if "missing_pack" in item.get("data_flags", []):
         return "No Pack"
+    if item.get("dead_stock"):
+        return "Dead Stock"
     status = (item.get("status", "ok") or "ok").lower()
     return {
         "ok": "OK",
@@ -692,6 +700,7 @@ def bulk_filter_bucket_snapshot(item):
         "vendor": item.get("vendor", ""),
         "status": item.get("status", ""),
         "data_flags": tuple(item.get("data_flags", ()) or ()),
+        "dead_stock": bool(item.get("dead_stock")),
         "performance_profile": item.get("performance_profile", ""),
         "sales_health_signal": item.get("sales_health_signal", ""),
         "reorder_attention_signal": item.get("reorder_attention_signal", ""),
@@ -938,6 +947,7 @@ def update_bulk_summary(app, counts=None):
     review_count = counts["review"]
     warning_count = counts["warning"]
     skip_count = counts.get("skip", 0)
+    dead_stock_count = counts.get("dead_stock", 0)
     unassigned = total - assigned
     parts = [f"{total} total", f"{assigned} assigned", f"{unassigned} unassigned"]
     if review_count:
@@ -946,6 +956,8 @@ def update_bulk_summary(app, counts=None):
         parts.append(f"{warning_count} warning")
     if skip_count:
         parts.append(f"{skip_count} skip")
+    if dead_stock_count:
+        parts.append(f"{dead_stock_count} dead stock")
     label = getattr(app, "lbl_bulk_summary", None)
     if label is not None and hasattr(label, "config"):
         label.config(text="  ·  ".join(parts))
@@ -1080,6 +1092,8 @@ def item_matches_bulk_filter(item, filter_state):
             return False
         if filter_state["item_status"] == "Skip" and item.get("status", "ok") != "skip":
             return False
+        if filter_state["item_status"] == "Dead Stock" and not item.get("dead_stock"):
+            return False
     if filter_state["performance"] != "ALL":
         performance = (item.get("performance_profile", "") or "").lower()
         expected = {
@@ -1095,13 +1109,18 @@ def item_matches_bulk_filter(item, filter_state):
         if sales_health != filter_state["sales_health"].lower():
             return False
     if filter_state["attention"] != "ALL":
-        attention = (item.get("reorder_attention_signal", "") or "").lower()
-        expected_attention = {
-            "Normal": "normal",
-            "Missed Reorder": "review_missed_reorder",
-        }.get(filter_state["attention"], "")
-        if attention != expected_attention:
-            return False
+        if filter_state["attention"] == "High Risk":
+            risk = item.get("stockout_risk_score", 0.0) or 0.0
+            if risk < 0.6:
+                return False
+        else:
+            attention = (item.get("reorder_attention_signal", "") or "").lower()
+            expected_attention = {
+                "Normal": "normal",
+                "Missed Reorder": "review_missed_reorder",
+            }.get(filter_state["attention"], "")
+            if attention != expected_attention:
+                return False
     return True
 
 
@@ -1160,6 +1179,7 @@ def _sort_column_depends_on_changes(sort_col, changed_cols):
         "sug_min": {"qoh", "cur_min", "cur_max", "pack_size"},
         "sug_max": {"qoh", "cur_min", "cur_max", "pack_size"},
         "pack_size": {"pack_size"},
+        "risk": {"qoh"},
     }
     return bool(dependencies.get(sort_col, {sort_col}) & set(changed_cols))
 
@@ -1360,6 +1380,8 @@ def bulk_sort_value(app, item, col):
         return inventory.get("supplier", "")
     if col == "why":
         return item.get("why", "")
+    if col == "risk":
+        return item.get("stockout_risk_score", 0.0) or 0.0
     return ""
 
 

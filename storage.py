@@ -509,3 +509,34 @@ def extract_order_history(snapshots):
             if isinstance(qty, (int, float)) and qty > 0:
                 history[(line_code, item_code)].append(int(qty))
     return dict(history)
+
+
+def extract_full_order_history(snapshots):
+    """
+    Derive per-item full order history (final qty + suggested qty) from session snapshots.
+
+    Returns a dict keyed by (line_code, item_code) → list of entry dicts, most-recent first:
+        {"final_qty": int, "suggested_qty": int|None, "created_at": str}
+
+    Only entries with a positive final_qty are included.  Snapshots should already be
+    sorted most-recent first (as returned by load_session_snapshots).
+    """
+    history = defaultdict(list)
+    for snap in snapshots:
+        created_at = snap.get("created_at", "")
+        assigned = snap.get("assigned_items") or []
+        for item in assigned:
+            line_code = item.get("line_code") or ""
+            item_code = item.get("item_code") or ""
+            if not line_code or not item_code:
+                continue
+            final_qty = item.get("final_qty")
+            if not (isinstance(final_qty, (int, float)) and final_qty > 0):
+                continue
+            suggested_qty = item.get("suggested_qty")
+            history[(line_code, item_code)].append({
+                "final_qty": int(final_qty),
+                "suggested_qty": int(suggested_qty) if isinstance(suggested_qty, (int, float)) and suggested_qty > 0 else None,
+                "created_at": created_at,
+            })
+    return dict(history)

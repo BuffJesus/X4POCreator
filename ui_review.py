@@ -979,6 +979,11 @@ def build_review_tab(app):
     ttk.Button(left_btn_row, text="Back to Assignment", command=app._back_to_assign).pack(side=tk.LEFT, padx=4)
     ttk.Button(left_btn_row, text="Compact Review", command=lambda: show_compact_review(app)).pack(side=tk.LEFT, padx=4)
     ttk.Button(left_btn_row, text="Release Plan", command=lambda: show_release_plan(app)).pack(side=tk.LEFT, padx=4)
+    app.btn_export_trend_report = ttk.Button(
+        left_btn_row, text="Export Trend Report", command=app._export_trend_report_csv,
+        state=tk.DISABLED,
+    )
+    app.btn_export_trend_report.pack(side=tk.LEFT, padx=4)
 
     right_btn_row = ttk.Frame(btn_frame)
     right_btn_row.pack(anchor="e", fill=tk.X, pady=(8, 0))

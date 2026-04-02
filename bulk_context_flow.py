@@ -69,3 +69,44 @@ def ignore_from_bulk(app, askyesno, showinfo):
         return
     removed = app._ignore_items_by_keys(ignore_keys)
     showinfo("Ignored", f"Ignored {removed} item(s).")
+
+
+def flag_discontinue_from_bulk(app, askyesno):
+    """Flag the selected item(s) as discontinue candidates in order_rules.json."""
+    flush_pending_bulk_sheet_edit(app)
+    right_click_context = getattr(app, "_right_click_bulk_context", None) or {}
+    row_id = right_click_context.get("row_id")
+    if row_id is not None and getattr(app, "bulk_sheet", None) and hasattr(app.bulk_sheet, "snapshot_row_ids"):
+        snap_ids = list(app.bulk_sheet.snapshot_row_ids())
+        row_ids = snap_ids if snap_ids and row_id in snap_ids else [row_id]
+    elif row_id is not None:
+        row_ids = [row_id]
+    elif getattr(app, "bulk_sheet", None) and app.bulk_sheet.current_row_id() is not None:
+        row_ids = [app.bulk_sheet.current_row_id()]
+    else:
+        row_ids = []
+    if not row_ids:
+        return
+    keys = []
+    for rid in row_ids:
+        resolve_row = getattr(app, "_resolve_bulk_row_id", None)
+        if callable(resolve_row):
+            _idx, item = resolve_row(rid)
+        else:
+            _idx, item = ui_bulk.resolve_bulk_row_id(app, rid)
+        if item is not None:
+            keys.append((item["line_code"], item["item_code"]))
+    if not keys:
+        return
+    if not askyesno(
+        "Flag for Discontinue Review",
+        f"Flag {len(keys)} item(s) as discontinue candidates? "
+        "This will be saved to order rules and visible in the maintenance report.",
+    ):
+        return
+    for line_code, item_code in keys:
+        rule_key = f"{line_code}:{item_code}"
+        if rule_key not in app.order_rules:
+            app.order_rules[rule_key] = {}
+        app.order_rules[rule_key]["discontinue_candidate"] = True
+    app._save_order_rules()

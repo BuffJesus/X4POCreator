@@ -46,6 +46,7 @@ import ui_bulk
 import ui_bulk_dialogs
 import ui_filters
 import ui_help
+import trend_flow
 import ui_individual
 import ui_load
 import ui_review
@@ -993,6 +994,41 @@ class POBuilderApp:
             writer.writerows(rows)
         messagebox.showinfo("Export Data Quality Report", f"Wrote {len(rows)} row(s) to:\n{path}", parent=self.root)
 
+    def _export_trend_report_csv(self):
+        """Export per-item order trend data to CSV (items with ≥ 2 sessions of history)."""
+        full_history = getattr(self.session, "full_order_history", {}) or {}
+        all_items = list(getattr(self, "filtered_items", []) or []) + list(getattr(self, "assigned_items", []) or [])
+        seen = set()
+        unique_items = []
+        for item in all_items:
+            key = (item.get("line_code", ""), item.get("item_code", ""))
+            if key not in seen:
+                seen.add(key)
+                unique_items.append(item)
+        rows = trend_flow.build_trend_report_rows(unique_items, full_history)
+        if not rows:
+            messagebox.showinfo(
+                "Export Trend Report",
+                "No items with 2 or more sessions of order history are available.",
+                parent=self.root,
+            )
+            return
+        path = filedialog.asksaveasfilename(
+            parent=self.root,
+            title="Save Trend Report",
+            defaultextension=".csv",
+            filetypes=[("CSV files", "*.csv"), ("All files", "*.*")],
+            initialfile="trend_report.csv",
+        )
+        if not path:
+            return
+        fieldnames = trend_flow.trend_report_column_order()
+        with open(path, "w", newline="", encoding="utf-8-sig") as f:
+            writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
+            writer.writeheader()
+            writer.writerows(rows)
+        messagebox.showinfo("Export Trend Report", f"Wrote {len(rows)} item(s) to:\n{path}", parent=self.root)
+
     def _parse_all_files(self, paths, progress_callback=None):
         """Parse all CSV files (runs in background thread)."""
         return load_flow.parse_all_files(
@@ -1125,6 +1161,10 @@ class POBuilderApp:
         self.last_removed_bulk_items = []
         self.last_protected_bulk_items = []
         self._vendor_export_scope_overrides = {}
+        has_trend_history = bool(getattr(self.session, "full_order_history", None))
+        btn_trend = getattr(self, "btn_export_trend_report", None)
+        if btn_trend is not None:
+            btn_trend.config(state="normal" if has_trend_history else "disabled")
         try:
             self._refresh_vendor_inputs()
             ui_bulk.restore_bulk_filter_sort_state(self)
@@ -1572,6 +1612,9 @@ class POBuilderApp:
 
     def _ignore_from_bulk(self):
         bulk_context_flow.ignore_from_bulk(self, messagebox.askyesno, messagebox.showinfo)
+
+    def _flag_discontinue_from_bulk(self):
+        bulk_context_flow.flag_discontinue_from_bulk(self, messagebox.askyesno)
 
     def _go_to_individual(self):
         ui_assignment_actions.go_to_individual(self)

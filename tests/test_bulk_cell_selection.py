@@ -639,6 +639,7 @@ class BulkSheetViewTests(unittest.TestCase):
             identify_row=lambda event, exclude_index=True, allow_end=False: 1,
             identify_column=lambda event, exclude_header=True, allow_end=False: 0,
             get_selected_rows=lambda: set(),
+            get_selected_cells=lambda: [],
             set_currently_selected=lambda row, column: calls.append(("current", row, column)),
         )
 
@@ -1225,6 +1226,103 @@ class BulkSheetViewTests(unittest.TestCase):
         view.selected_row_ids = lambda: ("4", "8", "12")
 
         self.assertEqual(view.selected_target_row_ids("pack_size"), ("4", "8"))
+
+    def test_snapshot_row_ids_derives_rows_from_cells_when_rows_empty(self):
+        """snapshot_row_ids must fall back to cell-selection rows.
+        Normal shift-click / drag populates snapshot['cells'], not snapshot['rows'].
+        Before this fix, snapshot_row_ids() returned () and remove/ignore fell back
+        to the single right-clicked row."""
+        view = BulkSheetView.__new__(BulkSheetView)
+        view.row_ids = [10, 20, 30]
+        view._selection_snapshot = {
+            "cells": ((0, 1), (1, 0), (2, 1)),
+            "rows": (),
+            "columns": (),
+            "current": (0, 1),
+        }
+
+        self.assertEqual(view.snapshot_row_ids(), ("10", "20", "30"))
+
+    def test_snapshot_row_ids_prefers_rows_over_cells(self):
+        view = BulkSheetView.__new__(BulkSheetView)
+        view.row_ids = [10, 20, 30]
+        view._selection_snapshot = {
+            "cells": ((0, 1), (2, 1)),
+            "rows": (1,),
+            "columns": (),
+            "current": (1, 1),
+        }
+
+        self.assertEqual(view.snapshot_row_ids(), ("20",))
+
+    def test_snapshot_row_ids_returns_empty_when_snapshot_missing(self):
+        view = BulkSheetView.__new__(BulkSheetView)
+        view.row_ids = [10, 20]
+
+        self.assertEqual(view.snapshot_row_ids(), ())
+
+    def test_handle_right_click_keeps_cell_selection_when_row_is_already_selected(self):
+        """handle_right_click must NOT call set_currently_selected when the
+        right-clicked row is already part of a cell-based (non-row-header) selection.
+        Before this fix, get_selected_rows() returned {} for cell selections, so the
+        condition was always True and the selection was clobbered."""
+        calls = []
+        view = BulkSheetView.__new__(BulkSheetView)
+        view.row_ids = ["r0", "r1", "r2"]
+        view.columns = ("vendor", "pack_size")
+        view._pending_edit = None
+        view._flush_pending_before_navigation = lambda: None
+        view._remember_selection = lambda: calls.append("remember")
+        view.app = SimpleNamespace(
+            _right_click_bulk_context=None,
+            _update_bulk_sheet_status=lambda: calls.append("status"),
+        )
+        view.context_menu = SimpleNamespace(
+            tk_popup=lambda x, y: calls.append(("popup",)),
+            grab_release=lambda: None,
+        )
+        # Row 1 selected via cells (not row-header) — get_selected_rows returns {}
+        view.sheet = SimpleNamespace(
+            identify_row=lambda event, exclude_index=True, allow_end=False: 1,
+            identify_column=lambda event, exclude_header=True, allow_end=False: 0,
+            get_selected_rows=lambda: set(),
+            get_selected_cells=lambda: [(0, 0), (1, 0), (2, 0)],
+            set_currently_selected=lambda row, column: calls.append(("set_selected", row, column)),
+        )
+
+        view.handle_right_click(SimpleNamespace(x_root=5, y_root=5))
+
+        # set_currently_selected must NOT have been called because row 1 was already selected
+        self.assertNotIn(("set_selected", 1, 0), calls)
+
+    def test_handle_right_click_moves_focus_when_row_not_in_cell_selection(self):
+        calls = []
+        view = BulkSheetView.__new__(BulkSheetView)
+        view.row_ids = ["r0", "r1", "r2"]
+        view.columns = ("vendor", "pack_size")
+        view._pending_edit = None
+        view._flush_pending_before_navigation = lambda: None
+        view._remember_selection = lambda: calls.append("remember")
+        view.app = SimpleNamespace(
+            _right_click_bulk_context=None,
+            _update_bulk_sheet_status=lambda: None,
+        )
+        view.context_menu = SimpleNamespace(
+            tk_popup=lambda x, y: None,
+            grab_release=lambda: None,
+        )
+        # Row 2 clicked, but only rows 0 and 1 are in cells
+        view.sheet = SimpleNamespace(
+            identify_row=lambda event, exclude_index=True, allow_end=False: 2,
+            identify_column=lambda event, exclude_header=True, allow_end=False: 0,
+            get_selected_rows=lambda: set(),
+            get_selected_cells=lambda: [(0, 0), (1, 0)],
+            set_currently_selected=lambda row, column: calls.append(("set_selected", row, column)),
+        )
+
+        view.handle_right_click(SimpleNamespace(x_root=5, y_root=5))
+
+        self.assertIn(("set_selected", 2, 0), calls)
 
     def test_selected_target_row_ids_falls_back_to_selected_rows(self):
         view = BulkSheetView.__new__(BulkSheetView)

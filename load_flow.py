@@ -833,6 +833,7 @@ def apply_load_result(session, result, *, parsers_module=parsers):
     sessions_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "sessions")
     snapshots = storage.load_session_snapshots(sessions_dir, max_count=3)
     session.session_history = storage.extract_order_history(snapshots)
+    session.full_order_history = storage.extract_full_order_history(snapshots)
     return session
 
 

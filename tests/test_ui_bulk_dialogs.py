@@ -948,5 +948,160 @@ class BulkDialogTests(unittest.TestCase):
         self.assertIn("review", events)
 
 
+class ResolveReviewFromBulkTests(unittest.TestCase):
+    def _make_item(self, item_code="A", review_required=True):
+        return {
+            "line_code": "AER-",
+            "item_code": item_code,
+            "status": "review",
+            "data_flags": ["review_required"],
+            "review_required": review_required,
+            "review_resolved": False,
+        }
+
+    def _make_app(self, item, row_id, snap_ids=None, calls=None):
+        if calls is None:
+            calls = []
+        bulk_sheet = SimpleNamespace(
+            snapshot_row_ids=lambda: snap_ids if snap_ids is not None else (),
+            current_row_id=lambda: row_id,
+            refresh_row=lambda rid, vals: calls.append(("refresh", rid)),
+        )
+        return SimpleNamespace(
+            bulk_sheet=bulk_sheet,
+            _right_click_bulk_context={"row_id": row_id},
+            _resolve_bulk_row_id=lambda rid: (0, item) if rid == row_id else (None, None),
+            _bulk_row_values=lambda i: ("AER-", i["item_code"]),
+            _update_bulk_summary=lambda: calls.append("summary"),
+        ), calls
+
+    def test_resolve_review_marks_item_ok_via_right_click_context(self):
+        item = self._make_item()
+        row_id = '["AER-", "A"]'
+        app, calls = self._make_app(item, row_id, snap_ids=[row_id])
+
+        ui_bulk_dialogs.resolve_review_from_bulk(app)
+
+        self.assertTrue(item["review_resolved"])
+        self.assertEqual(item["status"], "ok")
+        self.assertIn(("refresh", row_id), calls)
+        self.assertIn("summary", calls)
+
+    def test_resolve_review_resolves_all_snapshot_rows(self):
+        item_a = self._make_item("A")
+        item_b = self._make_item("B")
+        row_id_a = '["AER-", "A"]'
+        row_id_b = '["AER-", "B"]'
+        calls = []
+
+        def resolve(rid):
+            if rid == row_id_a:
+                return 0, item_a
+            if rid == row_id_b:
+                return 1, item_b
+            return None, None
+
+        app = SimpleNamespace(
+            bulk_sheet=SimpleNamespace(
+                snapshot_row_ids=lambda: [row_id_a, row_id_b],
+                current_row_id=lambda: row_id_a,
+                refresh_row=lambda rid, vals: calls.append(("refresh", rid)),
+            ),
+            _right_click_bulk_context={"row_id": row_id_a},
+            _resolve_bulk_row_id=resolve,
+            _bulk_row_values=lambda i: ("AER-", i["item_code"]),
+            _update_bulk_summary=lambda: calls.append("summary"),
+        )
+
+        ui_bulk_dialogs.resolve_review_from_bulk(app)
+
+        self.assertTrue(item_a["review_resolved"])
+        self.assertTrue(item_b["review_resolved"])
+        self.assertIn(("refresh", row_id_a), calls)
+        self.assertIn(("refresh", row_id_b), calls)
+
+    def test_resolve_review_uses_right_click_context_not_legacy_attr(self):
+        """_right_click_row_id is never set; must use _right_click_bulk_context."""
+        item = self._make_item()
+        row_id = '["AER-", "A"]'
+        calls = []
+        app = SimpleNamespace(
+            bulk_sheet=SimpleNamespace(
+                snapshot_row_ids=lambda: [row_id],
+                current_row_id=lambda: None,
+                refresh_row=lambda rid, vals: calls.append(("refresh", rid)),
+            ),
+            _right_click_bulk_context={"row_id": row_id},
+            _right_click_row_id=None,  # legacy — must not be used
+            _resolve_bulk_row_id=lambda rid: (0, item) if rid == row_id else (None, None),
+            _bulk_row_values=lambda i: ("AER-", i["item_code"]),
+            _update_bulk_summary=lambda: calls.append("summary"),
+        )
+
+        ui_bulk_dialogs.resolve_review_from_bulk(app)
+
+        self.assertTrue(item["review_resolved"])
+
+    def test_resolve_review_does_nothing_when_no_context_and_no_current(self):
+        calls = []
+        app = SimpleNamespace(
+            bulk_sheet=SimpleNamespace(
+                snapshot_row_ids=lambda: (),
+                current_row_id=lambda: None,
+            ),
+            _right_click_bulk_context={},
+            _update_bulk_summary=lambda: calls.append("summary"),
+        )
+
+        ui_bulk_dialogs.resolve_review_from_bulk(app)
+
+        self.assertEqual(calls, [])
+
+
+class DismissDuplicateFromBulkTests(unittest.TestCase):
+    def test_dismiss_duplicate_uses_right_click_context_not_legacy_attr(self):
+        dismissed = []
+        item = {"line_code": "AER-", "item_code": "A"}
+        row_id = '["AER-", "A"]'
+        app = SimpleNamespace(
+            bulk_sheet=SimpleNamespace(current_row_id=lambda: None),
+            _right_click_bulk_context={"row_id": row_id},
+            _right_click_row_id=None,  # legacy — must not be used
+            _resolve_bulk_row_id=lambda rid: (0, item) if rid == row_id else (None, None),
+            _dismiss_duplicate=lambda ic: dismissed.append(ic),
+        )
+
+        ui_bulk_dialogs.dismiss_duplicate_from_bulk(app)
+
+        self.assertEqual(dismissed, ["A"])
+
+    def test_dismiss_duplicate_falls_back_to_current_row(self):
+        dismissed = []
+        item = {"line_code": "AER-", "item_code": "B"}
+        row_id = '["AER-", "B"]'
+        app = SimpleNamespace(
+            bulk_sheet=SimpleNamespace(current_row_id=lambda: row_id),
+            _right_click_bulk_context={},
+            _resolve_bulk_row_id=lambda rid: (0, item) if rid == row_id else (None, None),
+            _dismiss_duplicate=lambda ic: dismissed.append(ic),
+        )
+
+        ui_bulk_dialogs.dismiss_duplicate_from_bulk(app)
+
+        self.assertEqual(dismissed, ["B"])
+
+    def test_dismiss_duplicate_does_nothing_when_no_row(self):
+        dismissed = []
+        app = SimpleNamespace(
+            bulk_sheet=SimpleNamespace(current_row_id=lambda: None),
+            _right_click_bulk_context={},
+            _dismiss_duplicate=lambda ic: dismissed.append(ic),
+        )
+
+        ui_bulk_dialogs.dismiss_duplicate_from_bulk(app)
+
+        self.assertEqual(dismissed, [])
+
+
 if __name__ == "__main__":
     unittest.main()

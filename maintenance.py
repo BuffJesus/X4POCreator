@@ -83,6 +83,43 @@ def build_maintenance_issue(candidate: MaintenanceCandidate) -> Optional[Mainten
     )
 
 
+def build_dead_stock_report_rows(items, order_rules=None, *, inventory_lookup=None):
+    """Return a list of dicts describing dead-stock and discontinue-candidate items.
+
+    items          — enriched item dicts (must have dead_stock field stamped by enrich_item)
+    order_rules    — dict of rule_key → rule dict (to detect discontinue_candidate flag)
+    inventory_lookup — optional lookup for last_sale / last_receipt dates
+
+    Each row dict has keys:
+        "Line Code", "Item Code", "Description", "Days Since Last Sale",
+        "QOH", "Open PO Qty", "Discontinue Flagged"
+    """
+    if order_rules is None:
+        order_rules = {}
+    if inventory_lookup is None:
+        inventory_lookup = {}
+    rows = []
+    for item in items:
+        if not item.get("dead_stock"):
+            continue
+        key = (item.get("line_code", ""), item.get("item_code", ""))
+        rule_key = f"{key[0]}:{key[1]}"
+        rule = order_rules.get(rule_key) or {}
+        inv = inventory_lookup.get(key, {})
+        qoh = inv.get("qoh", item.get("inventory", {}).get("qoh", ""))
+        rows.append({
+            "Line Code": key[0],
+            "Item Code": key[1],
+            "Description": item.get("description", ""),
+            "Days Since Last Sale": item.get("days_since_last_sale", ""),
+            "QOH": f"{qoh:g}" if isinstance(qoh, (int, float)) else str(qoh) if qoh != "" else "",
+            "Open PO Qty": item.get("qty_on_po", 0) or 0,
+            "Discontinue Flagged": "Yes" if rule.get("discontinue_candidate") else "",
+        })
+    rows.sort(key=lambda r: (r["Line Code"], r["Item Code"]))
+    return rows
+
+
 def build_maintenance_report(candidates: Iterable[MaintenanceCandidate]) -> List[MaintenanceIssue]:
     issues = []
     for candidate in candidates:

@@ -23,6 +23,12 @@ HEURISTIC_COVER_ANNUAL_PACK_RATIO   = 26.0
 HEURISTIC_COVER_ANNUAL_MAX_RATIO    = 40.0
 HEURISTIC_MAX_DAYS_SINCE_SALE       = 120    # days_since_last_sale > this → skip buffer
 HEURISTIC_HIGH_CONFIDENCE_THRESHOLD = 0.75   # heuristic_confidence >= this → elevated buffer allowed
+# Default assumed vendor lead time (days) used in stockout risk scoring when no
+# vendor-specific lead time has been inferred from session history.
+DEFAULT_LEAD_TIME_DAYS = 14
+# Items with no sale or receipt in this many days and no pending demand are
+# classified as dead stock candidates.
+DEAD_STOCK_MIN_DAYS_SINCE_SALE = 365
 REEL_BLOCKLIST = (
     "BELT",
     "BOLT",
@@ -350,6 +356,59 @@ def compute_heuristic_confidence(item):
     if span < HEURISTIC_SHORT_SPAN_DAYS:
         score = min(score, 0.3)
     return score
+
+
+def compute_stockout_risk_score(item, lead_time_days=None):
+    """Return a 0.0–1.0 stockout risk score for an enriched item.
+
+    0.0 — no meaningful risk (no demand, or inventory covers >= 2× lead time)
+    1.0 — critical (zero cover with active demand)
+
+    The score is based on:
+    - days of inventory cover vs the assumed vendor lead time
+    - a recency-confidence penalty (low-confidence data → slightly higher risk)
+
+    Requires item["demand_signal"] and item["inventory_position"] to be stamped
+    (i.e. called after enrich_item has run through calculate_inventory_position
+    and determine_target_stock).
+    """
+    if lead_time_days is None:
+        lead_time_days = DEFAULT_LEAD_TIME_DAYS
+    demand_signal = item.get("demand_signal", 0) or 0
+    if demand_signal <= 0:
+        return 0.0
+    inventory_position = item.get("inventory_position", 0) or 0
+    daily_demand = demand_signal / 365.0
+    days_of_cover = inventory_position / daily_demand if daily_demand > 0 else 999.0
+    # Risk is 1.0 at zero cover, 0.0 at ≥ 2× lead time
+    buffer_days = 2.0 * lead_time_days
+    coverage_risk = max(0.0, min(1.0, 1.0 - days_of_cover / buffer_days))
+    # Recency penalty: low-confidence data is less trustworthy, bumping risk slightly
+    recency_confidence = (item.get("recency_confidence", "low") or "low").lower()
+    recency_weight = {"high": 0.0, "medium": 0.10, "low": 0.20}.get(recency_confidence, 0.15)
+    score = min(1.0, coverage_risk + recency_weight * (1.0 - coverage_risk))
+    return round(score, 3)
+
+
+def classify_dead_stock(item):
+    """Return True when an item shows no sale or receipt movement and has no pending demand.
+
+    Criteria (all must be met):
+    - days_since_last_sale is known and >= DEAD_STOCK_MIN_DAYS_SINCE_SALE
+    - no effective suspended demand (effective_qty_suspended or qty_suspended)
+    - no open PO qty (qty_on_po)
+
+    Items where `days_since_last_sale` is None are left unclassified (False) because
+    missing recency data is already handled by the recency-confidence path.
+    """
+    days_since = item.get("days_since_last_sale")
+    if not isinstance(days_since, (int, float)) or days_since < DEAD_STOCK_MIN_DAYS_SINCE_SALE:
+        return False
+    has_pending_suspense = bool(item.get("effective_qty_suspended") or item.get("qty_suspended", 0))
+    has_open_po = bool(item.get("qty_on_po", 0))
+    if has_pending_suspense or has_open_po:
+        return False
+    return True
 
 
 def infer_minimum_packs_on_hand(item, inv, pack_qty):
@@ -1156,6 +1215,8 @@ def enrich_item(item, inv, pack_qty, rule):
     _apply_confirmed_stocking(item, inv or {}, rule)
     calculate_inventory_position(item)
     determine_target_stock(item)
+    item["stockout_risk_score"] = compute_stockout_risk_score(item)
+    item["dead_stock"] = classify_dead_stock(item)
     item["reorder_needed"] = evaluate_reorder_trigger(item)
     raw_need = calculate_raw_need(item)
     item["raw_need"] = raw_need
