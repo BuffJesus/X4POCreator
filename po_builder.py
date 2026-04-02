@@ -1467,6 +1467,10 @@ class POBuilderApp:
     def _bulk_select_all(self, event=None):
         return bulk_sheet_actions_flow.bulk_select_all(self)
 
+    def _bulk_select_all_rows(self, event=None):
+        self.bulk_sheet.select_all_visible()
+        return "break"
+
     def _bulk_clear_selection(self, event=None):
         return bulk_sheet_actions_flow.bulk_clear_selection(self)
 

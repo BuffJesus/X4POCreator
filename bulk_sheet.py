@@ -157,6 +157,7 @@ class BulkSheetView:
         self.context_menu.add_separator()
         self.context_menu.add_command(label="Flag for Discontinue Review", command=self.app._flag_discontinue_from_bulk)
         self.context_menu.add_separator()
+        self.context_menu.add_command(label="Select All Rows", command=self.app._bulk_select_all_rows)
         self.context_menu.add_command(label="Select Current Row", command=self.app._bulk_select_current_row)
         self.context_menu.add_command(label="Select Current Column", command=self.app._bulk_select_current_column)
 

@@ -185,12 +185,14 @@ def undo_last_bulk_removal(app):
         return
 
     restored = 0
+    new_items = list(app.filtered_items)
     for idx, item in sorted(app.last_removed_bulk_items, key=lambda row: row[0]):
-        insert_at = max(0, min(idx, len(app.filtered_items)))
-        app.filtered_items.insert(insert_at, item)
+        insert_at = max(0, min(idx, len(new_items)))
+        new_items.insert(insert_at, item)
         restored += 1
 
     app.last_removed_bulk_items = []
+    ui_bulk.replace_filtered_items(app, new_items)
     app._apply_bulk_filter()
     app._update_bulk_summary()
     messagebox.showinfo("Undo Complete", f"Restored {restored} item(s).")

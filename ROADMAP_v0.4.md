@@ -50,6 +50,28 @@ Affected commands: Remove Selected Rows, Bulk Edit Selection (partial), Ignore I
 
 ---
 
+## Phase 1c. Bulk Grid: Remove-Filtered-View Bugs
+
+Issues found during investigation of a report that items removed while a filter is active reappear when switching back to "ALL".
+
+### 1c-i. Undo restore bypasses property setter (`ui_assignment_actions.py`)
+
+**Bug:** "Undo Last Remove" uses `app.filtered_items.insert(insert_at, item)` — direct list mutation that bypasses the `filtered_items` property setter. The setter is what triggers `sync_bulk_session_metadata`, which rebuilds the `_bulk_items_by_item_status`, `_bulk_items_by_line_code`, and all other bucket caches. After an undo restore, all non-ALL filter views show stale results: the restored item is in `filtered_items` but absent from every bucket.
+
+**Fix:** Replace the direct `.insert()` calls with `replace_filtered_items(app, new_list)` so the property setter fires and buckets are rebuilt.
+
+### 1c-ii. No "Select All Visible" shortcut in filtered view (`bulk_sheet.py`, `po_builder.py`)
+
+**Issue:** There is no keyboard shortcut or context-menu entry that selects all rows currently visible in the filtered bulk view. tksheet's native Ctrl+A selects all cells, not row headers. The "Remove Selected Rows" path (`bulk_remove_selected_rows`) works correctly when all visible rows are selected, but reaching that state is unintuitive — users must either shift-click through every row or use the row-header click + shift-click pattern. The practical result: users filtering to a subset (e.g. "Skip") and wanting to delete all of them have no obvious way to do so.
+
+**Fix:** Add a "Select All Rows" context-menu entry that calls `bulk_sheet.select_all_visible()`, and bind Ctrl+Shift+A to it so it doesn't conflict with tksheet's native Ctrl+A.
+
+- [x] Fix undo restore (`ui_assignment_actions.py`) to use `replace_filtered_items` so buckets are rebuilt.
+- [x] Add "Select All Rows" to the context menu and bind Ctrl+Shift+A to `select_all_visible()`.
+- [x] Add tests for undo restore bucket correctness.
+
+---
+
 ## Phase 2. Stockout Risk Scoring
 
 Items are currently sorted by line code / item code. Operators who want to prioritize their review pass have no signal-based ordering — they cannot tell at a glance which items are most likely to stock out before the next cycle.

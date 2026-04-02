@@ -313,6 +313,58 @@ class AssignmentActionTests(unittest.TestCase):
             "The most recent bulk action was not a removal. Use Undo for the latest action first.",
         )
 
+    def test_undo_last_bulk_removal_rebuilds_item_status_buckets(self):
+        """Undo restore must call replace_filtered_items so bucket caches are rebuilt."""
+        calls = []
+        item_a = {"line_code": "AA", "item_code": "001", "status": "skip", "vendor": "V1"}
+        item_b = {"line_code": "AA", "item_code": "002", "status": "ok", "vendor": "V2"}
+
+        class FakeApp:
+            filtered_items = [item_b]
+            last_removed_bulk_items = [(0, item_a)]
+            bulk_undo_stack = []
+            _bulk_items_by_item_status = {}
+            _apply_bulk_filter = lambda self: calls.append("apply_filter")
+            _update_bulk_summary = lambda self: calls.append("summary")
+            bulk_sheet = SimpleNamespace(flush_pending_edit=lambda: calls.append("flush"))
+
+        app = FakeApp()
+
+        with patch("ui_assignment_actions.messagebox.showinfo"):
+            ui_assignment_actions.undo_last_bulk_removal(app)
+
+        self.assertEqual(app.last_removed_bulk_items, [])
+        self.assertIn(item_a, app.filtered_items)
+        self.assertIn(item_b, app.filtered_items)
+        # Buckets must be populated (not empty dicts) after replace_filtered_items
+        self.assertIn("Skip", app._bulk_items_by_item_status)
+        self.assertIn("OK", app._bulk_items_by_item_status)
+
+    def test_undo_last_bulk_removal_restores_item_at_correct_position(self):
+        """Restored items are inserted at their original indices."""
+        calls = []
+        item_a = {"line_code": "AA", "item_code": "001", "item_status": "Skip", "vendor": "V1"}
+        item_b = {"line_code": "AA", "item_code": "002", "item_status": "Normal", "vendor": "V2"}
+        item_c = {"line_code": "AA", "item_code": "003", "item_status": "Normal", "vendor": "V3"}
+
+        class FakeApp:
+            filtered_items = [item_b, item_c]
+            last_removed_bulk_items = [(0, item_a)]
+            bulk_undo_stack = []
+            _bulk_items_by_item_status = {}
+            _apply_bulk_filter = lambda self: calls.append("apply_filter")
+            _update_bulk_summary = lambda self: calls.append("summary")
+            bulk_sheet = SimpleNamespace(flush_pending_edit=lambda: None)
+
+        app = FakeApp()
+
+        with patch("ui_assignment_actions.messagebox.showinfo"):
+            ui_assignment_actions.undo_last_bulk_removal(app)
+
+        self.assertEqual(app.filtered_items[0], item_a)
+        self.assertEqual(app.filtered_items[1], item_b)
+        self.assertEqual(app.filtered_items[2], item_c)
+
     def test_assign_current_advances_until_finish(self):
         populate_calls = []
         finish_calls = []

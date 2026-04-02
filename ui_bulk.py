@@ -375,6 +375,8 @@ def build_bulk_tab(app, editable_cols):
         app.bulk_sheet.sheet.bind("<Control-V>", app._bulk_paste_selection)
         app.bulk_sheet.sheet.bind("<Control-a>", app._bulk_select_all)
         app.bulk_sheet.sheet.bind("<Control-A>", app._bulk_select_all)
+        app.bulk_sheet.sheet.bind("<Control-Shift-a>", app._bulk_select_all_rows)
+        app.bulk_sheet.sheet.bind("<Control-Shift-A>", app._bulk_select_all_rows)
         app.bulk_sheet.sheet.bind("<Control-z>", app._bulk_undo)
         app.bulk_sheet.sheet.bind("<Control-Z>", app._bulk_undo)
         app.bulk_sheet.sheet.bind("<Control-y>", app._bulk_redo)
