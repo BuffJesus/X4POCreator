@@ -150,6 +150,7 @@ class BulkSheetView:
         self.context_menu.add_command(label="Remove Selected Rows", command=self.app._bulk_remove_selected_rows)
         self.context_menu.add_separator()
         self.context_menu.add_command(label="Edit Buy Rule", command=self.app._edit_buy_rule_from_bulk)
+        self.context_menu.add_command(label="Edit Rule for Selection", command=self.app._edit_rule_for_selection)
         self.context_menu.add_command(label="View Item Details", command=self.app._view_item_details)
         self.context_menu.add_command(label="Ignore Item", command=self.app._ignore_from_bulk)
         self.context_menu.add_command(label="Mark Review Resolved", command=self.app._resolve_review_from_bulk)

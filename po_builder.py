@@ -52,6 +52,9 @@ import ui_load
 import ui_review
 import ui_vendor_manager
 import ui_session_history
+import ui_ignored_items
+import ui_bulk_rule_edit
+import rules_csv_flow
 from maintenance import build_maintenance_report
 from models import AppSessionState, ItemKey, MaintenanceCandidate, SessionItemState, SourceItemState, SuggestedItemState
 from rules import (
@@ -219,6 +222,7 @@ def fetch_latest_github_release(url=GITHUB_RELEASES_API_URL, timeout=3):
         "html_url": str(payload.get("html_url", "")).strip() or GITHUB_RELEASES_PAGE_URL,
         "name": str(payload.get("name", "")).strip(),
         "published_at": str(payload.get("published_at", "")).strip(),
+        "assets": payload.get("assets") or [],
     }
 
 try:
@@ -573,6 +577,16 @@ class POBuilderApp:
 
     def _start_update_check(self):
         app_runtime_flow.start_update_check(self, APP_VERSION, is_release_version, threading.Thread)
+
+    def _check_for_updates_now(self):
+        app_runtime_flow.check_for_updates_now(
+            self,
+            app_version=APP_VERSION,
+            fetch_latest_release=fetch_latest_github_release,
+            is_newer_version=is_newer_version,
+            releases_page_url=GITHUB_RELEASES_PAGE_URL,
+            url_error_types=(urllib.error.URLError, urllib.error.HTTPError, TimeoutError, OSError, json.JSONDecodeError),
+        )
 
     def _check_for_updates_worker(self):
         app_runtime_flow.check_for_updates_worker(
@@ -1237,6 +1251,72 @@ class POBuilderApp:
     def _save_order_rules(self):
         persistent_state_flow.save_order_rules(self)
 
+    def _export_order_rules_csv(self):
+        from tkinter import filedialog
+        import rules_csv_flow
+        if not self.order_rules:
+            messagebox.showinfo("Export Rules CSV", "No order rules are currently loaded.")
+            return
+        path = filedialog.asksaveasfilename(
+            title="Export Order Rules CSV",
+            defaultextension=".csv",
+            filetypes=[("CSV files", "*.csv"), ("All files", "*.*")],
+            initialfile="order_rules.csv",
+        )
+        if not path:
+            return
+        csv_text = rules_csv_flow.export_rules_csv(self.order_rules)
+        try:
+            with open(path, "w", encoding="utf-8-sig", newline="") as f:
+                f.write(csv_text)
+            messagebox.showinfo("Export Rules CSV", f"Exported {len(self.order_rules)} rule(s) to:\n{path}")
+        except Exception as exc:
+            messagebox.showerror("Export Failed", f"Could not write file:\n{exc}")
+
+    def _import_order_rules_csv(self):
+        from tkinter import filedialog
+        import rules_csv_flow
+        path = filedialog.askopenfilename(
+            title="Import Order Rules CSV",
+            filetypes=[("CSV files", "*.csv"), ("All files", "*.*")],
+        )
+        if not path:
+            return
+        try:
+            with open(path, "r", encoding="utf-8-sig", newline="") as f:
+                csv_text = f.read()
+        except Exception as exc:
+            messagebox.showerror("Import Failed", f"Could not read file:\n{exc}")
+            return
+        diff = rules_csv_flow.import_rules_csv(csv_text, self.order_rules)
+        n_add = len(diff["added"])
+        n_chg = len(diff["changed"])
+        n_del = len(diff["deleted"])
+        n_skip = diff["skipped"]
+        if n_add == 0 and n_chg == 0 and n_del == 0:
+            detail = f"No changes to apply ({n_skip} row(s) skipped)."
+            if diff["errors"]:
+                detail += "\n\nWarnings:\n" + "\n".join(diff["errors"][:5])
+            messagebox.showinfo("Import Rules CSV — No Changes", detail)
+            return
+        preview = (
+            f"Preview:\n"
+            f"  {n_add} rule(s) to add\n"
+            f"  {n_chg} rule(s) to update\n"
+            f"  {n_del} rule(s) to delete\n"
+            f"  {n_skip} row(s) skipped\n"
+        )
+        if diff["errors"]:
+            preview += "\nWarnings:\n" + "\n".join(diff["errors"][:5])
+        if not messagebox.askyesno("Import Rules CSV", preview + "\nApply these changes?"):
+            return
+        rules_csv_flow.apply_import_diff(self.order_rules, diff)
+        self._save_order_rules()
+        messagebox.showinfo(
+            "Import Rules CSV",
+            f"Applied: {n_add} added, {n_chg} updated, {n_del} deleted.",
+        )
+
     def _save_vendor_policies(self):
         persistent_state_flow.save_vendor_policies(self)
 
@@ -1601,6 +1681,17 @@ class POBuilderApp:
     def _edit_buy_rule_from_bulk(self):
         ui_bulk_dialogs.edit_buy_rule_from_bulk(self)
 
+    def _edit_rule_for_selection(self):
+        keys = self.bulk_sheet.snapshot_row_ids() if getattr(self, "bulk_sheet", None) else []
+        rule_keys = []
+        for row_id in keys:
+            item = next((i for i in self.filtered_items if i.get("_bulk_row_id") == row_id), None)
+            if item:
+                rule_keys.append(f"{item['line_code']}:{item['item_code']}")
+        if not rule_keys:
+            return
+        ui_bulk_rule_edit.open_bulk_rule_edit(self, rule_keys)
+
     def _resolve_review_from_bulk(self):
         ui_bulk_dialogs.resolve_review_from_bulk(self)
 
@@ -1617,6 +1708,12 @@ class POBuilderApp:
 
     def _ignore_items_by_keys(self, ignore_keys):
         return session_state_flow.ignore_items_by_keys(self, ignore_keys)
+
+    def _un_ignore_item_keys(self, keys):
+        return session_state_flow.un_ignore_item_keys(self, keys)
+
+    def _open_ignored_items_manager(self):
+        ui_ignored_items.open_ignored_items_manager(self)
 
     def _ignore_from_bulk(self):
         bulk_context_flow.ignore_from_bulk(self, messagebox.askyesno, messagebox.showinfo)

@@ -149,6 +149,8 @@ def build_bulk_tab(app, editable_cols):
         ttk.Button(edit_row, text="Clear Selected Cells", command=app._bulk_clear_selected_cells),
         ttk.Button(edit_row, text="Bulk Shortcuts...", command=app._show_bulk_shortcuts),
         ttk.Button(edit_row, text="Fit Columns To Window", command=app._bulk_fit_columns),
+        ttk.Button(edit_row, text="Export Rules CSV", command=app._export_order_rules_csv),
+        ttk.Button(edit_row, text="Import Rules CSV", command=app._import_order_rules_csv),
     ]
     for idx, button in enumerate(bulk_buttons):
         button.pack(side=tk.LEFT, padx=(8 if idx == 0 else 4, 0))
@@ -169,6 +171,7 @@ def build_bulk_tab(app, editable_cols):
             command=lambda: app._bulk_remove_not_needed_filtered(include_assigned=True),
         ),
         ttk.Button(removal_row, text="Add to Ignore List", command=app._ignore_from_bulk),
+        ttk.Button(removal_row, text="Manage Ignored Items", command=app._open_ignored_items_manager),
         ttk.Button(removal_row, text="Undo Last Remove", command=app._undo_last_bulk_removal),
     ]
     for idx, button in enumerate(removal_buttons):

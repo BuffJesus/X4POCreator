@@ -41,6 +41,74 @@ def start_update_check(app, app_version, is_release_version, thread_factory):
     worker.start()
 
 
+def check_for_updates_now(app, *, app_version, fetch_latest_release, is_newer_version,
+                          releases_page_url, url_error_types):
+    """Synchronous update check triggered manually by the user.
+
+    Shows a result dialog regardless of outcome so the user can see exactly
+    what was found (or why the download path is not available).
+    """
+    try:
+        release = fetch_latest_release()
+    except url_error_types as exc:
+        messagebox.showinfo(
+            "Check for Updates",
+            f"Could not reach GitHub to check for updates.\n\nError: {exc}",
+        )
+        return
+
+    latest_tag = release.get("tag_name", "")
+    if not is_newer_version(latest_tag, app_version):
+        messagebox.showinfo(
+            "Check for Updates",
+            f"You are up to date.\n\nCurrent version: {app_version}\nLatest release: {latest_tag or '(none found)'}",
+        )
+        return
+
+    exe_url = update_flow.find_exe_asset(release)
+    frozen = update_flow.can_self_update()
+
+    if frozen and exe_url:
+        # Full self-update path — hand off to the normal prompt
+        app._prompt_for_update(release)
+        return
+
+    # Something is missing — explain clearly
+    release_name = release.get("name") or latest_tag
+    lines = [
+        f"Update available: {release_name}",
+        f"\nCurrent version : {app_version}",
+        f"Latest release  : {latest_tag}",
+        "",
+    ]
+    if not frozen:
+        lines.append(
+            "Auto-install is only available when running the packaged .exe.\n"
+            "Running from source — manual download required."
+        )
+    if not exe_url:
+        asset_count = len(release.get("assets") or [])
+        if asset_count == 0:
+            lines.append(
+                "No release assets found on this GitHub release.\n"
+                "Attach POBuilder.exe as a release asset to enable auto-install."
+            )
+        else:
+            lines.append(
+                f"{asset_count} asset(s) found on this release, but none end in .exe.\n"
+                "Ensure the uploaded file is named POBuilder.exe."
+            )
+
+    lines += ["", "Open the release page to download manually?"]
+    answer = messagebox.askyesno("Check for Updates", "\n".join(lines))
+    if answer:
+        target = release.get("html_url") or releases_page_url
+        try:
+            webbrowser.open(target)
+        except Exception:
+            messagebox.showinfo("Release Page", f"Open this page in your browser:\n{target}")
+
+
 def check_for_updates_worker(app, *, app_version, fetch_latest_release, is_newer_version, url_error_types):
     try:
         release = fetch_latest_release()

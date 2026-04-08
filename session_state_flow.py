@@ -65,6 +65,25 @@ def bulk_history_coalesce_key(kind, *, col_name="", row_ids=(), selection_serial
     return key
 
 
+def un_ignore_item_keys(app, keys):
+    """Remove *keys* from the persistent ignore list.
+
+    Saves the updated ignore list immediately.  Items are NOT re-injected into
+    the active session (they will reappear on the next file load).
+
+    Returns the count of keys actually removed (keys not in the list are a no-op).
+    """
+    normalized = {str(k).strip() for k in keys if str(k).strip()}
+    if not normalized:
+        return 0
+    removed = normalized & app.ignored_item_keys
+    if not removed:
+        return 0
+    app.ignored_item_keys -= removed
+    app._save_ignored_item_keys()
+    return len(removed)
+
+
 def ignore_items_by_keys(app, ignore_keys):
     normalized = {str(key).strip() for key in ignore_keys if str(key).strip()}
     if not normalized:

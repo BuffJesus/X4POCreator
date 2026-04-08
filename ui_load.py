@@ -141,13 +141,18 @@ def build_load_tab(app):
     ttk.Button(data_button_row, text="Refresh Active Data", command=app._refresh_active_data_state).pack(side=tk.LEFT, padx=(0, 8))
     ttk.Button(data_button_row, text="Open Active Folder", command=app._open_active_data_folder).pack(side=tk.LEFT)
 
+    update_row = ttk.Frame(data_frame)
+    update_row.pack(anchor="w", pady=(8, 0))
     app.var_check_updates = tk.BooleanVar(value=app.update_check_enabled)
     ttk.Checkbutton(
-        data_frame,
+        update_row,
         text="Check GitHub for new releases on startup",
         variable=app.var_check_updates,
         command=app._set_update_check_enabled,
-    ).pack(anchor="w", pady=(8, 0))
+    ).pack(side=tk.LEFT)
+    ttk.Button(update_row, text="Check Now", command=app._check_for_updates_now).pack(
+        side=tk.LEFT, padx=(12, 0)
+    )
     app._refresh_data_folder_labels()
 
     scan_frame = ttk.LabelFrame(content, text="Auto-Detect from Folder", padding=10)

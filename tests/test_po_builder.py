@@ -253,6 +253,9 @@ class POBuilderTests(unittest.TestCase):
             "html_url": "https://github.com/BuffJesus/X4POCreator/releases/tag/v1.2.3",
             "name": "PO Builder 1.2.3",
             "published_at": "2026-03-11T12:00:00Z",
+            "assets": [
+                {"name": "POBuilder.exe", "browser_download_url": "https://example.com/POBuilder.exe"},
+            ],
         }
 
         class FakeResponse:
@@ -268,6 +271,34 @@ class POBuilderTests(unittest.TestCase):
 
         self.assertEqual(release["tag_name"], "v1.2.3")
         self.assertEqual(release["name"], "PO Builder 1.2.3")
+        self.assertEqual(len(release["assets"]), 1)
+        self.assertEqual(release["assets"][0]["name"], "POBuilder.exe")
+
+    def test_fetch_latest_github_release_passes_assets_to_find_exe_asset(self):
+        import update_flow
+        payload = {
+            "tag_name": "v2.0.0",
+            "html_url": "https://github.com/BuffJesus/X4POCreator/releases/tag/v2.0.0",
+            "name": "PO Builder 2.0.0",
+            "published_at": "2026-04-01T00:00:00Z",
+            "assets": [
+                {"name": "POBuilder.exe", "browser_download_url": "https://example.com/v2/POBuilder.exe"},
+            ],
+        }
+
+        class FakeResponse:
+            def __enter__(self):
+                return self
+            def __exit__(self, exc_type, exc, tb):
+                return False
+            def read(self):
+                return json.dumps(payload).encode("utf-8")
+
+        with patch("po_builder.urllib.request.urlopen", return_value=FakeResponse()):
+            release = po_builder.fetch_latest_github_release("https://example.com/releases/latest", timeout=1)
+
+        exe_url = update_flow.find_exe_asset(release)
+        self.assertEqual(exe_url, "https://example.com/v2/POBuilder.exe")
 
     def test_load_app_version_falls_back_to_bundled_version_file(self):
         with tempfile.TemporaryDirectory() as tmp:
