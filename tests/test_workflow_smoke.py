@@ -89,12 +89,15 @@ def _write_detailed_sales_csv(path, rows):
             lc = r["line_code"].rstrip("-")
             # When line_code is blank, emit just the item code (no prefix dash)
             token = f"{lc}-{r['item_code']}" if lc else r["item_code"]
+            # col 26 (Total Quantity) is the X4 group total — repeated on
+            # every detail row — so the parser reads the per-line qty from
+            # col 36 instead.  Mirror that here.
             data_cols = [
                 token, r.get("description", ""),
                 str(r.get("qty_sold", 1)), "0",
                 "0", "0", "0", "0",
                 r["line_code"], "SLMN", "527394", "VENDORCO",
-                "19.29", "1.00", "", "19.29",
+                str(r.get("qty_sold", 1)), "1.00", "", "19.29",
                 "17.54", "1.75", "9.07", "27",
             ]
             # sale_date at col 31 = header(24 cols) + offset 7 within data_cols

@@ -548,6 +548,34 @@ class BulkSheetView:
     def visible_row_ids(self):
         return tuple(str(row_id) for row_id in self.row_ids)
 
+    def viewport_row_ids(self):
+        """Row ids currently rendered inside the visible viewport.
+
+        ``visible_row_ids`` returns every row that survived the active filter
+        (the full filtered set), which is what callers want for "filtered"
+        scope.  For "on screen" scope we need just the rows the user can
+        actually see right now.  tksheet exposes ``visible_rows`` for that —
+        fall back to the full set if it isn't available or fails.
+        """
+        if not self.row_ids:
+            return tuple()
+        get_visible = getattr(self.sheet, "visible_rows", None)
+        if not callable(get_visible):
+            return self.visible_row_ids()
+        try:
+            rows = get_visible()
+        except Exception:
+            return self.visible_row_ids()
+        try:
+            indices = sorted({int(r) for r in rows})
+        except (TypeError, ValueError):
+            return self.visible_row_ids()
+        return tuple(
+            str(self.row_ids[r])
+            for r in indices
+            if 0 <= r < len(self.row_ids)
+        )
+
     def current_cell(self):
         selected = self.sheet.get_currently_selected()
         if not selected:

@@ -218,7 +218,7 @@ class ParserSmokeTests(unittest.TestCase):
                     "Extended\n\nSelling", "Extended\n\nCost", "Gross\n\nProfit", "Gross\n\nMargin",
                     "Slmn", "BRANCH", "1", "3366629", "27,781,031.47", "18,810,903.78",
                     "8,970,127.69", "32.29", "010-00055062", "GLOBAL STRIPE", "3", "19.29", "17.54",
-                    "1.75", "9.07", "20-Nov-2019", "harley", "527394", "BROOBEST", "19.29", "1.00",
+                    "1.75", "9.07", "20-Nov-2019", "harley", "527394", "BROOBEST", "19.29", "3.00",
                     "", "19.29", "17.54", "1.75", "9.07", "27",
                 ])
 
@@ -244,7 +244,7 @@ class ParserSmokeTests(unittest.TestCase):
                     "Extended\n\nSelling", "Extended\n\nCost", "Gross\n\nProfit", "Gross\n\nMargin",
                     "Slmn", "BRANCH", "1", "3366629", "27,781,031.47", "18,810,903.78",
                     "8,970,127.69", "32.29", "010 - 00055062", "GLOBAL STRIPE", "3", "19.29", "17.54",
-                    "1.75", "9.07", "20-Nov-2019", "harley", "527394", "BROOBEST", "19.29", "1.00",
+                    "1.75", "9.07", "20-Nov-2019", "harley", "527394", "BROOBEST", "19.29", "3.00",
                     "", "19.29", "17.54", "1.75", "9.07", "27",
                 ])
 
@@ -270,7 +270,7 @@ class ParserSmokeTests(unittest.TestCase):
                     "Extended\n\nSelling", "Extended\n\nCost", "Gross\n\nProfit", "Gross\n\nMargin",
                     "Slmn", "BRANCH", "1", "3366629", "27,781,031.47", "18,810,903.78",
                     "8,970,127.69", "32.29", "B/B-00055062", "GLOBAL STRIPE", "3", "19.29", "17.54",
-                    "1.75", "9.07", "20-Nov-2019", "harley", "527394", "BROOBEST", "19.29", "1.00",
+                    "1.75", "9.07", "20-Nov-2019", "harley", "527394", "BROOBEST", "19.29", "3.00",
                     "", "19.29", "17.54", "1.75", "9.07", "27",
                 ])
 
@@ -323,7 +323,7 @@ class ParserSmokeTests(unittest.TestCase):
                     "Extended\n\nSelling", "Extended\n\nCost", "Gross\n\nProfit", "Gross\n\nMargin",
                     "Slmn", "BRANCH", "1", "3366629", "27,781,031.47", "18,810,903.78",
                     "8,970,127.69", "32.29", "A-B-12345", "WIDGET", "3", "19.29", "17.54",
-                    "1.75", "9.07", "20-Nov-2019", "harley", "527394", "BROOBEST", "19.29", "1.00",
+                    "1.75", "9.07", "20-Nov-2019", "harley", "527394", "BROOBEST", "19.29", "3.00",
                     "", "19.29", "17.54", "1.75", "9.07", "27",
                 ])
 
@@ -350,7 +350,7 @@ class ParserSmokeTests(unittest.TestCase):
                     "Extended\n\nSelling", "Extended\n\nCost", "Gross\n\nProfit", "Gross\n\nMargin",
                     "Slmn", "BRANCH", "1", "3366629", "27,781,031.47", "18,810,903.78",
                     "8,970,127.69", "32.29", "K-D-1708", "COUPLER", "3", "19.29", "17.54",
-                    "1.75", "9.07", "20-Nov-2019", "harley", "527394", "BROOBEST", "19.29", "1.00",
+                    "1.75", "9.07", "20-Nov-2019", "harley", "527394", "BROOBEST", "19.29", "3.00",
                     "", "19.29", "17.54", "1.75", "9.07", "27",
                 ])
 
@@ -377,7 +377,7 @@ class ParserSmokeTests(unittest.TestCase):
                     "Extended\n\nSelling", "Extended\n\nCost", "Gross\n\nProfit", "Gross\n\nMargin",
                     "Slmn", "BRANCH", "1", "3366629", "27,781,031.47", "18,810,903.78",
                     "8,970,127.69", "32.29", "AB-12345", "WIDGET", "3", "19.29", "17.54",
-                    "1.75", "9.07", "20-Nov-2019", "harley", "527394", "BROOBEST", "19.29", "1.00",
+                    "1.75", "9.07", "20-Nov-2019", "harley", "527394", "BROOBEST", "19.29", "3.00",
                     "", "19.29", "17.54", "1.75", "9.07", "27",
                 ])
 
@@ -390,6 +390,48 @@ class ParserSmokeTests(unittest.TestCase):
             "qty_sold": 3,
             "sale_date": "20-Nov-2019",
         }])
+
+    def test_parse_detailed_part_sales_x4_layout_uses_per_line_qty_not_repeated_total(self):
+        # Regression: column 26 ("Total Quantity") is the X4 group total
+        # repeated on every detail row.  Summing it across rows multiplied
+        # the real qty by the row count.  Verify each detail row carries
+        # its own per-line qty (col 36) and that aggregation matches the
+        # repeated total exactly.
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "DETAILED PART SALES.csv"
+            with open(path, "w", newline="", encoding="utf-8-sig") as f:
+                writer = csv.writer(f)
+                header = [
+                    "Product Groups: ALL", "Branches: 1", "From: 01-Jan-2026 to 07-Apr-2026",
+                    "DETAILED PART SALES", "10:41:31AM", "07-Apr-2026", "Sales Category: ALL",
+                    "Page -1 of 1", "Item\n\nCode", "Description", "Total\n\nQuantity", "Qty On Hand",
+                    "Extended\n\nSelling", "Extended\n\nCost", "Gross\n\nProfit", "Gross\n\nMargin",
+                    "Slmn", "BRANCH", "1", "116338", "1,070,950.18", "738,970.70",
+                    "331,979.48", "31.00",
+                ]
+                per_line_qtys = ["2.00", "1.00", "1.00", "4.00", "4.00", "1.00"]
+                dates = ["20-Mar-2026", "23-Mar-2026", "25-Mar-2026",
+                         "13-Mar-2026", "15-Jan-2026", "24-Jan-2026"]
+                for qty, date in zip(per_line_qtys, dates):
+                    row = header + [
+                        "GR1-4211-08-06", "ORB MALE CRIMP FITTING",
+                        "13", "128.31", "68.46", "59.85", "46.64",
+                        date, "Wiebes", "684608", "CASH2",
+                        "10.56", qty, "", "21.12", "10.56", "10.56", "50.00", "42",
+                    ]
+                    writer.writerow(row)
+
+            rows = parsers.parse_detailed_part_sales_csv(str(path))
+
+        self.assertEqual(len(rows), 6)
+        per_row_qtys = [r["qty_sold"] for r in rows]
+        self.assertEqual(per_row_qtys, [2, 1, 1, 4, 4, 1])
+        # Aggregation should equal the X4 Total Quantity (13), not 6×13=78.
+        summary = parsers.build_sales_receipt_summary(rows, [])
+        self.assertEqual(len(summary), 1)
+        self.assertEqual(summary[0]["qty_sold"], 13)
+        self.assertEqual(summary[0]["line_code"], "GR1-")
+        self.assertEqual(summary[0]["item_code"], "4211-08-06")
 
     def test_build_receipt_history_lookup_ranks_vendors_by_recency_then_quantity(self):
         receipt_rows = [

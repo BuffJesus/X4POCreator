@@ -121,6 +121,133 @@ Issues surfaced during a v0.5.1 review of `rules.py` / `reorder_flow.py`.
 
 ---
 
+## Phase 4b. Detailed Sales Parser Bugs (URGENT)
+
+Surfaced 2026-04-08 while diagnosing why item `GR1-:4211-08-06` (ORB MALE
+CRIMP FITTING — QOH 0, X4 max 8) was never appearing as a reorder
+candidate. Two independent bugs combined to silently suppress it.
+
+- [x] **Per-row qty_sold reads the item-level total, not the line qty.**
+  `_parse_x4_detailed_part_sales_row` reads column 26 (`Total Quantity`,
+  the X4 group total that is repeated on every detail row for the item)
+  and `build_sales_receipt_summary` / `parse_detailed_pair_aggregates`
+  then **sum it across every detail row**. Result: an item with N detail
+  lines reports `qty_sold = N × actual_total`. Repro with
+  `C:\Users\Cornelio\Desktop\Order\DETAILED PART SALES.csv`:
+  `GR1-:4211-08-06` has 6 detail rows, each col26=`13`, true sum of
+  per-line qty (col36) = 13 → parser yields 78. Fix: read the per-line
+  qty from column 36 (`row[36]`, the `Quantity` column after price), or
+  alternatively keep one Total-Quantity reading per `(line_code, item_code)`
+  key and stop summing. Per-line is preferable because it preserves
+  per-transaction stats used by `build_detailed_sales_stats_lookup`
+  (transaction_count, quantity_counter, etc., currently all corrupted by
+  the same wrong column).
+- [x] **Recency classifier ignored loaded sales/receipt dates.**
+  `rules.py:classify_recency_confidence` only checked `inv["last_sale"]`
+  and `inv["last_receipt"]`, which are populated only from On Hand Min
+  Max Sales. When an item is missing from that report (X4 skips some
+  QOH=0 items) but still has loaded Detailed Part Sales and Received
+  Parts data, both flags were false → `data_completeness =
+  "missing_recency_activity_protected"` → `review_required = True`
+  (`manual_only`) → `order_qty` forced to 0. The item was in
+  `filtered_items` but invisible/blocked in the reorder list. Fix
+  (rules.py:538) now also accepts `item["last_sale_date"]` and
+  `item["last_receipt_date"]` from the loaded files.
+
+- [ ] **`detailed_sales_stats_lookup` is corrupted by the same bug.**
+  `parse_detailed_pair_aggregates` (parsers.py:807-809) increments
+  `transaction_count` once per row but feeds the inflated col26 value
+  into `qty_sold_total` and `_quantity_counter`. After the column fix,
+  audit the median/mean/max stats those feed into
+  (`detailed_sales_suggest_min_max` in `reorder_flow.py:63`).
+- [x] **`maintain_confirmed_stocking_counter` had the same blind spot.**
+  `rules.py:1189` computed `has_new_evidence` from `inv["last_sale"]`
+  and `inv["last_receipt"]` only.  Items missing from Min/Max would
+  tick the "sessions without evidence" counter on every run and
+  eventually expire their `confirmed_stocking` flag despite real
+  loaded sales/receipt activity.  Fix mirrors the recency-classifier
+  fix: also accept `item["last_sale_date"]` / `item["last_receipt_date"]`.
+
+- [ ] **Audit every other `inv.get("last_sale" / "last_receipt" /
+  "mo12_sales" / "ytd_sales")` for the same Min/Max blind spot.**
+  Confirmed scan results from 2026-04-08:
+  - `performance_flow.classify_item` (perf_flow.py:166) takes
+    `max(annualized_sales_loaded, mo12_sales)` so it tolerates a
+    missing inv value — leave alone.
+  - `load_flow._collect_data_quality_warnings` (load_flow.py:920,928)
+    emits "Missing last sale date" / "Missing last receipt date"
+    rows for every inv key that lacks them.  On the user's real
+    `Order/` dataset that's **9,973 false-positive warnings** because
+    those items have loaded sales/receipts but are absent from
+    Min/Max.  Same fallback fix applies.
+  - `assignment_flow.py:84,145` `current_min = inv.get("min")` —
+    items missing from Min/Max have no min so the
+    `_protected_inventory_candidate_reason` "below current min"
+    branch is unreachable for them.  Currently masked by
+    `demand_signal > 0` keeping them as candidates anyway, but worth
+    surfacing as a separate "missing min/max coverage" review bucket
+    rather than hiding the gap.
+
+- [ ] **Items missing from On Hand Min Max are silently demoted.**
+  `4211-08-06` exists in On Hand Report and Received Parts but not in
+  On Hand Min Max Sales (X4 evidently filters out some QOH=0 fittings
+  from that export).  `inventory_lookup` for the key is built from
+  the On Hand Report fallback in `load_flow.py:522` with `min=None`,
+  `max=None`, `supplier=""`.  After the recency-classifier fix the
+  item now reaches the bulk grid with a sales-driven suggestion, but
+  the X4-set max (8 in the user's case) is still invisible to us.
+  Scope of the gap on the user's real `Order/` dataset:
+  **2,352 items have loaded sales but no Min/Max row** (out of 23,508
+  Min/Max rows total).  Decide: surface these in a dedicated review
+  bucket, fall back to a different X4 export that includes max for
+  zero-QOH rows, or instruct operators to fix the X4 export filter.
+
+- [ ] **Add a "no Min/Max coverage" startup count.**
+  Today the only signal is `inventory_coverage_missing_keys` flowing
+  into per-item `inventory_coverage_gap` review reasons.  A single
+  startup banner ("2,352 sales items have no Min/Max row — sizing is
+  sales-driven only") would let operators catch a broken X4 export
+  before they trust the suggestions.
+- [ ] Add a regression test in `tests/test_parsers.py` that loads a
+  fixture with multiple detail rows for one item and asserts
+  `qty_sold` equals the sum of per-line qty (col36), not the repeated
+  Total Quantity.
+- [ ] Add a regression test ensuring an item present only in On Hand
+  Report (not Min Max) still produces a candidate with non-zero
+  reorder guidance, not a silent zero.
+
+---
+
+## Phase 4c. Bulk Removal Edge Cases
+
+Surfaced 2026-04-08 during a focused review of `bulk_remove_flow.py` and
+`ui_bulk_dialogs.bulk_remove_not_needed`.
+
+- [x] **"On Screen" vs "Filtered" not-needed scopes were identical** in the
+  tksheet UI.  Both called `visible_row_ids()`, which returns the full
+  filtered set.  Added `BulkSheet.viewport_row_ids()` (wraps tksheet
+  `sheet.visible_rows()` with safe fallbacks) and wired the "screen"
+  scope to use it.
+- [x] **No-op removals left stale `last_removed_bulk_items`** behind, so
+  undo and the status banner could replay an earlier removal.  Reset
+  the payload on the early-return path; regression test added.
+- [x] **Mismatched / out-of-range indices were silently dropped.**  The
+  flow now records each skip on `app.last_skipped_bulk_removals` as
+  `(idx, reason)` for downstream UI surfacing.
+
+- [ ] **Surface `last_skipped_bulk_removals` in the UI.**  Today the data
+  is recorded but no caller reads it.  Wire a one-line status banner
+  ("Skipped K row(s) because the view shifted before confirm") into
+  `bulk_sheet_actions_flow.bulk_remove_selected_rows` and the
+  `bulk_remove_not_needed` confirm path.
+- [ ] **Manual QA**: scroll a long bulk list, right-click "Remove Not
+  Needed (On Screen)", confirm only viewport rows are offered; repeat
+  with "Filtered" and confirm the dialog covers the full filtered
+  set.  Then change the filter while the not-needed dialog is open
+  and confirm — verify the skipped-count banner appears.
+
+---
+
 ## Phase 5. Manual QA (carry-over)
 
 - [ ] Run full load → assign → review → export workflow against representative

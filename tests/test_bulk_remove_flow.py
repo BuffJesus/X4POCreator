@@ -232,5 +232,58 @@ class BulkRemoveFlowTests(unittest.TestCase):
         )
 
 
+    def test_no_op_removal_clears_stale_last_removed_payload(self):
+        # Regression: when a call removes nothing (all indices out of range
+        # or all candidates protected), prior last_removed_bulk_items used
+        # to be left in place, so undo and status banners surfaced a stale
+        # record from an earlier call.  Verify it's reset.
+        prior = [(0, {"item_code": "PRIOR"})]
+        app = SimpleNamespace(
+            filtered_items=[{"item_code": "A"}],
+            last_removed_bulk_items=list(prior),
+            last_protected_bulk_items=[],
+            _capture_bulk_history_state=lambda capture_spec=None: {"before": True},
+            _finalize_bulk_history_action=lambda label, before, capture_spec=None: None,
+        )
+
+        removed = bulk_remove_flow.remove_filtered_rows(
+            app,
+            [9],  # out of range
+            lambda value: dict(value),
+            history_label="remove:selected_rows",
+        )
+
+        self.assertEqual(removed, [])
+        self.assertEqual(app.last_removed_bulk_items, [])
+        self.assertEqual(app.filtered_items, [{"item_code": "A"}])
+
+    def test_skipped_payload_records_out_of_range_and_key_mismatch(self):
+        # Regression: silently-dropped indices left callers unable to tell
+        # the user that part of their request didn't apply.  The flow now
+        # records each skip on app.last_skipped_bulk_removals.
+        app = SimpleNamespace(
+            filtered_items=[
+                {"line_code": "AER-", "item_code": "A"},
+                {"line_code": "AER-", "item_code": "B"},
+            ],
+            last_removed_bulk_items=[],
+            last_protected_bulk_items=[],
+            _capture_bulk_history_state=lambda capture_spec=None: {},
+            _finalize_bulk_history_action=lambda label, before, capture_spec=None: None,
+        )
+
+        bulk_remove_flow.remove_filtered_rows(
+            app,
+            [9, 1, 0],  # 9 is OOR, 1 is mismatch, 0 matches
+            lambda value: dict(value),
+            history_label="remove:selected_rows",
+            expected_keys={1: ("AER-", "ZZZ"), 0: ("AER-", "A")},
+        )
+
+        skipped = sorted(app.last_skipped_bulk_removals)
+        self.assertEqual(skipped, [(1, "key_mismatch"), (9, "out_of_range")])
+        self.assertEqual(app.filtered_items, [{"line_code": "AER-", "item_code": "B"}])
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -535,8 +535,16 @@ def infer_minimum_cover_cycles(item, inv, pack_qty):
 
 def classify_recency_confidence(item, inv, rule):
     """Classify how trustworthy the item's sale/receipt recency evidence is."""
-    has_last_sale = bool((inv or {}).get("last_sale"))
-    has_last_receipt = bool((inv or {}).get("last_receipt"))
+    # The Min/Max report's last_sale/last_receipt columns are the primary
+    # signal, but items missing from that report (e.g. QOH=0 fittings the
+    # X4 export skips) still have recency from the loaded Detailed Part
+    # Sales / Received Parts files.  Fall back to those per-item dates so
+    # they don't get force-routed to manual review with order_qty=0.
+    has_last_sale = bool((inv or {}).get("last_sale")) or bool(item.get("last_sale_date"))
+    has_last_receipt = (
+        bool((inv or {}).get("last_receipt"))
+        or bool(item.get("last_receipt_date"))
+    )
     has_recent_suspense = bool(item.get("effective_qty_suspended", item.get("qty_suspended", 0)))
     has_open_po = bool(item.get("qty_on_po", 0))
     has_loaded_receipt_activity = bool(item.get("qty_received", 0))
@@ -1178,7 +1186,15 @@ def _apply_confirmed_stocking(item, inv, rule):
     item["confirmed_stocking"] = True
     item["confirmed_stocking_expired"] = expired
 
-    has_new_evidence = bool(inv.get("last_sale")) and bool(inv.get("last_receipt"))
+    # Same Min/Max-only blind spot as classify_recency_confidence: items
+    # missing from On Hand Min Max Sales never have inv["last_sale"] /
+    # inv["last_receipt"], so the confirmed-stocking evidence counter
+    # would tick up every session and eventually expire them even when
+    # the loaded files show real activity.  Fall back to per-item dates.
+    has_new_evidence = (
+        (bool(inv.get("last_sale")) or bool(item.get("last_sale_date")))
+        and (bool(inv.get("last_receipt")) or bool(item.get("last_receipt_date")))
+    )
     if has_new_evidence:
         new_count = 0
     else:

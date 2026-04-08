@@ -245,9 +245,15 @@ def not_needed_reason(app, item, max_exceed_abs_buffer):
 def bulk_remove_not_needed(app, scope, max_exceed_abs_buffer, *, include_assigned=None):
     flush_pending_bulk_sheet_edit(app)
     if scope == "screen":
-        row_ids = list(app.bulk_sheet.visible_row_ids()) if getattr(app, "bulk_sheet", None) else [
-            iid for iid in app.bulk_tree.get_children() if app.bulk_tree.bbox(iid)
-        ]
+        if getattr(app, "bulk_sheet", None):
+            # Use the actual viewport — visible_row_ids returns the entire
+            # filtered set, which is what "filtered" scope wants.  Fall back
+            # to the full filtered set if the viewport helper isn't wired up
+            # so we never silently drop rows.
+            viewport = getattr(app.bulk_sheet, "viewport_row_ids", None)
+            row_ids = list(viewport()) if callable(viewport) else list(app.bulk_sheet.visible_row_ids())
+        else:
+            row_ids = [iid for iid in app.bulk_tree.get_children() if app.bulk_tree.bbox(iid)]
         scope_label = "on-screen"
     else:
         row_ids = list(app.bulk_sheet.visible_row_ids()) if getattr(app, "bulk_sheet", None) else list(app.bulk_tree.get_children())

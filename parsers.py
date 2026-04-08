@@ -418,11 +418,15 @@ def _parse_x4_detailed_part_sales_rows(rows):
 
 def _parse_x4_detailed_part_sales_row(row):
     line_code, item_code = _split_line_code_item_token(_safe_cell(row, 24))
+    # Column 26 is the X4 "Total Quantity" group total, which is repeated on
+    # every detail row for the item.  Summing it across rows multiplies the
+    # real quantity by the row count.  Use column 36 (the per-line Quantity
+    # column that follows the unit price at column 35) instead.
     return {
         "line_code": line_code,
         "item_code": item_code,
         "description": _clean_item_description(_safe_cell(row, 25)),
-        "qty_sold": _coerce_int(_safe_cell(row, 26)),
+        "qty_sold": _coerce_int(_safe_cell(row, 36)),
         "sale_date": _safe_cell(row, 31),
     }
 

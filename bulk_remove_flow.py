@@ -17,33 +17,46 @@ def remove_filtered_rows(app, remove_indices, deepcopy, *, history_label="remove
     filtered_items = list(getattr(app, "filtered_items", ()) or ())
     removed_payload = []
     protected_payload = []
+    skipped_payload = []
     protect_item = getattr(app, "_is_bulk_removal_protected", None)
     for idx in unique_indices:
-        if 0 <= idx < len(filtered_items):
-            item = filtered_items[idx]
-            if expected_keys is not None:
-                expected = expected_keys.get(idx)
-                if expected is not None:
-                    actual = (item.get("line_code", ""), item.get("item_code", ""))
-                    if actual != expected:
-                        continue
-            protected = False
-            protected_reason = ""
-            if callable(protect_item):
-                try:
-                    protected, protected_reason = protect_item(item, history_label=history_label)
-                except TypeError:
-                    protected = bool(protect_item(item))
-            if protected:
-                preserved = deepcopy(item)
-                if protected_reason:
-                    preserved["_removal_protection_reason"] = protected_reason
-                protected_payload.append((idx, preserved))
-                continue
-            removed_payload.append((idx, deepcopy(item)))
-            filtered_items.pop(idx)
+        if not (0 <= idx < len(filtered_items)):
+            skipped_payload.append((idx, "out_of_range"))
+            continue
+        item = filtered_items[idx]
+        if expected_keys is not None:
+            expected = expected_keys.get(idx)
+            if expected is not None:
+                actual = (item.get("line_code", ""), item.get("item_code", ""))
+                if actual != expected:
+                    # Row at this index is no longer the row the caller
+                    # asked to remove (filter changed underneath us, items
+                    # were re-sorted, etc.).  Record it instead of silently
+                    # dropping so callers can surface the discrepancy.
+                    skipped_payload.append((idx, "key_mismatch"))
+                    continue
+        protected = False
+        protected_reason = ""
+        if callable(protect_item):
+            try:
+                protected, protected_reason = protect_item(item, history_label=history_label)
+            except TypeError:
+                protected = bool(protect_item(item))
+        if protected:
+            preserved = deepcopy(item)
+            if protected_reason:
+                preserved["_removal_protection_reason"] = protected_reason
+            protected_payload.append((idx, preserved))
+            continue
+        removed_payload.append((idx, deepcopy(item)))
+        filtered_items.pop(idx)
     app.last_protected_bulk_items = protected_payload
+    app.last_skipped_bulk_removals = skipped_payload
     if not removed_payload:
+        # Reset the prior removal payload too — otherwise undo / status
+        # banners would still surface a stale "X items removed" record from
+        # an earlier call when the current call removed nothing.
+        app.last_removed_bulk_items = []
         return []
     ui_bulk.replace_filtered_items(app, filtered_items)
     app.last_removed_bulk_items = removed_payload
