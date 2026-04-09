@@ -185,8 +185,22 @@ def build_bulk_tab(app, editable_cols):
     for idx, button in enumerate(removal_buttons):
         button.pack(side=tk.LEFT, padx=(8 if idx == 0 else 4, 0))
 
+    app._filter_badge_var = tk.StringVar(value="Filters")
     filter_frame = ttk.LabelFrame(controls_frame, text="Filters", padding=8)
     filter_frame.pack(side=tk.LEFT, anchor="nw", padx=(16, 0))
+
+    def _update_filter_badge():
+        """Update the Filters label to show active filter count."""
+        fs = bulk_filter_state(app)
+        active = sum(1 for k, v in fs.items() if v and v != "ALL" and k != "text")
+        if fs.get("text"):
+            active += 1
+        label = f"Filters ({active})" if active > 0 else "Filters"
+        try:
+            filter_frame.configure(text=label)
+        except Exception:
+            pass
+    app._update_filter_badge = _update_filter_badge
 
     filter_row_1 = ttk.Frame(filter_frame)
     filter_row_1.pack(fill=tk.X, pady=(0, 2))
@@ -1556,6 +1570,12 @@ def apply_bulk_filter(app):
         items_total=len(getattr(app, "filtered_items", []) or []),
     ):
         _apply_bulk_filter_inner(app)
+    badge_fn = getattr(app, "_update_filter_badge", None)
+    if callable(badge_fn):
+        try:
+            badge_fn()
+        except Exception:
+            pass
 
 
 def _apply_bulk_filter_inner(app):

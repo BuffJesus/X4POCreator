@@ -604,9 +604,52 @@ class BulkSheetView:
         self._selection_snapshot = {"cells": (), "rows": (), "columns": (), "current": (None, None)}
         self.sheet.set_sheet_data(rows, reset_col_positions=False, reset_row_positions=True)
         self.sheet.headers([self.labels[col] for col in self.columns], redraw=False)
+        self._apply_row_colors(rows)
         self.sheet.display_rows("all", redraw=True)
         self.app._update_bulk_sheet_status()
         return True
+
+    # Row color palette by status + vendor assignment
+    _ROW_COLORS = {
+        "assigned":  {"bg": "#1a3a2a", "fg": "#c0e8d0"},   # green tint — assigned vendor
+        "review":    {"bg": "#3a351a", "fg": "#e8dca0"},   # amber tint — needs review
+        "warning":   {"bg": "#3a2020", "fg": "#e8a0a0"},   # red tint — warning
+        "skip":      {"bg": "#2a2a2a", "fg": "#808080"},   # dimmed — skip/not needed
+    }
+
+    def _apply_row_colors(self, rows):
+        """Color-code rows by status and vendor assignment."""
+        col_index = getattr(self, "col_index", None)
+        if not col_index:
+            return
+        status_col = col_index.get("status")
+        vendor_col = col_index.get("vendor")
+        if status_col is None:
+            return
+        try:
+            self.sheet.dehighlight_rows(redraw=False)
+        except Exception:
+            pass
+        for row_idx, row_data in enumerate(rows):
+            if row_idx >= len(row_data):
+                continue
+            status = str(row_data[status_col]).strip().upper() if status_col < len(row_data) else ""
+            vendor = str(row_data[vendor_col]).strip() if vendor_col is not None and vendor_col < len(row_data) else ""
+            if vendor and status not in ("REVIEW", "WARN", "WARNING"):
+                colors = self._ROW_COLORS.get("assigned")
+            elif status in ("REVIEW",):
+                colors = self._ROW_COLORS.get("review")
+            elif status in ("WARN", "WARNING"):
+                colors = self._ROW_COLORS.get("warning")
+            elif status == "SKIP":
+                colors = self._ROW_COLORS.get("skip")
+            else:
+                continue
+            if colors:
+                try:
+                    self.sheet.highlight_rows(row_idx, bg=colors["bg"], fg=colors["fg"], redraw=False)
+                except Exception:
+                    pass
 
     def clear_selection(self):
         self._flush_pending_before_navigation()
