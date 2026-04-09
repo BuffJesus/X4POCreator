@@ -337,9 +337,8 @@ candidates that survive the "Python cleanup first" bar.
   inventory entries in `models/schemas.py` — v0.8.14
 - [x] Move `not_needed_reason` out of `ui_bulk_dialogs` into
   `rules/not_needed.py` — v0.8.14
-- [ ] Single generation-keyed cache object replacing the three
-  independent caches (`_bulk_row_index_cache` /
-  `_bulk_filter_result_cache` / `_bulk_visible_rows_cache`)
+- [x] `BulkCacheState` object consolidating the three independent
+  caches; existing functions delegate to it — v0.8.14
 - [ ] Consider collapsing `filtered_items` / `assigned_items` /
   `individual_items` into `items_by_status` for simpler undo
 

@@ -19,17 +19,23 @@ def bulk_row_id(item):
     return row_id
 
 
+from bulk_cache import BulkCacheState
+
+
 def invalidate_bulk_row_index(app):
+    BulkCacheState.get(app).invalidate_row_index()
     app._bulk_row_index_cache = None
     app._bulk_row_index_generation = getattr(app, "_bulk_row_index_generation", 0) + 1
 
 
 def invalidate_bulk_filter_result_cache(app):
+    BulkCacheState.get(app).invalidate_filter_result()
     app._bulk_filter_result_cache = None
     app._bulk_filter_result_generation = getattr(app, "_bulk_filter_result_generation", 0) + 1
 
 
 def invalidate_bulk_visible_rows_cache(app):
+    BulkCacheState.get(app).invalidate_visible_rows()
     app._bulk_visible_rows_cache = None
     app._bulk_visible_rows_generation = getattr(app, "_bulk_visible_rows_generation", 0) + 1
 
