@@ -4,6 +4,7 @@ from PyInstaller.utils.hooks import collect_all
 
 # ── Collect openpyxl (uses dynamic imports and data files PyInstaller misses) ──
 openpyxl_datas, openpyxl_binaries, openpyxl_hiddenimports = collect_all('openpyxl')
+ttkb_datas, ttkb_binaries, ttkb_hiddenimports = collect_all('ttkbootstrap')
 
 # ── Optional bundled assets ──
 extra_datas = []
@@ -14,9 +15,9 @@ for asset in ('loading.gif', 'loading.wav', 'icon.ico'):
 a = Analysis(
     ['po_builder.py'],
     pathex=[],
-    binaries=openpyxl_binaries,
-    datas=extra_datas + openpyxl_datas,
-    hiddenimports=openpyxl_hiddenimports,
+    binaries=openpyxl_binaries + ttkb_binaries,
+    datas=extra_datas + openpyxl_datas + ttkb_datas,
+    hiddenimports=openpyxl_hiddenimports + ttkb_hiddenimports,
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],

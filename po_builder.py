@@ -2334,8 +2334,16 @@ def _REMOVED_apply_dark_theme(root):
 
 
 def main():
-    root = tk.Tk()
-    apply_dark_theme(root)
+    try:
+        import ttkbootstrap
+        root = ttkbootstrap.Window(themename="darkly")
+        # Layer custom label styles (Header.TLabel, etc.) that 100+
+        # UI references depend on.  ttkbootstrap handles the base
+        # widget styling; apply_dark_theme adds only the label variants.
+        apply_dark_theme(root)
+    except ImportError:
+        root = tk.Tk()
+        apply_dark_theme(root)
 
     # Set custom window icon if available
     if os.path.exists(ICON_FILE):
