@@ -1268,3 +1268,17 @@ def _detect_detail_layout(filepath, required_fields, *, optional_fields=(), x4_r
     return _csv_io_detect_detail_layout(filepath, required_fields, optional_fields=optional_fields,
                                         x4_row_checker=x4_row_checker, sample_limit=sample_limit,
                                         header_aliases=HEADER_ALIASES)
+
+
+from parsers.x4_dialect import (  # noqa: E402, F811
+    _looks_like_x4_line_code_fragment,
+    _split_line_code_item_token,
+    _find_lc_column,
+    _clean_item_description,
+    _looks_like_x4_detailed_part_sales_row,
+    _parse_x4_detailed_part_sales_row,
+    _parse_x4_detailed_part_sales_rows,
+    _looks_like_x4_received_parts_detail_row,
+    _parse_x4_received_parts_detail_row,
+    _parse_x4_received_parts_detail_rows,
+)

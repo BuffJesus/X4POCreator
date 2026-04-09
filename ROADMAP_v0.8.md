@@ -291,7 +291,8 @@ Biggest long-term payoff.  Splits the 380-line `enrich_item` monolith.
   missing from alias sets — v0.8.13
 - [x] `parsers/csv_io.py` — header matching, layout detection, dedup,
   generic + X4 row iterators — v0.8.14
-- [ ] `parsers/x4_dialect.py` — X4 row shape knowledge + row builders
+- [x] `parsers/x4_dialect.py` — line code splitting, row checkers/builders,
+  `_find_lc_column`, `_clean_item_description` — v0.8.14
 - [ ] `parsers/aggregators.py` — `parse_detailed_pair_aggregates` etc.
 
 ### 3.5 — `po_builder.POBuilderApp` slim down (R4 from the audit)
