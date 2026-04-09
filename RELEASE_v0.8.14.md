@@ -50,10 +50,39 @@ to the extracted functions.
 
 ---
 
+## Visual modernization
+
+### ttkbootstrap (darkly theme)
+
+Replaced the manual clam-based dark theme with ttkbootstrap's `darkly`
+theme: modern flat buttons, styled scrollbars, professional dark mode.
+Falls back to the original theme on systems without ttkbootstrap.
+
+### Row coloring by status
+
+Bulk grid rows are color-coded with subtle background tints:
+- **Green wash** — vendor assigned
+- **Amber wash** — needs review
+- **Red wash** — warning
+- **Dimmed gray** — skip / not needed
+
+### Filter badge
+
+The Filters panel shows active filter count: "Filters (3)" when
+filters are active.
+
+### Workflow progress stepper
+
+Horizontal step bar at top of window: `1. Load Files › 2. Filter ›
+3. Assign Vendors › 4. Review & Export`. Active step is bold,
+updates on tab switch.
+
+---
+
 ## Release history
 
 | Release | Headline |
 |---|---|
 | v0.8.12 | O(n²) description scan eliminated (−29 s) |
 | v0.8.13 | 5 bug fixes + 6 UX features + bulk edit 7.5× + rules/parsers/models refactor |
-| **v0.8.14** | **Clear Notes + text filter perf + parsers/csv_io extraction** |
+| **v0.8.14** | **Visual modernization + structural extractions + text filter perf** |
