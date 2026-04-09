@@ -12,10 +12,10 @@ HEADER_ALIASES = {
     "line_code": {"linecode", "line_code", "line", "pg", "productgroup", "product_group"},
     "item_code": {"itemcode", "item_code", "item", "partnumber", "part_number", "part"},
     "description": {"description", "desc", "itemdescription", "item_description"},
-    "qty_sold": {"qtysold", "soldqty", "quantitysold", "salesqty", "invoiceqty", "qty"},
-    "sale_date": {"saledate", "salesdate", "invoicedate", "transdate", "transactiondate", "date", "dated"},
-    "qty_received": {"qtyreceived", "receivedqty", "quantityreceived", "receiptqty", "receivedquantity", "qty"},
-    "receipt_date": {"receiptdate", "receiveddate", "datereceived", "rcvdate", "receivingdate", "date", "dated"},
+    "qty_sold": {"qtysold", "qty_sold", "soldqty", "quantitysold", "salesqty", "invoiceqty", "qty"},
+    "sale_date": {"saledate", "sale_date", "salesdate", "invoicedate", "transdate", "transactiondate", "date", "dated"},
+    "qty_received": {"qtyreceived", "qty_received", "receivedqty", "quantityreceived", "receiptqty", "receivedquantity", "qty"},
+    "receipt_date": {"receiptdate", "receipt_date", "receiveddate", "datereceived", "rcvdate", "receivingdate", "date", "dated"},
     "vendor": {"vendor", "vendorcode", "supplier", "suppliercode", "vend", "vendorid"},
 }
 
@@ -1237,3 +1237,13 @@ def parse_on_hand_min_max(filepath):
                 "last_sale": _safe(row, lc_col + 13),
             }
     return lookup
+
+
+# --- Extracted sub-modules override local definitions ---
+from parsers.dates import parse_x4_date, _PARSE_X4_DATE_CACHE  # noqa: E402, F811
+from parsers.normalize import (  # noqa: E402, F811
+    _normalize_header_label,
+    _safe_cell,
+    _coerce_int,
+    _normalize_vendor_code,
+)

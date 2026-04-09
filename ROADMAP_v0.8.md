@@ -251,8 +251,9 @@ Biggest long-term payoff.  Splits the 380-line `enrich_item` monolith.
   `determine_acceptable_overstock_qty`, `assess_post_receipt_overstock`,
   `calculate_suggested_qty`, `compute_stockout_risk_score` — v0.8.13
 - [x] Extract `rules/status.py` — `evaluate_item_status` — v0.8.13
-- [ ] Extract `rules/explanation.py` with `build_why(item, calc_result,
-  rule) → str` — currently interleaved with calculation in enrich_item
+- [x] Extract `rules/explanation.py` — `build_reason_codes` and
+  `build_detail_parts` extracted (~200 lines); `enrich_item` slimmed
+  from ~380 to ~177 lines — v0.8.13
 - [x] Extract `rules/policy.py` — `determine_order_policy`,
   `should_force_recency_review`, `should_suppress_manual_only_qty`,
   `classify_package_profile`, `classify_replenishment_unit_mode`,
@@ -262,42 +263,33 @@ Biggest long-term payoff.  Splits the 380-line `enrich_item` monolith.
 - [x] Extract `rules/_helpers.py` — rule field accessors (`get_rule_int`,
   `get_rule_float`, `has_exact_qty_override`, `apply_rule_fields`,
   `has_pack_trigger_fields`, `get_rule_pack_size`) — v0.8.13
-- [ ] Slim `rules.enrich_item` orchestrator to ≤ 60 lines (currently
-  ~380 lines; explanation building is the main blocker)
+- [ ] Slim `rules.enrich_item` orchestrator further (now ~177 lines,
+  target ≤ 60; remaining bulk is policy escalation + history gap
+  detection)
 
-### 3.3 — `AppSessionState` sub-states (R2 from the audit)
+### 3.3 — `AppSessionState` sub-states (R2 from the audit) — partially shipped (v0.8.13)
 
-- [ ] New `models/session_bundle.py` with four dataclasses:
-  - `LoadedData` — raw parse output, immutable after load
-  - `DerivedAnalysis` — computed lookups (inventory_lookup,
-    receipt_history_lookup, detailed_sales_stats_lookup),
-    invalidated on edits
-  - `UserDecisions` — vendor assignments, QOH adjustments, order
-    rules, ignore keys, supplier map
-  - `SessionMetadata` — session history, vendor_codes_used,
-    recent_orders, snapshot info
-- [ ] Backwards-compat: `AppSessionState` gains forwarding properties
-  so existing code keeps working (`state.sales_items` →
-  `state.loaded.sales_items`)
+- [x] New `models/session_bundle.py` with four dataclasses:
+  `LoadedData`, `DerivedAnalysis`, `UserDecisions`, `SessionMetadata`
+  — v0.8.13
+- [x] Backwards-compat: `AppSessionState` uses `__getattr__`/`__setattr__`
+  forwarding so existing code keeps working (`state.sales_items` →
+  `state.loaded.sales_items`) — v0.8.13
 - [ ] Migrate flows one at a time to take sub-states by name; start
   with `export_flow` (read-only)
 
-### 3.4 — `parsers.py` split (R3 from the audit)
+### 3.4 — `parsers.py` split (R3 from the audit) — partially shipped (v0.8.13)
 
-Last structural refactor.  Wait until 3.2 and 3.3 are stable.
-
-- [ ] `parsing/csv_io.py` — raw CSV iteration + layout detection
-- [ ] `parsing/x4_dialect.py` — X4 row shape knowledge + `_looks_like_*`
-  predicates + row builders
-- [ ] `parsing/generic_dialect.py` — non-X4 row builders
-- [ ] `parsing/aggregators.py` — `parse_detailed_pair_aggregates`,
-  `build_receipt_history_lookup`, `build_detailed_sales_stats_lookup`
-  (ideally fused into one pass)
-- [ ] `parsing/dates.py` — `parse_x4_date` + cache (already done, just
-  relocates)
-- [ ] `parsing/normalize.py` — `_safe_cell`, `_coerce_int`,
-  `_normalize_code`
-- [ ] `parsers.py` becomes a thin re-export shim
+- [x] `parsers/dates.py` — `parse_x4_date` + memoization cache — v0.8.13
+- [x] `parsers/normalize.py` — `_safe_cell`, `_coerce_int`,
+  `_normalize_vendor_code`, `_normalize_header_label` — v0.8.13
+- [x] `parsers/__init__.py` becomes re-export shim — v0.8.13
+- [x] Fixed pre-existing HEADER_ALIASES bug: underscore forms
+  (`qty_sold`, `sale_date`, `qty_received`, `receipt_date`) were
+  missing from alias sets — v0.8.13
+- [ ] `parsers/csv_io.py` — raw CSV iteration + layout detection
+- [ ] `parsers/x4_dialect.py` — X4 row shape knowledge + row builders
+- [ ] `parsers/aggregators.py` — `parse_detailed_pair_aggregates` etc.
 
 ### 3.5 — `po_builder.POBuilderApp` slim down (R4 from the audit)
 
