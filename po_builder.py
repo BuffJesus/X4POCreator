@@ -1880,9 +1880,16 @@ class POBuilderApp:
 
     def _finish_bulk(self):
         """Check stock warnings, then collect assigned items and go to review."""
-        if not self._check_stock_warnings():
-            return
-        self._finish_bulk_final()
+        write_debug("po_builder.finish_bulk.begin")
+        with perf_trace.span("po_builder.finish_bulk"):
+            write_debug("po_builder.finish_bulk.calling_check_stock_warnings")
+            ok = self._check_stock_warnings()
+            write_debug("po_builder.finish_bulk.check_stock_warnings_returned", ok=repr(ok))
+            if not ok:
+                return
+            write_debug("po_builder.finish_bulk.calling_finish_bulk_final")
+            self._finish_bulk_final()
+            write_debug("po_builder.finish_bulk.finish_bulk_final_returned")
 
     def _check_stock_warnings(self):
         return ui_bulk_dialogs.check_stock_warnings(self)

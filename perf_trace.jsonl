@@ -38,3 +38,11 @@
 {"event":"perf_trace.disabled","ts":"2026-04-08T20:43:39.822"}
 {"event":"perf_trace.enabled","session_label":"auto","ts":"2026-04-08T20:45:23.871"}
 {"event":"perf_trace.disabled","ts":"2026-04-08T20:45:23.872"}
+{"event":"perf_trace.enabled","session_label":"auto","ts":"2026-04-08T20:54:28.259"}
+{"event":"perf_trace.disabled","ts":"2026-04-08T20:54:28.260"}
+{"event":"perf_trace.enabled","session_label":"auto","ts":"2026-04-08T20:55:54.965"}
+{"event":"perf_trace.disabled","ts":"2026-04-08T20:55:54.966"}
+{"event":"perf_trace.enabled","session_label":"auto","ts":"2026-04-08T21:02:25.618"}
+{"event":"perf_trace.disabled","ts":"2026-04-08T21:02:25.619"}
+{"event":"perf_trace.enabled","session_label":"auto","ts":"2026-04-08T21:03:53.216"}
+{"event":"perf_trace.disabled","ts":"2026-04-08T21:03:53.217"}

@@ -1158,30 +1158,57 @@ def dismiss_duplicate_from_bulk(app):
 
 
 def check_stock_warnings(app):
+    import perf_trace
+    from debug_log import write_debug
+    with perf_trace.span("ui_bulk_dialogs.check_stock_warnings"):
+        return _check_stock_warnings_inner(app)
+
+
+def _check_stock_warnings_inner(app):
+    import perf_trace
+    from debug_log import write_debug
     flush_pending_bulk_sheet_edit(app)
+    write_debug("check_stock_warnings.begin", item_count=len(app.filtered_items))
     flagged = []
-    for item in app.filtered_items:
-        if not item.get("vendor"):
-            continue
-        key = (item["line_code"], item["item_code"])
-        inv = app.inventory_lookup.get(key, {})
-        qoh = inv.get("qoh", 0)
-        mn = inv.get("min")
-        mx = inv.get("max")
-        ps = item.get("pack_size")
-        reason_text, _ = not_needed_reason(app, item, max_exceed_abs_buffer=5)
-        if reason_text:
-            reasons = [part.strip() for part in reason_text.split(";") if part.strip()]
-            flagged.append((item, qoh, mn, mx, ps, reasons))
+    with perf_trace.span("check_stock_warnings.scan", item_count=len(app.filtered_items)):
+        for item in app.filtered_items:
+            if not item.get("vendor"):
+                continue
+            key = (item["line_code"], item["item_code"])
+            inv = app.inventory_lookup.get(key, {})
+            qoh = inv.get("qoh", 0)
+            mn = inv.get("min")
+            mx = inv.get("max")
+            ps = item.get("pack_size")
+            reason_text, _ = not_needed_reason(app, item, max_exceed_abs_buffer=5)
+            if reason_text:
+                reasons = [part.strip() for part in reason_text.split(";") if part.strip()]
+                flagged.append((item, qoh, mn, mx, ps, reasons))
+    write_debug("check_stock_warnings.scan_done", flagged=len(flagged))
 
     if not flagged:
         return True
 
+    # Cap: building 11 widgets × N rows in a scrollable canvas blocks
+    # the Tk event loop for several seconds once N exceeds ~100.
+    # On the operator's real dataset after a mass Remove Not Needed,
+    # N can reach 1,099 — which took 9 seconds to construct and left
+    # the app effectively unresponsive.  For large N, skip the
+    # per-row review and show a summary confirm dialog instead.
+    MAX_FLAGGED_ROWS = 50
+    if len(flagged) > MAX_FLAGGED_ROWS:
+        write_debug("check_stock_warnings.too_many_flagged", count=len(flagged))
+        return _show_too_many_flagged_confirm(app, len(flagged))
+
+    write_debug("check_stock_warnings.dialog.build")
     dlg = tk.Toplevel(app.root)
     dlg.title("Review Flagged Items")
     dlg.configure(bg="#1e1e2e")
     dlg.transient(app.root)
-    dlg.grab_set()
+    # NOTE: grab_set() is deferred until AFTER widgets + geometry are
+    # resolved (see just before wait_window below).  Calling grab_set
+    # on a zero-size Toplevel is the root cause of the "dialog is
+    # invisible but the main window is locked" symptom on Windows Tk.
 
     ttk.Label(dlg, text="The following items may not need to be ordered manually.", style="Header.TLabel", wraplength=840).pack(anchor="w", padx=16, pady=(16, 4))
     ttk.Label(dlg, text="Uncheck items you want to remove from the PO. Checked items will stay.", style="SubHeader.TLabel", wraplength=840).pack(anchor="w", padx=16, pady=(0, 12))
@@ -1239,8 +1266,179 @@ def check_stock_warnings(app):
 
     attach_vertical_mousewheel(canvas, canvas, inner)
     app._autosize_dialog(dlg, min_w=900, min_h=520, max_w_ratio=0.95, max_h_ratio=0.92)
+    # Force the dialog to the foreground with explicit centered
+    # geometry — same fix as finish_bulk_final's info dialog in
+    # v0.8.7.  Without this the Toplevel can end up at (0,0) with
+    # unresolved geometry on Windows Tk after a heavy bulk grid
+    # operation, leaving the operator staring at an invisible modal
+    # that traps the main window via grab_set.
+    _force_dialog_foreground(app, dlg, min_w=900, min_h=520)
+    # Set modality AFTER geometry is resolved — see the matching
+    # comment near the top of this function.
+    try:
+        dlg.grab_set()
+    except Exception as exc:
+        write_debug("check_stock_warnings.dialog.grab_set_error", error=str(exc))
+    write_debug("check_stock_warnings.dialog.wait_window.enter")
     dlg.wait_window()
+    write_debug("check_stock_warnings.dialog.wait_window.exit", proceed=result["proceed"])
     return result["proceed"]
+
+
+def _show_too_many_flagged_confirm(app, count):
+    """Fast summary confirm for when `check_stock_warnings` would
+    otherwise build a 1000+ row canvas (which blocks the Tk event
+    loop for ~10s and leaves the app looking frozen).
+
+    Returns True if the operator clicks "Proceed Anyway", False
+    for "Go Back".
+    """
+    from debug_log import write_debug
+    write_debug("check_stock_warnings.too_many_flagged.dialog.begin", count=count)
+    result = {"proceed": False}
+    try:
+        root = app.root
+        try:
+            root.update_idletasks()
+        except Exception:
+            pass
+        dlg = tk.Toplevel(root)
+        dlg.title("Many Items Flagged")
+        try:
+            dlg.configure(bg="#1e1e2e")
+        except Exception:
+            pass
+        dlg.transient(root)
+        dlg.resizable(False, False)
+
+        frame = ttk.Frame(dlg, padding=20)
+        frame.pack(fill=tk.BOTH, expand=True)
+        ttk.Label(
+            frame,
+            text=f"{count} items in the current list may not need to be "
+                 f"ordered.",
+            style="Header.TLabel",
+            wraplength=540,
+            justify="left",
+        ).pack(anchor="w", pady=(0, 8))
+        ttk.Label(
+            frame,
+            text=(
+                "That's too many to review one at a time.  Consider using "
+                "Remove Not Needed (Filtered) from the bulk tab first to "
+                "narrow the list, then retry.  Or click Proceed Anyway to "
+                "export the items as-is."
+            ),
+            wraplength=540,
+            justify="left",
+        ).pack(anchor="w", pady=(0, 16))
+
+        def _close(proceed):
+            def _inner(event=None):
+                result["proceed"] = proceed
+                try:
+                    dlg.grab_release()
+                except Exception:
+                    pass
+                try:
+                    dlg.destroy()
+                except Exception:
+                    pass
+            return _inner
+
+        btn_frame = ttk.Frame(frame)
+        btn_frame.pack(anchor="e", fill=tk.X)
+        back_btn = ttk.Button(btn_frame, text="<- Go Back", command=_close(False))
+        back_btn.pack(side=tk.LEFT, padx=4)
+        proceed_btn = ttk.Button(
+            btn_frame,
+            text="Proceed Anyway",
+            style="Big.TButton",
+            command=_close(True),
+        )
+        proceed_btn.pack(side=tk.RIGHT, padx=4)
+
+        dlg.bind("<Escape>", _close(False))
+        dlg.bind("<Return>", _close(True))
+        dlg.protocol("WM_DELETE_WINDOW", _close(False))
+
+        _force_dialog_foreground(app, dlg, min_w=600, min_h=220)
+        try:
+            dlg.grab_set()
+        except Exception as exc:
+            write_debug("check_stock_warnings.too_many_flagged.grab_set_error", error=str(exc))
+        try:
+            back_btn.focus_set()
+        except Exception:
+            pass
+        write_debug("check_stock_warnings.too_many_flagged.wait_window.enter")
+        dlg.wait_window()
+        write_debug("check_stock_warnings.too_many_flagged.wait_window.exit", proceed=result["proceed"])
+    except Exception as exc:
+        write_debug("check_stock_warnings.too_many_flagged.error", error=str(exc))
+        return True  # fail open — don't block the user on a dialog error
+    return result["proceed"]
+
+
+def _force_dialog_foreground(app, dlg, *, min_w=520, min_h=180):
+    """Pin a custom tk.Toplevel to the foreground, centered on the root.
+
+    Shared between `_show_info_topmost` and `check_stock_warnings`
+    (and any future dialog that suffers the same "(0,0) invisible
+    Toplevel" problem on Windows Tk).  See v0.8.7/v0.8.8 release
+    notes for the full story.
+
+    Must be called AFTER the dialog's widgets are packed but BEFORE
+    `wait_window` / `grab_set`.
+    """
+    from debug_log import write_debug
+    try:
+        root = app.root
+        try:
+            root.update_idletasks()
+        except Exception:
+            pass
+        try:
+            dlg.update_idletasks()
+        except Exception:
+            pass
+        try:
+            root_x = root.winfo_rootx()
+            root_y = root.winfo_rooty()
+            root_w = root.winfo_width()
+            root_h = root.winfo_height()
+            dlg_w = dlg.winfo_width()
+            dlg_h = dlg.winfo_height()
+            if root_w <= 1 or root_h <= 1:
+                root_w = root.winfo_screenwidth() // 2
+                root_h = root.winfo_screenheight() // 2
+                root_x = root.winfo_screenwidth() // 4
+                root_y = root.winfo_screenheight() // 4
+            if dlg_w <= 1 or dlg_h <= 1:
+                dlg_w, dlg_h = min_w, min_h
+            x = root_x + max(0, (root_w - dlg_w) // 2)
+            y = root_y + max(0, (root_h - dlg_h) // 3)
+            dlg.geometry(f"{dlg_w}x{dlg_h}+{x}+{y}")
+            write_debug(
+                "dialog.force_foreground.geometry",
+                title=dlg.title() if hasattr(dlg, "title") else "",
+                root=f"{root_w}x{root_h}+{root_x}+{root_y}",
+                dlg=f"{dlg_w}x{dlg_h}+{x}+{y}",
+            )
+        except Exception as exc:
+            write_debug("dialog.force_foreground.geometry_error", error=str(exc))
+        for step, call in (
+            ("deiconify", lambda: dlg.deiconify()),
+            ("lift", lambda: dlg.lift()),
+            ("topmost_on", lambda: dlg.attributes("-topmost", True)),
+            ("focus_force", lambda: dlg.focus_force()),
+        ):
+            try:
+                call()
+            except Exception as exc:
+                write_debug("dialog.force_foreground.step_error", step=step, error=str(exc))
+    except Exception as exc:
+        write_debug("dialog.force_foreground.outer_error", error=str(exc))
 
 
 def _show_info_topmost(app, title, message):
