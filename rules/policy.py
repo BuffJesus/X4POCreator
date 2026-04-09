@@ -74,6 +74,44 @@ def should_large_pack_review(item, inv, pack_qty):
     return False
 
 
+# ── Label helpers ────────────────────────────────────────────────────
+
+def package_profile_label(profile):
+    return {
+        "no_pack_data": "No pack data",
+        "reel_stock": "Reel / bulk-by-length",
+        "hardware_pack": "Hardware pack",
+        "hardware_large_pack": "Large hardware pack",
+        "large_nonreel_pack": "Large non-reel pack",
+        "general_pack": "General pack item",
+        "unit_pack": "Small unit pack",
+    }.get(profile, profile or "")
+
+
+def replenishment_unit_mode_label(mode):
+    return {
+        "exact_qty": "Exact qty",
+        "soft_pack_min_order": "Soft pack / min order",
+        "pack_trigger_replenishment": "Pack-trigger replenishment",
+        "reel_bulk_review": "Reel / bulk review",
+        "large_pack_review": "Large-pack review",
+        "full_pack_round_up": "Full-pack round-up",
+    }.get(mode, mode or "")
+
+
+def recency_review_bucket_label(bucket):
+    return {
+        "critical_min_rule_protected": "Critical / explicit min rule",
+        "critical_rule_protected": "Critical / rule-protected",
+        "recent_local_po_protected": "Protected by recent local PO history",
+        "receipt_heavy_unverified": "Receipt-heavy / sales-unverified",
+        "activity_protected": "Protected by other activity",
+        "new_or_sparse": "New or too sparse",
+        "stale_or_likely_dead": "Stale / likely dead",
+        "missing_data_uncertain": "Missing-data / uncertain",
+    }.get(bucket, bucket or "")
+
+
 # ── Package and replenishment classification ─────────────────────────
 
 def classify_package_profile(item, inv, pack_qty):

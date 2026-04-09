@@ -1156,7 +1156,11 @@ from rules.policy import (  # noqa: E402, F811
     determine_order_policy,
     _qualifies_for_review_policy_graduation,
     _confirmed_stocking_is_valid,
+    package_profile_label,
+    replenishment_unit_mode_label,
+    recency_review_bucket_label,
 )
+from rules.explanation import build_reason_codes, build_detail_parts  # noqa: E402
 
 
 def _apply_confirmed_stocking(item, inv, rule):
