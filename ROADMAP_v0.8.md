@@ -4,6 +4,31 @@ Status: In progress (v0.8.0 → v0.8.12 shipped)
 
 Current app version: `0.8.12`
 
+## Live confirmation (2026-04-08 22:10 operator run)
+
+| Stage | v0.8.12 live | vs projection |
+|---|---:|---|
+| `parse_all_files` | 18.0 s | matches |
+| `prepare_assignment_session` | **5.6 s** | **exact match — 6.2× win confirmed** |
+| `populate_bulk_tree` | **1.5 s** | **better than projected** (was 8.9 s — index warm-up paid for itself) |
+| `_do_load` total | 24.3 s | matches |
+| **Pre-UI total** | **~32 s** | matches projection |
+
+**The v0.8.12 fix landed exactly as measured.** The description-index
+warm-up from `prepare_assignment_session` is also paying for
+`build_bulk_sheet_rows` indirectly — first paint dropped 8.9 s → 1.0 s.
+
+### New top targets surfaced by the live trace
+
+1. **`parse_detailed_pair_aggregates` — 15.8 s** (88 % of parse).
+   The fused-pass target listed in 2.1; promote to v0.8.13.
+2. **`export_flow.do_export` — 8.4 s.** Not previously instrumented;
+   needs a breakdown stamp pass before optimizing.
+3. **`bulk_remove_flow.remove_filtered_rows` — 6.5 s.** Suspect deepcopy
+   in the undo snapshot; matches the open item under 2.1.
+4. **`finish_bulk` / `finish_bulk_final` — 3.9 s / 2.8 s.** Likely
+   suspense carry + status reclassification on the full bulk set.
+
 ## Headline results so far
 
 **Session load on the 63K-item / 8-year production dataset:
