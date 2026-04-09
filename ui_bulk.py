@@ -135,10 +135,14 @@ def build_bulk_tab(app, editable_cols):
         ttk.Button(vendor_row, text="Apply to Selected", command=app._bulk_apply_selected),
         ttk.Button(vendor_row, text="Apply to All Visible", command=app._bulk_apply_visible),
         ttk.Button(vendor_row, text="Manage Vendors...", command=app._open_vendor_manager),
+        ttk.Button(vendor_row, text="Vendor Review...", command=app._open_vendor_review),
+        ttk.Button(vendor_row, text="Supplier Map...", command=app._open_supplier_map),
     ]
     vendor_buttons[0].pack(side=tk.LEFT, padx=8)
     vendor_buttons[1].pack(side=tk.LEFT, padx=4)
     vendor_buttons[2].pack(side=tk.LEFT, padx=8)
+    vendor_buttons[3].pack(side=tk.LEFT, padx=4)
+    vendor_buttons[4].pack(side=tk.LEFT, padx=4)
 
     edit_row = ttk.Frame(action_frame)
     edit_row.pack(fill=tk.X, pady=2)
@@ -172,6 +176,8 @@ def build_bulk_tab(app, editable_cols):
         ),
         ttk.Button(removal_row, text="Add to Ignore List", command=app._ignore_from_bulk),
         ttk.Button(removal_row, text="Manage Ignored Items", command=app._open_ignored_items_manager),
+        ttk.Button(removal_row, text="Skip Cleanup...", command=app._open_skip_actions),
+        ttk.Button(removal_row, text="QOH Changes...", command=app._open_qoh_review),
         ttk.Button(removal_row, text="Undo Last Remove", command=app._undo_last_bulk_removal),
     ]
     for idx, button in enumerate(removal_buttons):
@@ -183,6 +189,13 @@ def build_bulk_tab(app, editable_cols):
     filter_row_1 = ttk.Frame(filter_frame)
     filter_row_1.pack(fill=tk.X, pady=(0, 2))
     ttk.Label(filter_row_1, text="Filter:").pack(side=tk.LEFT, padx=(0, 4))
+
+    ttk.Label(filter_row_1, text="Search:").pack(side=tk.LEFT, padx=(0, 2))
+    app.var_bulk_text_filter = tk.StringVar(value="")
+    app.entry_bulk_text_filter = ttk.Entry(filter_row_1, textvariable=app.var_bulk_text_filter, width=18)
+    app.entry_bulk_text_filter.pack(side=tk.LEFT, padx=(0, 4))
+    # Live filter on every keystroke; matches item code, description, supplier
+    app.entry_bulk_text_filter.bind("<KeyRelease>", lambda e: app._apply_bulk_filter())
 
     ttk.Label(filter_row_1, text="Line Code:").pack(side=tk.LEFT, padx=(8, 2))
     app.var_bulk_lc_filter = tk.StringVar(value="ALL")
@@ -525,6 +538,28 @@ def sync_bulk_cache_state(app, *, filtered_items_changed=False, retain_items=Non
     return prune_bulk_row_render_cache(app, retain_items=retain_items)
 
 
+def rebuild_bulk_metadata_after_inplace_recalc(app):
+    """Refresh the bulk-grid bucket index after an in-place recalc loop.
+
+    Several flows (`reorder_flow.refresh_suggestions`,
+    `reorder_flow.refresh_recent_orders`,
+    `reorder_flow.normalize_items_to_cycle`,
+    `data_folder_flow.refresh_active_data_state`) mutate
+    `app.filtered_items` in place instead of replacing it.
+    `replace_filtered_items` (which would normally rebuild the bucket
+    index and invalidate the filter caches) is therefore never
+    called, so the next bulk filter pass sees stale Item Status /
+    Attention buckets.
+
+    This is the v0.6.3 / v0.6.4 / v0.7.4 family of bugs on the
+    *recalc* surfaces.  Call this helper at the end of any flow that
+    mutates items in place before invoking `_apply_bulk_filter`.
+    """
+    items = list(getattr(app, "filtered_items", ()) or ())
+    sync_bulk_session_metadata(app, items)
+    sync_bulk_cache_state(app, filtered_items_changed=True, retain_items=items)
+
+
 def replace_filtered_items(app, items):
     normalized = list(items or [])
     descriptor = getattr(type(app), "filtered_items", None)
@@ -565,6 +600,11 @@ def bulk_row_render_signature(app, item):
         item.get("pack_size"),
         item.get("why", ""),
         item.get("order_policy", ""),
+        # stockout_risk_score is rendered as the Risk column — must be
+        # in the signature so a recalculation that shifts risk
+        # invalidates the cached row.  Without this the bulk grid keeps
+        # showing the old risk percentage after a QOH edit / cycle change.
+        item.get("stockout_risk_score"),
         inventory.get("supplier", ""),
         inventory.get("qoh", ""),
         inventory.get("min", ""),
@@ -687,17 +727,35 @@ def bulk_assignment_status(item):
 
 
 def bulk_item_status(item):
-    if "missing_pack" in item.get("data_flags", []):
-        return "No Pack"
-    if item.get("dead_stock"):
-        return "Dead Stock"
+    # An item can belong to multiple Item Status buckets — the matcher
+    # at item_matches_bulk_filter treats No Pack / Dead Stock as
+    # *additive* tags rather than mutually-exclusive statuses.  Returning
+    # a tuple keeps the fast bucket path consistent with the matcher.
+    # Examples:
+    #   - status=skip + missing_pack → ("Skip", "No Pack")
+    #   - status=ok + missing_pack    → ("No Pack",)        # OK excludes missing_pack
+    #   - status=skip + dead_stock    → ("Skip", "Dead Stock")
+    buckets = []
     status = (item.get("status", "ok") or "ok").lower()
-    return {
+    has_missing_pack = "missing_pack" in (item.get("data_flags", []) or [])
+    is_dead_stock = bool(item.get("dead_stock"))
+    status_label = {
         "ok": "OK",
         "review": "Review",
         "warning": "Warning",
         "skip": "Skip",
     }.get(status)
+    # The matcher's OK rule excludes items with missing_pack, so the OK
+    # bucket must mirror that.  Skip / Review / Warning are unaffected.
+    if status_label == "OK" and has_missing_pack:
+        status_label = None
+    if status_label:
+        buckets.append(status_label)
+    if has_missing_pack:
+        buckets.append("No Pack")
+    if is_dead_stock:
+        buckets.append("Dead Stock")
+    return tuple(buckets) if buckets else None
 
 
 def bulk_filter_bucket_snapshot(item):
@@ -734,15 +792,40 @@ def bulk_sales_health_bucket(item):
 
 
 def bulk_attention_bucket(item):
+    # Like bulk_item_status, the matcher treats "High Risk" as an
+    # additive tag (driven by stockout_risk_score) rather than an
+    # exclusive replacement for the reorder_attention_signal label.
+    # Return every applicable bucket so the fast path stays consistent.
+    buckets = []
     signal = (item.get("reorder_attention_signal", "") or "").lower()
-    return {
+    label = {
         "normal": "Normal",
         "review_missed_reorder": "Missed Reorder",
     }.get(signal)
+    if label:
+        buckets.append(label)
+    risk = item.get("stockout_risk_score", 0.0) or 0.0
+    try:
+        if float(risk) >= 0.6:
+            buckets.append("High Risk")
+    except (TypeError, ValueError):
+        pass
+    return tuple(buckets) if buckets else None
 
 
 def _append_bucket_item(buckets, key, item):
     if key is None:
+        return
+    # Some bucket helpers (e.g. bulk_item_status) return multiple bucket
+    # labels for a single item — the matcher treats labels like "No Pack"
+    # and "Dead Stock" as additive tags, not exclusive statuses.  Accept
+    # an iterable of keys so the bucket index stays consistent with the
+    # matcher.
+    if isinstance(key, (list, tuple, set)):
+        for sub_key in key:
+            if sub_key is None:
+                continue
+            buckets.setdefault(sub_key, []).append(item)
         return
     buckets.setdefault(key, []).append(item)
 
@@ -869,6 +952,11 @@ def filtered_candidate_items(app, filter_state):
 
 
 def uses_only_bucket_filters(filter_state):
+    # The bucket fast path only knows about the seven combo filters.
+    # Any non-bucket filter (currently just the text search) needs the
+    # matcher to run, otherwise the fast path silently ignores it.
+    if filter_state.get("text"):
+        return False
     return True
 
 
@@ -968,22 +1056,35 @@ def update_bulk_summary(app, counts=None):
         label.config(text="  ·  ".join(parts))
 
 
+def _normalize_bucket_keys(key):
+    """Coerce a single key or iterable of keys into a tuple of non-None keys."""
+    if key is None:
+        return ()
+    if isinstance(key, (list, tuple, set)):
+        return tuple(k for k in key if k is not None)
+    return (key,)
+
+
 def _replace_bucket_membership(bucket_map, old_key, new_key, item):
     if not isinstance(bucket_map, dict) or item is None:
         return False
+    old_keys = set(_normalize_bucket_keys(old_key))
+    new_keys = set(_normalize_bucket_keys(new_key))
     changed = False
-    if old_key is not None:
-        old_group = [existing for existing in bucket_map.get(old_key, ()) if existing is not item]
+    # Drop the item from any old buckets that aren't also new buckets.
+    for key in old_keys - new_keys:
+        old_group = [existing for existing in bucket_map.get(key, ()) if existing is not item]
         if old_group:
-            bucket_map[old_key] = tuple(old_group)
-        elif old_key in bucket_map:
-            bucket_map.pop(old_key, None)
+            bucket_map[key] = tuple(old_group)
+        elif key in bucket_map:
+            bucket_map.pop(key, None)
         changed = True
-    if new_key is not None:
-        new_group = list(bucket_map.get(new_key, ()))
+    # Add the item to any new buckets it isn't already a member of.
+    for key in new_keys:
+        new_group = list(bucket_map.get(key, ()))
         if not any(existing is item for existing in new_group):
             new_group.append(item)
-            bucket_map[new_key] = tuple(new_group)
+            bucket_map[key] = tuple(new_group)
             changed = True
     return changed
 
@@ -1058,6 +1159,13 @@ def _filter_value(app, attr_name, default="ALL"):
 
 
 def bulk_filter_state(app):
+    text_var = getattr(app, "var_bulk_text_filter", None)
+    text_value = ""
+    if text_var is not None and hasattr(text_var, "get"):
+        try:
+            text_value = str(text_var.get() or "").strip()
+        except Exception:
+            text_value = ""
     return {
         "lc": _filter_value(app, "var_bulk_lc_filter"),
         "status": _filter_value(app, "var_bulk_status_filter"),
@@ -1066,14 +1174,50 @@ def bulk_filter_state(app):
         "performance": _filter_value(app, "var_bulk_performance_filter"),
         "sales_health": _filter_value(app, "var_bulk_sales_health_filter"),
         "attention": _filter_value(app, "var_bulk_attention_filter"),
+        "text": text_value,
     }
 
 
 def bulk_filter_is_default(filter_state):
-    return all(value == "ALL" for value in filter_state.values())
+    for key, value in filter_state.items():
+        if key == "text":
+            if value:
+                return False
+        elif value != "ALL":
+            return False
+    return True
+
+
+def item_matches_text_filter(item, text):
+    """Case-insensitive substring match against item_code, description, supplier.
+
+    Returns True when *text* is empty (no filter active).  Otherwise the
+    item matches when *any* of (line_code, item_code, description,
+    supplier) contains the search term.  Supplier is read from the
+    inventory record stamped onto the item by enrich_item.
+    """
+    if not text:
+        return True
+    needle = str(text or "").strip().lower()
+    if not needle:
+        return True
+    inv = item.get("inventory") or {}
+    haystacks = (
+        item.get("line_code", ""),
+        item.get("item_code", ""),
+        item.get("description", ""),
+        inv.get("supplier", ""),
+    )
+    for value in haystacks:
+        if value and needle in str(value).lower():
+            return True
+    return False
 
 
 def item_matches_bulk_filter(item, filter_state):
+    text_value = filter_state.get("text", "")
+    if text_value and not item_matches_text_filter(item, text_value):
+        return False
     if filter_state["lc"] != "ALL" and item["line_code"] != filter_state["lc"]:
         return False
     if filter_state["status"] == "Assigned" and not item.get("vendor"):

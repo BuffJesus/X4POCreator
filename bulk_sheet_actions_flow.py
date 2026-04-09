@@ -374,6 +374,7 @@ def bulk_remove_selected_rows(app, deepcopy, askyesno, event=None):
     for idx in sorted(set(resolved), reverse=True):
         if 0 <= idx < len(app.filtered_items):
             removed_payload.append(idx)
+    requested_count = len(removed_payload)
     removed_payload = bulk_remove_flow.remove_filtered_rows(
         app,
         removed_payload,
@@ -381,6 +382,18 @@ def bulk_remove_selected_rows(app, deepcopy, askyesno, event=None):
         history_label="remove:selected_rows",
         expected_keys=expected_keys or None,
     )
+    skipped = list(getattr(app, "last_skipped_bulk_removals", []) or [])
+    if skipped and len(removed_payload) < requested_count:
+        notify = getattr(app, "_notify_bulk_status", None) or getattr(app, "_show_bulk_status", None)
+        message = (
+            f"Skipped {len(skipped)} of {requested_count} row(s) — the view "
+            f"shifted before confirm (filter or sort changed). Reselect and retry."
+        )
+        if callable(notify):
+            try:
+                notify(message)
+            except TypeError:
+                notify(message, level="warning")
     if app.bulk_sheet:
         app.bulk_sheet.clear_selection()
     app._apply_bulk_filter()

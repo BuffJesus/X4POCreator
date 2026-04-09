@@ -819,5 +819,27 @@ class LoadFlowTests(unittest.TestCase):
         self.assertEqual(sale_rows[0]["Item Code"], "ITEM1")
 
 
+    def test_load_parse_cache_rejects_payload_from_older_schema_version(self):
+        # Regression: PARSE_CACHE_SCHEMA_VERSION must invalidate stale
+        # caches on upgrade.  When the parse pipeline changes the shape
+        # or semantics of `result` (e.g. v0.5.2 col26 → col36 fix), users
+        # whose source CSV mtimes haven't changed would otherwise keep
+        # loading the old broken values from the on-disk pkl.
+        import pickle
+        with tempfile.TemporaryDirectory() as tmp:
+            cache_path = Path(tmp) / "parse_cache.pkl"
+            stale_payload = {
+                "schema_version": load_flow.PARSE_CACHE_SCHEMA_VERSION - 1,
+                "signature": {"anything": "stale"},
+                "result": {"sales_items": [{"qty_sold": 999}]},
+            }
+            with open(cache_path, "wb") as handle:
+                pickle.dump(stale_payload, handle)
+            with patch.object(load_flow, "PARSE_CACHE_FILE", str(cache_path)):
+                self.assertIsNone(
+                    load_flow._load_parse_cache({"anything": "stale"})
+                )
+
+
 if __name__ == "__main__":
     unittest.main()

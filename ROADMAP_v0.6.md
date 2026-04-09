@@ -30,16 +30,16 @@ daily operation on large item lists.
 Operators with large item lists have no way to locate a specific part number
 without scrolling or knowing its line code.
 
-- [ ] Add a "Search:" entry field to the bulk tab filter row (row 1, before
+- [x] Add a "Search:" entry field to the bulk tab filter row (row 1, before
   Line Code). Triggers `_apply_bulk_filter` on every keystroke.
-- [ ] Add `item_matches_text_filter(item, text)` to `ui_bulk.py` — matches
-  case-insensitively against `item_code`, `description`, and `supplier`.
-  Returns `True` when text is blank (no filter).
-- [ ] Add `"text"` key to `bulk_filter_state(app)` and wire it into
+- [x] Add `item_matches_text_filter(item, text)` to `ui_bulk.py` — matches
+  case-insensitively against `line_code`, `item_code`, `description`,
+  and `supplier`.  Returns `True` when text is blank (no filter).
+- [x] Add `"text"` key to `bulk_filter_state(app)` and wire it into
   `item_matches_bulk_filter`.
-- [ ] Update `bulk_filter_is_default` to treat a non-empty text value as
+- [x] Update `bulk_filter_is_default` to treat a non-empty text value as
   non-default.
-- [ ] Add tests for `item_matches_text_filter` and the updated
+- [x] Add tests for `item_matches_text_filter` and the updated
   `item_matches_bulk_filter` with text state.
 
 ---
@@ -50,23 +50,27 @@ Items already carry a `supplier` code from the X4 inventory data. Operators
 who always order from the same vendor for a given supplier code re-type it
 every run.
 
-- [ ] Add `supplier_map_flow.py` with pure functions:
+- [x] Add `supplier_map_flow.py` with pure functions:
   - `load_supplier_map(path)` / `save_supplier_map(path, mapping)` —
-    persists `{supplier_code: vendor_code}` to `supplier_vendor_map.json`.
-  - `apply_supplier_map(items, mapping)` — returns a list of
-    `(item, vendor)` pairs for items whose supplier has a mapping and whose
-    `vendor` field is currently blank.
-  - `build_supplier_map_from_history(snapshots)` — scans session snapshots
-    to infer `supplier → most-frequently-used vendor` pairs.
-- [ ] Add `ui_supplier_map.py` — "Supplier Map" dialog:
-  - Table: Supplier Code | Mapped Vendor (editable).
-  - "Auto-learn from history" button — runs `build_supplier_map_from_history`
-    and merges suggestions (existing manual entries win).
-  - "Apply to Session" button — calls `apply_supplier_map` and auto-fills
-    unassigned items in the current session, then refreshes the bulk grid.
-- [ ] Add "Supplier Map…" button to the bulk tab toolbar (vendor row).
-- [ ] Persist to `supplier_vendor_map.json` alongside other config files.
-- [ ] Add tests for all three pure functions.
+    persists `{supplier_code: vendor_code}` to `supplier_vendor_map.json`
+    via atomic tempfile + rename.
+  - `apply_supplier_map(items, mapping)` — returns `(item, vendor)`
+    pairs for items whose supplier has a mapping and whose `vendor`
+    field is currently blank.
+  - `build_supplier_map_from_history(snapshots)` — scans session
+    snapshots to infer `supplier → most-frequently-used vendor` pairs.
+  - Bonus: `merge_supplier_maps(base, overlay, *, overlay_wins=False)`
+    so the dialog can fold inferred suggestions in without losing
+    manual edits.
+- [x] Add `ui_supplier_map.py` — "Supplier Map" dialog with editable
+  table, Add/Remove rows, Auto-learn from History (scans the 25 most
+  recent snapshots), Apply to Session, and Save/Cancel.
+- [x] Add "Supplier Map..." button to the bulk tab toolbar (vendor row).
+- [x] Persist to `supplier_vendor_map.json` alongside other config
+  files (added to `data_folder_flow.build_data_paths`).
+- [x] 21 new tests in `tests/test_supplier_map_flow.py` covering all
+  four pure functions (load/save round-trip, normalization, malformed
+  input, history aggregation, merge precedence).
 
 ---
 
@@ -75,18 +79,22 @@ every run.
 Operators who edit QOH in the bulk grid have no summary of what they changed
 before exporting. A single-dialog review helps catch accidental edits.
 
-- [ ] Add `format_qoh_adjustments(qoh_adjustments, inventory_lookup)` to a
-  new `qoh_review_flow.py` — returns a sorted list of dicts (line_code,
-  item_code, description, old_qoh, new_qoh, delta) for all non-zero
-  adjustments in the current session.
-- [ ] Add `ui_qoh_review.py` — "QOH Adjustments" dialog:
-  - Tree view: Line Code, Item Code, Description, Old QOH, New QOH, Delta.
-  - "Revert Selected" action — restores the original QOH for selected rows
-    and removes the adjustment entry.
-  - Shows "No adjustments this session" when the dict is empty.
-- [ ] Add "QOH Changes…" button to the bulk tab toolbar (removal row).
-- [ ] Add tests for `format_qoh_adjustments` covering normal cases, zero-delta
-  filtering, and sorting.
+- [x] Added `qoh_review_flow.py` with two pure helpers:
+  - `format_qoh_adjustments(qoh_adjustments, inventory_lookup)` —
+    sorted list of dicts with line_code, item_code, description,
+    old_qoh, new_qoh, delta.  Drops zero-delta entries.
+  - `revert_qoh_adjustments(adjustments, inv_lookup, keys)` — pure
+    revert helper that restores `inv["qoh"]` and pops the adjustment
+    entry; returns the count actually reverted.
+- [x] Added `ui_qoh_review.py` — "QOH Adjustments" dialog with the
+  Tree view, Revert Selected action (re-runs per-item recalculation
+  for each reverted key and refreshes the bulk grid / summary), and
+  "No adjustments this session" empty state.
+- [x] Added "QOH Changes..." button to the bulk tab removal row.
+- [x] 12 new tests in `tests/test_qoh_review_flow.py` covering normal
+  cases, zero-delta filtering, sorting, missing inventory lookup,
+  negative delta, non-numeric coercion, non-mapping payloads, and the
+  full revert flow (single key, multi-key, missing key, empty input).
 
 ---
 
@@ -103,21 +111,19 @@ Issues surfaced during a v0.5.1 review of `rules.py` / `reorder_flow.py`.
   `raw_need < pack_qty`, defer the order this cycle (return 0 with reason
   `"defer: full pack would overshoot max"`). Reel material with 60%+ on
   hand can wait for the next cycle.
-- [ ] **Wire `assess_post_receipt_overstock` into review routing**
-  (`rules.py:838`). The function already computes
-  `projected_overstock_qty` and `overstock_within_tolerance` but nothing
-  consumes them. At minimum, raise a `would_overshoot_max` data_flag in
-  `evaluate_item_status` so reviewers can spot these before export. Also
-  flag when `effective_order_floor > target + acceptable_overstock`
-  (aggressive `minimum_packs_on_hand` rules currently order past max
-  silently).
-- [ ] **Description fallback chain** in `_description_for_key`
-  (`reorder_flow.py:269`). Currently only checks `inventory_lookup` and
-  `sales_items`, so items appearing only in receipts / open POs /
-  suspended reports get blank descriptions. Extend the fallback to also
-  walk `receipts_items`, `open_po_items`, and `suspended_items`.
-- [ ] Tests in `tests/test_rules.py` for the hose-overshoot scenario and
-  in `tests/test_reorder_flow.py` for the description fallback chain.
+- [x] **Wire `assess_post_receipt_overstock` into review routing**
+  (`rules.py:846`).  `evaluate_item_status` now raises a
+  `would_overshoot_max` data flag whenever `projected_overstock_qty > 0`
+  and the projection is outside tolerance.  A separate
+  `order_floor_above_max` flag fires when an aggressive
+  `minimum_packs_on_hand` floor pushes the order past
+  `target + acceptable_overstock` even before pack rounding.  Two
+  regression tests added in `tests/test_rules.py`.
+- [x] **Description fallback chain** in `_description_for_key`
+  (`reorder_flow.py:269`).  Now walks `sales_items`, `receipts_items`,
+  `open_po_items`, `suspended_items`, `detailed_sales_rows`, and
+  `suspended_lookup` before giving up.  Two regression tests added in
+  `tests/test_reorder_flow.py`.
 
 ---
 
@@ -154,12 +160,13 @@ candidate. Two independent bugs combined to silently suppress it.
   (rules.py:538) now also accepts `item["last_sale_date"]` and
   `item["last_receipt_date"]` from the loaded files.
 
-- [ ] **`detailed_sales_stats_lookup` is corrupted by the same bug.**
-  `parse_detailed_pair_aggregates` (parsers.py:807-809) increments
-  `transaction_count` once per row but feeds the inflated col26 value
-  into `qty_sold_total` and `_quantity_counter`. After the column fix,
-  audit the median/mean/max stats those feed into
-  (`detailed_sales_suggest_min_max` in `reorder_flow.py:63`).
+- [x] **`detailed_sales_stats_lookup` is corrupted by the same bug.**
+  Audited 2026-04-08 after the col36 fix.  `parse_detailed_pair_aggregates`
+  builds `qty_sold_total` and `_quantity_counter` from the same row
+  builder that the summary uses, so the col36 fix automatically
+  corrected this consumer too.  Verified against `GR1-:4211-08-06`:
+  `transaction_count=6, qty_sold_total=13, median=1.5, max=4` —
+  matches the per-line qtys `[2,1,1,4,4,1]` exactly.
 - [x] **`maintain_confirmed_stocking_counter` had the same blind spot.**
   `rules.py:1189` computed `has_new_evidence` from `inv["last_sale"]`
   and `inv["last_receipt"]` only.  Items missing from Min/Max would
@@ -168,25 +175,27 @@ candidate. Two independent bugs combined to silently suppress it.
   loaded sales/receipt activity.  Fix mirrors the recency-classifier
   fix: also accept `item["last_sale_date"]` / `item["last_receipt_date"]`.
 
-- [ ] **Audit every other `inv.get("last_sale" / "last_receipt" /
+- [x] **Audit every other `inv.get("last_sale" / "last_receipt" /
   "mo12_sales" / "ytd_sales")` for the same Min/Max blind spot.**
-  Confirmed scan results from 2026-04-08:
+  Audited 2026-04-08:
   - `performance_flow.classify_item` (perf_flow.py:166) takes
     `max(annualized_sales_loaded, mo12_sales)` so it tolerates a
-    missing inv value — leave alone.
-  - `load_flow._collect_data_quality_warnings` (load_flow.py:920,928)
-    emits "Missing last sale date" / "Missing last receipt date"
-    rows for every inv key that lacks them.  On the user's real
-    `Order/` dataset that's **9,973 false-positive warnings** because
-    those items have loaded sales/receipts but are absent from
-    Min/Max.  Same fallback fix applies.
+    missing inv value — left alone.
+  - `load_flow.build_data_quality_report_rows` (load_flow.py:917) —
+    **fixed**.  Now cross-references `detailed_sales_stats_lookup`
+    and `receipt_history_lookup` so loaded activity suppresses the
+    false positives.  Verified on the user's real `Order/` dataset:
+    rescued 2,290 "missing last sale" rows and 1,982 "missing last
+    receipt" rows (~4,272 noise lines eliminated).
+    `4211-08-06` no longer appears in the data-quality report.
   - `assignment_flow.py:84,145` `current_min = inv.get("min")` —
     items missing from Min/Max have no min so the
     `_protected_inventory_candidate_reason` "below current min"
     branch is unreachable for them.  Currently masked by
     `demand_signal > 0` keeping them as candidates anyway, but worth
     surfacing as a separate "missing min/max coverage" review bucket
-    rather than hiding the gap.
+    rather than hiding the gap.  Tracked under the "no Min/Max
+    coverage" startup count item below.
 
 - [ ] **Items missing from On Hand Min Max are silently demoted.**
   `4211-08-06` exists in On Hand Report and Received Parts but not in
@@ -202,12 +211,13 @@ candidate. Two independent bugs combined to silently suppress it.
   bucket, fall back to a different X4 export that includes max for
   zero-QOH rows, or instruct operators to fix the X4 export filter.
 
-- [ ] **Add a "no Min/Max coverage" startup count.**
-  Today the only signal is `inventory_coverage_missing_keys` flowing
-  into per-item `inventory_coverage_gap` review reasons.  A single
-  startup banner ("2,352 sales items have no Min/Max row — sizing is
-  sales-driven only") would let operators catch a broken X4 export
-  before they trust the suggestions.
+- [x] **Add a "no Min/Max coverage" startup count.**
+  `load_flow.parse_all_files` now stamps
+  `result["no_minmax_coverage_keys"]` and emits a "Min/Max Coverage
+  Warning" naming the count and pointing operators at the X4 "Show
+  items with zero on hand" toggle.  On the user's real toggle-off
+  export this surfaces 6,006 items with no anchor (sizing is purely
+  sales-driven for those rows).
 - [ ] Add a regression test in `tests/test_parsers.py` that loads a
   fixture with multiple detail rows for one item and asserts
   `qty_sold` equals the sum of per-line qty (col36), not the repeated
@@ -235,11 +245,13 @@ Surfaced 2026-04-08 during a focused review of `bulk_remove_flow.py` and
   flow now records each skip on `app.last_skipped_bulk_removals` as
   `(idx, reason)` for downstream UI surfacing.
 
-- [ ] **Surface `last_skipped_bulk_removals` in the UI.**  Today the data
-  is recorded but no caller reads it.  Wire a one-line status banner
-  ("Skipped K row(s) because the view shifted before confirm") into
-  `bulk_sheet_actions_flow.bulk_remove_selected_rows` and the
-  `bulk_remove_not_needed` confirm path.
+- [x] **Surface `last_skipped_bulk_removals` in the UI** — partial.
+  `bulk_sheet_actions_flow.bulk_remove_selected_rows` now reads the
+  payload after the call and routes a one-line "Skipped K of N row(s)
+  — the view shifted before confirm" notice through
+  `app._notify_bulk_status` (or `_show_bulk_status` as fallback).
+  Wiring the same notice into the `bulk_remove_not_needed` confirm
+  path is a small follow-up.
 - [ ] **Manual QA**: scroll a long bulk list, right-click "Remove Not
   Needed (On Screen)", confirm only viewport rows are offered; repeat
   with "Filtered" and confirm the dialog covers the full filtered

@@ -1,7 +1,48 @@
 from tkinter import messagebox
 
 import session_state_flow
+import storage
 import ui_bulk
+import vendor_summary_flow
+
+
+def _vendor_lead_time_lookup(app):
+    """Return the cached vendor → lead-day map for the current session.
+
+    Computed lazily on first access — `infer_vendor_lead_times` walks
+    the snapshot history and we don't want to pay that cost on every
+    keystroke.  Cleared when `session.vendor_codes_used` is rebuilt.
+    """
+    cached = getattr(app, "_vendor_lead_time_cache", None)
+    if cached is not None:
+        return cached
+    sessions_dir = ""
+    data_path = getattr(app, "_data_path", None)
+    if callable(data_path):
+        try:
+            sessions_dir = data_path("sessions") or ""
+        except Exception:
+            sessions_dir = ""
+    snapshots = []
+    if sessions_dir:
+        try:
+            snapshots = storage.load_session_snapshots(sessions_dir, max_count=25) or []
+        except Exception:
+            snapshots = []
+    try:
+        lookup = storage.infer_vendor_lead_times(snapshots) or {}
+    except Exception:
+        lookup = {}
+    app._vendor_lead_time_cache = lookup
+    return lookup
+
+
+def _hinted_vendor_values(app, codes):
+    lookup = _vendor_lead_time_lookup(app)
+    return [
+        vendor_summary_flow.format_vendor_combo_value(code, lookup.get(str(code or "").strip().upper()))
+        for code in codes
+    ]
 
 
 def flush_pending_bulk_sheet_edit(app):
@@ -62,19 +103,20 @@ def finalize_bulk_history_action(app, label, before_state, *, coalesce_key=None,
 def bulk_vendor_autocomplete(app, event):
     if event.keysym in ("Return", "Escape", "Tab", "Up", "Down"):
         return
-    typed = app.var_bulk_vendor.get().strip().upper()
+    raw = vendor_summary_flow.strip_vendor_hint(app.var_bulk_vendor.get())
+    typed = raw.strip().upper()
     if not typed:
-        app.combo_bulk_vendor["values"] = app.vendor_codes_used
+        app.combo_bulk_vendor["values"] = _hinted_vendor_values(app, app.vendor_codes_used)
         return
     filtered = [vendor for vendor in app.vendor_codes_used if vendor.upper().startswith(typed)]
     if not filtered:
         filtered = [vendor for vendor in app.vendor_codes_used if typed in vendor.upper()]
-    app.combo_bulk_vendor["values"] = filtered
+    app.combo_bulk_vendor["values"] = _hinted_vendor_values(app, filtered)
 
 
 def bulk_apply_selected(app):
     flush_pending_bulk_sheet_edit(app)
-    vendor = app.var_bulk_vendor.get().strip().upper()
+    vendor = vendor_summary_flow.strip_vendor_hint(app.var_bulk_vendor.get()).strip().upper()
     if not vendor:
         messagebox.showinfo("Vendor Required", "Enter a vendor code first.")
         return
@@ -120,7 +162,7 @@ def bulk_apply_selected(app):
 
 def bulk_apply_visible(app):
     flush_pending_bulk_sheet_edit(app)
-    vendor = app.var_bulk_vendor.get().strip().upper()
+    vendor = vendor_summary_flow.strip_vendor_hint(app.var_bulk_vendor.get()).strip().upper()
     if not vendor:
         messagebox.showinfo("Vendor Required", "Enter a vendor code first.")
         return

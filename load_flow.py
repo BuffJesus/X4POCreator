@@ -10,7 +10,16 @@ import sales_history_flow
 import storage
 
 
-PARSE_CACHE_SCHEMA_VERSION = 1
+# Bumped 2026-04-08 to invalidate caches written by v0.5.1 and earlier.
+# The shape of `result` has changed since then:
+#   - v0.5.2: qty_sold reads col36 instead of col26 (sales_items values
+#             from older caches are 6× the real qty)
+#   - v0.5.3: data-quality cross-references receipt/sales lookups
+#   - v0.5.5: added `no_minmax_coverage_keys`
+# Bump this version any time the parse pipeline changes the shape or
+# semantics of `result`, otherwise upgraded users will silently keep
+# loading stale data until their source CSV mtimes change.
+PARSE_CACHE_SCHEMA_VERSION = 2
 PARSE_CACHE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "parse_result_cache.pkl")
 
 
@@ -789,6 +798,36 @@ def parse_all_files(paths, *, old_po_warning_days, short_sales_window_days, now=
                     "details": "Sales item missing from inventory/min-max data.",
                 })
 
+        # Separate count: items that ARE in inventory_lookup (typically via
+        # the On Hand Report fallback) but have no min/max anchor — usually
+        # because the X4 "Show items with zero on hand" toggle was off when
+        # the Min/Max report was exported.  Sizing for these items is
+        # purely sales-driven; surface the count so operators notice.
+        no_minmax_keys = set()
+        for s in result["sales_items"]:
+            key = (s.get("line_code", ""), s.get("item_code", ""))
+            if not key[0] or not key[1]:
+                continue
+            inv = inventory_lookup.get(key)
+            if not inv:
+                continue  # already counted under inventory_coverage_missing_keys
+            if inv.get("min") is None and inv.get("max") is None:
+                no_minmax_keys.add(key)
+        result["no_minmax_coverage_keys"] = no_minmax_keys
+        if no_minmax_keys:
+            sample = ", ".join(f"{lc}/{ic}" for lc, ic in sorted(no_minmax_keys)[:12])
+            extra = "..." if len(no_minmax_keys) > 12 else ""
+            warnings.append((
+                "Min/Max Coverage Warning",
+                (
+                    f"{len(no_minmax_keys)} sales item(s) have inventory rows but no min/max "
+                    "anchor — sizing for these items is purely sales-driven.\n"
+                    "If your X4 'On Hand Min Max Sales' export has the "
+                    "'Show items with zero on hand' toggle off, turn it on and reload.\n\n"
+                    f"Examples: {sample}{extra}"
+                ),
+            ))
+
     if paths.get("packsize"):
         if callable(progress_callback):
             progress_callback("Parsing pack-size report...")
@@ -913,11 +952,22 @@ def build_data_quality_report_rows(session):
             "Details": "Item code could not be resolved to a known line code",
         })
 
-    # Inventory: missing last sale / last receipt
+    # Inventory: missing last sale / last receipt.  Cross-reference the
+    # loaded Detailed Part Sales / Received Parts files so items that have
+    # real activity but happen to be missing from the Min/Max export
+    # (e.g. X4's "Show Zero QOH" toggle was off) don't generate thousands
+    # of false-positive warnings.
     inv_lookup = getattr(session, "inventory_lookup", {}) or {}
+    sales_stats = getattr(session, "detailed_sales_stats_lookup", {}) or {}
+    receipt_history = getattr(session, "receipt_history_lookup", {}) or {}
     for (line_code, item_code), inv in sorted(inv_lookup.items()):
         inv = inv or {}
-        if not inv.get("last_sale"):
+        key = (line_code, item_code)
+        sales_entry = sales_stats.get(key) or {}
+        receipt_entry = receipt_history.get(key) or {}
+        has_loaded_sale = bool(sales_entry.get("last_sale_date"))
+        has_loaded_receipt = bool(receipt_entry.get("last_receipt_date"))
+        if not inv.get("last_sale") and not has_loaded_sale:
             rows.append({
                 "Flag Type": "Missing last sale date",
                 "Line Code": line_code,
@@ -925,7 +975,7 @@ def build_data_quality_report_rows(session):
                 "Description": inv.get("description", ""),
                 "Details": "No last sale date in inventory record",
             })
-        if not inv.get("last_receipt"):
+        if not inv.get("last_receipt") and not has_loaded_receipt:
             rows.append({
                 "Flag Type": "Missing last receipt date",
                 "Line Code": line_code,

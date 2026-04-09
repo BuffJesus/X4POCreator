@@ -1156,7 +1156,34 @@ def evaluate_item_status(item):
     if final <= 0 and raw <= 0:
         status = "skip"
 
-    if item.get("review_required") and not item.get("review_resolved"):
+    # Surface post-receipt overstock as a data flag so reviewers can spot
+    # it before export.  Two distinct cases:
+    #   1. The auto-suggestion would push us past the tolerated overstock
+    #      cap (typically because rounding a partial pack overshoots max).
+    #   2. The effective order floor is itself above the target plus
+    #      tolerance — i.e., an aggressive minimum_packs_on_hand rule is
+    #      pushing the order past max even before pack rounding.
+    if final > 0:
+        projected_overstock = item.get("projected_overstock_qty", 0) or 0
+        within_tolerance = item.get("overstock_within_tolerance", True)
+        if projected_overstock > 0 and not within_tolerance:
+            flags.append("would_overshoot_max")
+        target = item.get("effective_target_stock", item.get("target_stock", 0)) or 0
+        floor = item.get("effective_order_floor", target) or 0
+        acceptable_overstock = item.get("acceptable_overstock_qty_effective", 0) or 0
+        if floor > target + acceptable_overstock:
+            flags.append("order_floor_above_max")
+
+    # Only promote to "review" when there is something to order.  Items with
+    # zero raw need and zero final qty are logically "skip" — escalating
+    # them to review just because some legacy review flag is set hides them
+    # from the Skip filter and from the not-needed removal flow even though
+    # the operator has nothing to decide on.
+    if (
+        item.get("review_required")
+        and not item.get("review_resolved")
+        and (raw > 0 or final > 0)
+    ):
         status = "review"
 
     return status, flags

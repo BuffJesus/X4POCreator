@@ -229,6 +229,9 @@ def build_load_tab(app):
     ttk.Button(footer, text="View Session History", command=app._open_session_history).grid(
         row=2, column=0, sticky="w", pady=(4, 0)
     )
+    ttk.Button(footer, text="Session Diff...", command=app._open_session_diff).grid(
+        row=3, column=0, sticky="w", pady=(4, 0)
+    )
     ttk.Button(footer, text="Load Files & Continue ->", style="Big.TButton", command=app._do_load).grid(
         row=0, column=2, sticky="e"
     )

@@ -274,18 +274,39 @@ def bulk_remove_not_needed(app, scope, max_exceed_abs_buffer, *, include_assigne
             ).strip() == "include_assigned"
 
     candidates = []
+    excluded_assigned = 0
+    excluded_assigned_with_reason = 0
     for iid in row_ids:
         idx, item = resolve_bulk_row(app, iid)
         if idx is None or item is None:
             continue
         if not include_assigned and item.get("vendor"):
+            excluded_assigned += 1
+            # Track separately whether the excluded item *would have* been
+            # flagged not-needed — that's the count the operator is most
+            # likely to ask about ("I have N skip items, why do I only see
+            # M in the dialog?").
+            try:
+                reason, _ = not_needed_reason(app, item, max_exceed_abs_buffer)
+            except Exception:
+                reason = ""
+            if reason:
+                excluded_assigned_with_reason += 1
             continue
         reason, auto_remove = not_needed_reason(app, item, max_exceed_abs_buffer)
         if reason:
             candidates.append((idx, item, reason, auto_remove))
 
     if not candidates:
-        messagebox.showinfo("Nothing to Remove", f"No {scope_label} items were flagged as not needed.")
+        message = f"No {scope_label} items were flagged as not needed."
+        if excluded_assigned_with_reason:
+            message += (
+                f"\n\n{excluded_assigned_with_reason} item(s) matched the "
+                "not-needed criteria but already have a vendor assigned and "
+                "were skipped.  Re-run with 'Include assigned items' to "
+                "review them."
+            )
+        messagebox.showinfo("Nothing to Remove", message)
         return
 
     dlg = tk.Toplevel(app.root)
@@ -294,9 +315,16 @@ def bulk_remove_not_needed(app, scope, max_exceed_abs_buffer, *, include_assigne
     dlg.transient(app.root)
     dlg.grab_set()
 
+    header_text = f"{len(candidates)} {scope_label} item(s) are flagged as likely not needed."
+    if excluded_assigned_with_reason:
+        header_text += (
+            f"  ({excluded_assigned_with_reason} additional item(s) matched the "
+            "criteria but already have a vendor — toggle 'Include assigned items' "
+            "to review them.)"
+        )
     ttk.Label(
         dlg,
-        text=f"{len(candidates)} {scope_label} item(s) are flagged as likely not needed.",
+        text=header_text,
         style="Header.TLabel",
         wraplength=900,
     ).pack(anchor="w", padx=16, pady=(16, 4))
@@ -423,6 +451,7 @@ def bulk_remove_not_needed(app, scope, max_exceed_abs_buffer, *, include_assigne
             )
             for iid in checked
         }
+        requested = len(remove_indices)
         removed_payload = bulk_remove_flow.remove_filtered_rows(
             app,
             remove_indices,
@@ -432,6 +461,8 @@ def bulk_remove_not_needed(app, scope, max_exceed_abs_buffer, *, include_assigne
         )
         result["removed"] = len(removed_payload)
         result["protected"] = len(getattr(app, "last_protected_bulk_items", []) or [])
+        result["skipped"] = len(getattr(app, "last_skipped_bulk_removals", []) or [])
+        result["requested"] = requested
         dlg.destroy()
 
     btn_frame = ttk.Frame(dlg)
@@ -446,8 +477,14 @@ def bulk_remove_not_needed(app, scope, max_exceed_abs_buffer, *, include_assigne
     if result["removed"] > 0:
         app._apply_bulk_filter()
         app._update_bulk_summary()
-    if result["removed"] > 0 or result["protected"] > 0:
+    if result["removed"] > 0 or result["protected"] > 0 or result.get("skipped"):
         detail = f"Removed {result['removed']} item(s) from this session."
+        if result.get("skipped"):
+            detail += (
+                f"\n\nSkipped {result['skipped']} of {result.get('requested', 0)} "
+                f"checked row(s) — the view shifted before confirm "
+                "(filter or sort changed)."
+            )
         protected_items = getattr(app, "last_protected_bulk_items", []) or []
         if protected_items:
             detail += f"\n\nSkipped {len(protected_items)} protected item(s) that still carry reorder evidence:"

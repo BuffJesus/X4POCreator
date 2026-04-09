@@ -342,5 +342,64 @@ class ReorderFlowTests(unittest.TestCase):
         self.assertEqual(events, [("recalc", "A"), ("sync", "A"), ("bulk", None)])
 
 
+    def test_description_for_key_walks_all_loaded_sources(self):
+        # Regression: items appearing only in receipts / open POs / suspended
+        # used to come back with blank descriptions because the fallback
+        # only walked sales_items.
+        key = ("AER-", "GH781")
+        for source_attr, label in (
+            ("sales_items", "from sales"),
+            ("receipts_items", "from receipts"),
+            ("open_po_items", "from open PO"),
+            ("suspended_items", "from suspended"),
+            ("detailed_sales_rows", "from detailed rollup"),
+        ):
+            with self.subTest(source_attr=source_attr):
+                app = SimpleNamespace(inventory_lookup={key: {}})
+                setattr(app, source_attr, [
+                    {"line_code": key[0], "item_code": key[1], "description": label}
+                ])
+                self.assertEqual(reorder_flow._description_for_key(app, key), label)
+
+    def test_description_for_key_falls_back_to_suspended_lookup(self):
+        key = ("AER-", "GH781")
+        app = SimpleNamespace(
+            inventory_lookup={key: {}},
+            suspended_lookup={key: [{"description": "from suspended lookup"}]},
+        )
+        self.assertEqual(reorder_flow._description_for_key(app, key), "from suspended lookup")
+
+
+    def test_rebuild_bulk_metadata_after_inplace_recalc_refreshes_buckets(self):
+        # Regression: refresh_recent_orders / refresh_suggestions /
+        # normalize_items_to_cycle mutate filtered_items in place and
+        # then call _apply_bulk_filter, which uses the bucket fast path.
+        # If the bucket index isn't rebuilt the fast path returns the
+        # old buckets — same family of bugs as v0.6.3 / v0.6.4.
+        import ui_bulk
+        items = [
+            {"line_code": "A", "item_code": "1", "vendor": "",
+             "status": "review", "data_flags": [],
+             "performance_profile": "steady", "sales_health_signal": "active",
+             "reorder_attention_signal": "normal", "stockout_risk_score": 0.1},
+        ]
+        app = SimpleNamespace(filtered_items=items)
+        ui_bulk.sync_bulk_session_metadata(app, items)
+        self.assertEqual(
+            [i["item_code"] for i in app._bulk_items_by_item_status.get("Review", ())],
+            ["1"],
+        )
+
+        # Simulate an in-place recalc flipping status from review → ok
+        items[0]["status"] = "ok"
+        reorder_flow._rebuild_bulk_metadata_after_inplace_recalc(app)
+
+        self.assertEqual(app._bulk_items_by_item_status.get("Review", ()), ())
+        self.assertEqual(
+            [i["item_code"] for i in app._bulk_items_by_item_status.get("OK", ())],
+            ["1"],
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

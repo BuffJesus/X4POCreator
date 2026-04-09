@@ -268,7 +268,13 @@ class UIBulkTests(unittest.TestCase):
         self.assertTrue(result)
         self.assertEqual(fake_app._bulk_summary_counts, {"total": 1, "assigned": 0, "review": 0, "warning": 1})
         self.assertEqual(fake_app._bulk_items_by_assignment_status, {"Unassigned": (item,)})
-        self.assertEqual(fake_app._bulk_items_by_item_status, {"No Pack": (item,)})
+        # An item with status=warning + missing_pack belongs in BOTH the
+        # Warning and No Pack buckets — the matcher treats No Pack as an
+        # additive tag, not an exclusive override.
+        self.assertEqual(
+            fake_app._bulk_items_by_item_status,
+            {"Warning": (item,), "No Pack": (item,)},
+        )
         self.assertEqual(fake_app._bulk_items_by_performance, {"Legacy": (item,)})
         self.assertEqual(fake_app._bulk_items_by_sales_health, {"Dormant": (item,)})
         self.assertEqual(fake_app._bulk_items_by_attention, {"Missed Reorder": (item,)})
@@ -1867,6 +1873,276 @@ class BulkFilterPresetTests(unittest.TestCase):
         # Should not raise, should not change any var
         ui_bulk.apply_bulk_filter_preset(app, "DoesNotExist")
         self.assertEqual(app.var_bulk_lc_filter.get(), "AER-")
+
+
+class BulkItemStatusBucketTests(unittest.TestCase):
+    def test_skip_with_missing_pack_belongs_to_both_buckets(self):
+        # Regression: the bucket function used to return only "No Pack"
+        # for any item carrying the missing_pack flag, hiding skip items
+        # from the Skip filter on the bulk grid.  The matcher treats No
+        # Pack as additive, so the bucket must too.
+        item = {"status": "skip", "data_flags": ["missing_pack"]}
+        self.assertEqual(set(ui_bulk.bulk_item_status(item)), {"Skip", "No Pack"})
+
+    def test_dead_stock_with_skip_belongs_to_both_buckets(self):
+        item = {"status": "skip", "data_flags": [], "dead_stock": True}
+        self.assertEqual(set(ui_bulk.bulk_item_status(item)), {"Skip", "Dead Stock"})
+
+    def test_ok_with_missing_pack_excluded_from_ok_bucket(self):
+        # The matcher's OK rule excludes missing_pack — bucket must mirror it.
+        item = {"status": "ok", "data_flags": ["missing_pack"]}
+        self.assertEqual(set(ui_bulk.bulk_item_status(item)), {"No Pack"})
+
+    def test_ok_without_flags_returns_only_ok(self):
+        item = {"status": "ok", "data_flags": []}
+        self.assertEqual(ui_bulk.bulk_item_status(item), ("OK",))
+
+    def test_review_with_missing_pack_belongs_to_both_buckets(self):
+        item = {"status": "review", "data_flags": ["missing_pack"]}
+        self.assertEqual(set(ui_bulk.bulk_item_status(item)), {"Review", "No Pack"})
+
+    def test_skip_status_ok_dead_stock_returns_only_dead_stock(self):
+        # status=ok + dead_stock + no missing_pack: OK is fine
+        item = {"status": "ok", "data_flags": [], "dead_stock": True}
+        self.assertEqual(set(ui_bulk.bulk_item_status(item)), {"OK", "Dead Stock"})
+
+
+class MatcherFastPathConsistencyTests(unittest.TestCase):
+    """Guard against the v0.5.4 / v0.6.3 / v0.6.4 family of bugs.
+
+    For every Item Status / Performance / Sales Health / Attention /
+    Assignment-Status filter value, the bucket fast path must produce
+    the same set of items as the matcher.  When they drift, items get
+    silently hidden from the bulk grid.
+    """
+
+    def _build_app(self):
+        items = [
+            # status=skip + missing_pack: must appear in Skip and No Pack
+            {"line_code": "A", "item_code": "1", "vendor": "",
+             "status": "skip", "data_flags": ["missing_pack"],
+             "performance_profile": "steady", "sales_health_signal": "active",
+             "reorder_attention_signal": "normal", "stockout_risk_score": 0.1},
+            # status=ok + dead_stock: OK + Dead Stock
+            {"line_code": "A", "item_code": "2", "vendor": "V1",
+             "status": "ok", "data_flags": [], "dead_stock": True,
+             "performance_profile": "legacy", "sales_health_signal": "stale",
+             "reorder_attention_signal": "normal", "stockout_risk_score": 0.0},
+            # high stockout risk + normal signal: Normal + High Risk
+            {"line_code": "B", "item_code": "3", "vendor": "",
+             "status": "warning", "data_flags": ["zero_final"],
+             "performance_profile": "top_performer", "sales_health_signal": "active",
+             "reorder_attention_signal": "normal", "stockout_risk_score": 0.95},
+            # missed reorder
+            {"line_code": "B", "item_code": "4", "vendor": "V2",
+             "status": "review", "data_flags": ["manual_only"],
+             "performance_profile": "intermittent", "sales_health_signal": "cooling",
+             "reorder_attention_signal": "review_missed_reorder", "stockout_risk_score": 0.7},
+            # plain ok
+            {"line_code": "C", "item_code": "5", "vendor": "",
+             "status": "ok", "data_flags": [],
+             "performance_profile": "steady", "sales_health_signal": "active",
+             "reorder_attention_signal": "normal", "stockout_risk_score": 0.2},
+        ]
+        app = SimpleNamespace(filtered_items=items)
+        ui_bulk.sync_bulk_session_metadata(app, items)
+        return app, items
+
+    def _matcher_set(self, app, state):
+        return {
+            (i["line_code"], i["item_code"])
+            for i in app.filtered_items
+            if ui_bulk.item_matches_bulk_filter(i, state)
+        }
+
+    def _fast_set(self, app, state):
+        return {
+            (i["line_code"], i["item_code"])
+            for i in ui_bulk.filtered_candidate_items(app, state)
+        }
+
+    def _state(self, **overrides):
+        base = {"lc": "ALL", "status": "ALL", "source": "ALL",
+                "item_status": "ALL", "performance": "ALL",
+                "sales_health": "ALL", "attention": "ALL", "text": ""}
+        base.update(overrides)
+        return base
+
+    def test_every_single_dim_filter_value_matches(self):
+        app, _ = self._build_app()
+        cases = {
+            "item_status": ["OK", "Review", "Warning", "No Pack", "Skip", "Dead Stock"],
+            "status": ["Assigned", "Unassigned"],
+            "performance": ["Top", "Steady", "Intermittent", "Legacy"],
+            "sales_health": ["Active", "Cooling", "Dormant", "Stale", "Unknown"],
+            "attention": ["Normal", "Missed Reorder", "High Risk"],
+        }
+        mismatches = []
+        for dim, values in cases.items():
+            for value in values:
+                state = self._state(**{dim: value})
+                m = self._matcher_set(app, state)
+                f = self._fast_set(app, state)
+                if m != f:
+                    mismatches.append((dim, value, sorted(m), sorted(f)))
+        self.assertEqual(mismatches, [], f"matcher/fast-path drift: {mismatches}")
+
+
+class RebuildBulkMetadataAfterInplaceRecalcTests(unittest.TestCase):
+    def test_rebuild_after_inplace_status_flip_updates_buckets(self):
+        # Same regression as the v0.7.4 fix in reorder_flow, but
+        # exercised against the canonical helper now living in ui_bulk
+        # so any future caller (data_folder_flow.refresh_active_data_state,
+        # bulk_edit_flow batch ops) inherits the same guarantee.
+        items = [
+            {"line_code": "A", "item_code": "1", "vendor": "",
+             "status": "review", "data_flags": [],
+             "performance_profile": "steady", "sales_health_signal": "active",
+             "reorder_attention_signal": "normal", "stockout_risk_score": 0.1},
+        ]
+        app = SimpleNamespace(filtered_items=items)
+        ui_bulk.sync_bulk_session_metadata(app, items)
+        self.assertEqual(
+            [i["item_code"] for i in app._bulk_items_by_item_status.get("Review", ())],
+            ["1"],
+        )
+
+        items[0]["status"] = "ok"
+        ui_bulk.rebuild_bulk_metadata_after_inplace_recalc(app)
+
+        self.assertEqual(app._bulk_items_by_item_status.get("Review", ()), ())
+        self.assertEqual(
+            [i["item_code"] for i in app._bulk_items_by_item_status.get("OK", ())],
+            ["1"],
+        )
+
+    def test_rebuild_after_inplace_attention_flip(self):
+        items = [
+            {"line_code": "A", "item_code": "1", "vendor": "",
+             "status": "ok", "data_flags": [],
+             "performance_profile": "steady", "sales_health_signal": "active",
+             "reorder_attention_signal": "normal", "stockout_risk_score": 0.1},
+        ]
+        app = SimpleNamespace(filtered_items=items)
+        ui_bulk.sync_bulk_session_metadata(app, items)
+        self.assertEqual(set(app._bulk_items_by_attention.keys()), {"Normal"})
+
+        # Risk score flips above the High Risk threshold
+        items[0]["stockout_risk_score"] = 0.9
+        ui_bulk.rebuild_bulk_metadata_after_inplace_recalc(app)
+
+        self.assertEqual(set(app._bulk_items_by_attention.keys()), {"Normal", "High Risk"})
+
+
+class BulkRowRenderSignatureTests(unittest.TestCase):
+    """The render signature is the cache key for `cached_bulk_row_values`.
+
+    Any field the row renderer reads must be in the signature, otherwise
+    a state change leaves a stale row in the bulk grid even though the
+    underlying item has been recalculated.  Regression for the
+    stockout_risk_score case fixed in v0.6.6.
+    """
+
+    def _build_app(self, item):
+        return SimpleNamespace(
+            inventory_lookup={(item["line_code"], item["item_code"]): {}},
+            order_rules={},
+            var_reorder_cycle=SimpleNamespace(get=lambda: "Biweekly"),
+        )
+
+    def test_changing_stockout_risk_changes_signature(self):
+        item = {
+            "line_code": "AER-", "item_code": "GH781", "description": "HOSE",
+            "vendor": "", "status": "ok", "raw_need": 0, "suggested_qty": 0,
+            "final_qty": 0, "pack_size": None, "why": "", "order_policy": "standard",
+            "stockout_risk_score": 0.1,
+        }
+        app = self._build_app(item)
+        sig_before = ui_bulk.bulk_row_render_signature(app, item)
+        item["stockout_risk_score"] = 0.95
+        sig_after = ui_bulk.bulk_row_render_signature(app, item)
+        self.assertNotEqual(sig_before, sig_after)
+
+
+class BulkAttentionBucketTests(unittest.TestCase):
+    def test_high_risk_score_added_to_bucket(self):
+        # Regression: bulk_attention_bucket only emitted Normal/Missed
+        # Reorder, so the High Risk attention filter resolved to an
+        # empty list via the fast bucket path even when items had
+        # stockout_risk_score >= 0.6.
+        item = {"reorder_attention_signal": "normal", "stockout_risk_score": 0.9}
+        self.assertEqual(set(ui_bulk.bulk_attention_bucket(item)), {"Normal", "High Risk"})
+
+    def test_low_risk_score_omits_high_risk(self):
+        item = {"reorder_attention_signal": "normal", "stockout_risk_score": 0.1}
+        self.assertEqual(ui_bulk.bulk_attention_bucket(item), ("Normal",))
+
+    def test_missed_reorder_with_high_risk(self):
+        item = {"reorder_attention_signal": "review_missed_reorder", "stockout_risk_score": 0.7}
+        self.assertEqual(set(ui_bulk.bulk_attention_bucket(item)), {"Missed Reorder", "High Risk"})
+
+    def test_no_signal_no_risk_returns_none(self):
+        self.assertIsNone(ui_bulk.bulk_attention_bucket({}))
+
+
+class UsesOnlyBucketFiltersTests(unittest.TestCase):
+    def test_text_filter_disables_bucket_fast_path(self):
+        # Regression: the v0.6.0 text search field was silently dropped
+        # by the fast bucket path because uses_only_bucket_filters
+        # always returned True.
+        state = {"text": "hose"}
+        self.assertFalse(ui_bulk.uses_only_bucket_filters(state))
+
+    def test_blank_text_keeps_fast_path(self):
+        self.assertTrue(ui_bulk.uses_only_bucket_filters({"text": ""}))
+        self.assertTrue(ui_bulk.uses_only_bucket_filters({}))
+
+
+class BulkTextFilterTests(unittest.TestCase):
+    def _state(self, text):
+        return {
+            "lc": "ALL",
+            "status": "ALL",
+            "source": "ALL",
+            "item_status": "ALL",
+            "performance": "ALL",
+            "sales_health": "ALL",
+            "attention": "ALL",
+            "text": text,
+        }
+
+    def test_item_matches_text_filter_blank_returns_true(self):
+        item = {"line_code": "AER-", "item_code": "GH781", "description": "HOSE"}
+        self.assertTrue(ui_bulk.item_matches_text_filter(item, ""))
+        self.assertTrue(ui_bulk.item_matches_text_filter(item, "   "))
+
+    def test_item_matches_text_filter_matches_item_code_case_insensitive(self):
+        item = {"line_code": "AER-", "item_code": "GH781", "description": ""}
+        self.assertTrue(ui_bulk.item_matches_text_filter(item, "gh78"))
+        self.assertTrue(ui_bulk.item_matches_text_filter(item, "AER"))
+        self.assertFalse(ui_bulk.item_matches_text_filter(item, "ZZZ"))
+
+    def test_item_matches_text_filter_matches_description(self):
+        item = {"line_code": "AER-", "item_code": "GH781", "description": "ORB MALE FITTING"}
+        self.assertTrue(ui_bulk.item_matches_text_filter(item, "fitting"))
+        self.assertTrue(ui_bulk.item_matches_text_filter(item, "ORB"))
+
+    def test_item_matches_text_filter_matches_supplier_via_inventory(self):
+        item = {
+            "line_code": "AER-", "item_code": "GH781", "description": "",
+            "inventory": {"supplier": "GRELIN"},
+        }
+        self.assertTrue(ui_bulk.item_matches_text_filter(item, "grel"))
+        self.assertFalse(ui_bulk.item_matches_text_filter(item, "vendorco"))
+
+    def test_bulk_filter_is_default_text_breaks_default(self):
+        self.assertTrue(ui_bulk.bulk_filter_is_default(self._state("")))
+        self.assertFalse(ui_bulk.bulk_filter_is_default(self._state("foo")))
+
+    def test_item_matches_bulk_filter_text_excludes_non_match(self):
+        item = {"line_code": "AER-", "item_code": "GH781", "description": "HOSE"}
+        self.assertTrue(ui_bulk.item_matches_bulk_filter(item, self._state("hose")))
+        self.assertFalse(ui_bulk.item_matches_bulk_filter(item, self._state("gasket")))
 
 
 if __name__ == "__main__":

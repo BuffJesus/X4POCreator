@@ -271,11 +271,28 @@ def _description_for_key(app, key):
     description = str(inv.get("description", "") or "").strip()
     if description:
         return description
-    for item in getattr(app, "sales_items", []) or []:
-        if (item.get("line_code", ""), item.get("item_code", "")) == key:
-            description = str(item.get("description", "") or "").strip()
-            if description:
-                return description
+    # Walk every loaded source so items appearing only in receipts, open
+    # POs, suspended carry, or detailed sales rollups still get a label.
+    sources = (
+        ("sales_items", getattr(app, "sales_items", None)),
+        ("receipts_items", getattr(app, "receipts_items", None)),
+        ("open_po_items", getattr(app, "open_po_items", None)),
+        ("suspended_items", getattr(app, "suspended_items", None)),
+        ("detailed_sales_rows", getattr(app, "detailed_sales_rows", None)),
+    )
+    for _name, collection in sources:
+        for item in collection or ():
+            if (item.get("line_code", ""), item.get("item_code", "")) == key:
+                description = str(item.get("description", "") or "").strip()
+                if description:
+                    return description
+    # Suspended lookup is keyed by (lc, ic) and may carry the only label.
+    susp_lookup = getattr(app, "suspended_lookup", None) or {}
+    susp_entries = susp_lookup.get(key) or []
+    for entry in susp_entries:
+        description = str((entry or {}).get("description", "") or "").strip()
+        if description:
+            return description
     return ""
 
 
@@ -412,6 +429,12 @@ def _normalize_demand_signal(raw_demand, cycle_weeks, sales_span_days):
     return round(normalized) if raw_demand > 0 else 0
 
 
+def _rebuild_bulk_metadata_after_inplace_recalc(app):
+    """Backwards-compat shim — the canonical helper now lives in ui_bulk."""
+    import ui_bulk
+    ui_bulk.rebuild_bulk_metadata_after_inplace_recalc(app)
+
+
 def refresh_suggestions(app):
     """Recalculate suggestions when the reorder cycle changes.
 
@@ -440,6 +463,7 @@ def refresh_suggestions(app):
         app._sync_review_item_to_filtered(item)
     if hasattr(app, "_annotate_release_decisions"):
         app._annotate_release_decisions()
+    _rebuild_bulk_metadata_after_inplace_recalc(app)
     app._apply_bulk_filter()
 
 
@@ -477,6 +501,7 @@ def normalize_items_to_cycle(app):
         _recalculate_item(app, item, annotate_release=False)
     if hasattr(app, "_annotate_release_decisions"):
         app._annotate_release_decisions()
+    _rebuild_bulk_metadata_after_inplace_recalc(app)
 
 
 def refresh_recent_orders(app):
@@ -494,4 +519,5 @@ def refresh_recent_orders(app):
         item_workflow.apply_recent_order_context(item, app.recent_orders.get(key, []))
     if hasattr(app, "_annotate_release_decisions"):
         app._annotate_release_decisions()
+    _rebuild_bulk_metadata_after_inplace_recalc(app)
     app._apply_bulk_filter()

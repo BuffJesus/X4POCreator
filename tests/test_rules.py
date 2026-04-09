@@ -739,6 +739,58 @@ class RulesTests(unittest.TestCase):
         self.assertIn("missing_pack", flags)
         self.assertIn("zero_final", flags)
 
+    def test_evaluate_item_status_zero_need_stays_skip_even_with_review_required(self):
+        # Regression: items with nothing to order (final<=0 AND raw<=0) used
+        # to be force-promoted from "skip" to "review" whenever any review
+        # flag was set, hiding them from the Skip filter and from the
+        # not-needed removal flow.  Verify they stay "skip".
+        status, _flags = evaluate_item_status({
+            "pack_size": 1,
+            "final_qty": 0,
+            "raw_need": 0,
+            "review_required": True,
+            "review_resolved": False,
+        })
+        self.assertEqual(status, "skip")
+
+    def test_evaluate_item_status_flags_would_overshoot_max(self):
+        # Regression: assess_post_receipt_overstock stamps projected_overstock_qty
+        # but evaluate_item_status used to ignore it.  Verify the flag is set.
+        status, flags = evaluate_item_status({
+            "pack_size": 300,
+            "final_qty": 300,
+            "raw_need": 196,
+            "projected_overstock_qty": 104,
+            "overstock_within_tolerance": False,
+            "review_required": False,
+            "review_resolved": False,
+        })
+        self.assertEqual(status, "ok")
+        self.assertIn("would_overshoot_max", flags)
+
+    def test_evaluate_item_status_flags_order_floor_above_max(self):
+        status, flags = evaluate_item_status({
+            "pack_size": 1,
+            "final_qty": 50,
+            "raw_need": 50,
+            "effective_target_stock": 30,
+            "effective_order_floor": 50,
+            "acceptable_overstock_qty_effective": 5,
+            "review_required": False,
+            "review_resolved": False,
+        })
+        self.assertIn("order_floor_above_max", flags)
+
+    def test_evaluate_item_status_review_required_still_promotes_when_need_exists(self):
+        status, _flags = evaluate_item_status({
+            "pack_size": 1,
+            "final_qty": 5,
+            "raw_need": 5,
+            "review_required": True,
+            "review_resolved": False,
+        })
+        self.assertEqual(status, "review")
+
     def test_evaluate_item_status_skips_missing_pack_for_exact_qty_override(self):
         status, flags = evaluate_item_status({
             "pack_size": None,

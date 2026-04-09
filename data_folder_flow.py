@@ -18,6 +18,7 @@ def build_data_paths(data_dir):
         "vendor_codes": os.path.join(data_dir, "vendor_codes.txt"),
         "vendor_policies": os.path.join(data_dir, "vendor_policies.json"),
         "ignored_items": os.path.join(data_dir, "ignored_items.txt"),
+        "supplier_vendor_map": os.path.join(data_dir, "supplier_vendor_map.json"),
     }
 
 
@@ -155,6 +156,12 @@ def refresh_active_data_state(app, known_vendors, get_rule_key, notify=True):
         app._sync_review_item_to_filtered(item)
     if hasattr(app, "_annotate_release_decisions"):
         app._annotate_release_decisions()
+
+    # Rebuild the bulk grid bucket index after the in-place recalc loop
+    # above — same fix as v0.7.4 applied to refresh_suggestions /
+    # refresh_recent_orders.  Without this the next bulk filter pass
+    # uses stale buckets via the fast path.
+    ui_bulk.rebuild_bulk_metadata_after_inplace_recalc(app)
 
     if app.individual_items:
         if not hasattr(app, "assign_index"):

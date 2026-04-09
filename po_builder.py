@@ -51,8 +51,13 @@ import ui_individual
 import ui_load
 import ui_review
 import ui_vendor_manager
+import ui_session_diff
 import ui_session_history
+import ui_skip_actions
+import ui_vendor_review
 import ui_ignored_items
+import ui_qoh_review
+import ui_supplier_map
 import ui_bulk_rule_edit
 import rules_csv_flow
 from maintenance import build_maintenance_report
@@ -729,6 +734,9 @@ class POBuilderApp:
 
     def _open_session_history(self):
         ui_session_history.open_session_history(self, SESSIONS_DIR)
+
+    def _open_session_diff(self):
+        ui_session_diff.open_session_diff_dialog(self)
 
     def _browse_folder(self):
         path = filedialog.askdirectory(title="Select Folder Containing X4 Report CSVs")
@@ -1714,6 +1722,33 @@ class POBuilderApp:
 
     def _open_ignored_items_manager(self):
         ui_ignored_items.open_ignored_items_manager(self)
+
+    def _open_supplier_map(self):
+        ui_supplier_map.open_supplier_map_dialog(self)
+
+    def _open_qoh_review(self):
+        ui_qoh_review.open_qoh_review_dialog(self)
+
+    def _open_vendor_review(self):
+        ui_vendor_review.open_vendor_review_dialog(self)
+
+    def _show_vendor_summary_from_bulk(self):
+        """Open Vendor Review pre-selected to the right-clicked row's vendor."""
+        focus_vendor = ""
+        ctx = getattr(self, "_right_click_bulk_context", None) or {}
+        row_id = ctx.get("row_id")
+        if row_id is None and getattr(self, "bulk_sheet", None):
+            row_id = self.bulk_sheet.current_row_id()
+        if row_id is not None:
+            resolver = getattr(self, "_resolve_bulk_row_id", None)
+            if callable(resolver):
+                _idx, item = resolver(row_id)
+                if item is not None:
+                    focus_vendor = str(item.get("vendor", "") or "").strip().upper()
+        ui_vendor_review.open_vendor_review_dialog(self, focus_vendor=focus_vendor or None)
+
+    def _open_skip_actions(self):
+        ui_skip_actions.open_skip_actions_dialog(self)
 
     def _ignore_from_bulk(self):
         bulk_context_flow.ignore_from_bulk(self, messagebox.askyesno, messagebox.showinfo)
