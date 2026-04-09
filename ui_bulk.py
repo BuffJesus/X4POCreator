@@ -404,6 +404,7 @@ def build_bulk_tab(app, editable_cols):
         if ch is not None:
             ch.bind("<Button-1>", lambda e: _header_click_sort(app, e), add="+")
             ch.bind("<Double-Button-1>", lambda e: _header_double_click_autosize(app, e))
+            ch.bind("<Button-3>", lambda e: _header_right_click_columns(app, e))
         app.bulk_sheet.sheet.bind("<Delete>", app._bulk_delete_selected)
         app.bulk_sheet.sheet.bind("<BackSpace>", app._bulk_delete_selected)
         app.bulk_sheet.sheet.bind("<Control-c>", app._bulk_copy_selection)
@@ -1615,6 +1616,71 @@ def autosize_bulk_tree(app):
     if not getattr(app, "bulk_sheet", None):
         return
     return
+
+
+def _header_right_click_columns(app, event):
+    """Show a checkbutton menu to toggle column visibility."""
+    bulk_sheet = getattr(app, "bulk_sheet", None)
+    if not bulk_sheet:
+        return
+    pinned = {"vendor", "line_code", "item_code", "description", "status", "final_qty"}
+    hidden = getattr(app, "_hidden_columns", set())
+
+    menu = tk.Menu(app.root, tearoff=0)
+    for col_name in bulk_sheet.columns:
+        if col_name in pinned:
+            continue
+        label = bulk_sheet.labels.get(col_name, col_name)
+        var = tk.BooleanVar(value=col_name not in hidden)
+        menu.add_checkbutton(label=label, variable=var,
+                             command=lambda cn=col_name, v=var: _toggle_column(app, cn, v.get()))
+    menu.add_separator()
+    menu.add_command(label="Show All", command=lambda: _show_all_columns(app))
+    try:
+        menu.tk_popup(event.x_root, event.y_root)
+    except Exception:
+        pass
+
+
+def _toggle_column(app, col_name, visible):
+    hidden = getattr(app, "_hidden_columns", set())
+    if visible:
+        hidden.discard(col_name)
+    else:
+        hidden.add(col_name)
+    app._hidden_columns = hidden
+    _apply_column_visibility(app)
+
+
+def _show_all_columns(app):
+    app._hidden_columns = set()
+    _apply_column_visibility(app)
+
+
+def _apply_column_visibility(app):
+    bulk_sheet = getattr(app, "bulk_sheet", None)
+    if not bulk_sheet:
+        return
+    hidden = getattr(app, "_hidden_columns", set())
+    for col_name in bulk_sheet.columns:
+        col_idx = bulk_sheet.col_index.get(col_name)
+        if col_idx is None:
+            continue
+        if col_name in hidden:
+            try:
+                bulk_sheet.sheet.column_width(col_idx, 0)
+            except Exception:
+                pass
+        else:
+            width = bulk_sheet.base_widths.get(col_name, 100)
+            try:
+                bulk_sheet.sheet.column_width(col_idx, width)
+            except Exception:
+                pass
+    try:
+        bulk_sheet.sheet.redraw()
+    except Exception:
+        pass
 
 
 def _header_click_sort(app, event):
