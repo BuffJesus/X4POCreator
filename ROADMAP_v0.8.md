@@ -1,8 +1,30 @@
 # PO Builder Roadmap — v0.8.x
 
-Status: In progress (v0.8.0 and v0.8.1 shipped)
+Status: In progress (v0.8.0 → v0.8.12 shipped)
 
-Current app version: `0.8.1`
+Current app version: `0.8.12`
+
+## Headline results so far
+
+**Session load on the 63K-item / 8-year production dataset:
+~85 s → ~32 s (2.7× faster)** across v0.8.9 → v0.8.12.
+
+| Phase | v0.8.9 baseline | v0.8.12 |
+|---|---:|---:|
+| `parse_all_files` | 17.6 s | 17.1 s |
+| `prepare_assignment_session` | **35.6 s** | **5.6 s** |
+| `normalize_items_to_cycle` | 23.2 s | 0 s |
+| `build_bulk_sheet_rows` first paint | 8.9 s | 8.9 s |
+| **Pre-UI total** | **~85 s** | **~32 s** |
+
+The big wins:
+- **v0.8.10** eliminated the redundant `normalize_items_to_cycle` pass (−23 s)
+- **v0.8.12** eliminated an O(n²) scan in `_description_for_key` (−29 s)
+
+Both were found by the perf harness introduced in **v0.8.2** and its
+instrumentation refinements through v0.8.11.  Without the harness
+every fix would have been a guess; with it every fix landed with
+measured before/after numbers.
 
 ---
 
@@ -71,9 +93,9 @@ the end of this file.
 
 ---
 
-## Phase 2 — Performance instrumentation + measured fixes
+## Phase 2 — Performance instrumentation + measured fixes — ✓ **closed**
 
-### 2.0 — Perf instrumentation harness (v0.8.2) — ships first
+### 2.0 — Perf instrumentation harness (v0.8.2) — ✓ closed
 
 Every perf claim below is either measured from a dev-box profile script
 or estimated.  The harness turns those into "here's the exact ms
@@ -121,31 +143,54 @@ the live app from outside it.
 **Ships as v0.8.2.**  Zero behavior change.  Every subsequent perf fix
 lands with before/after numbers from the operator's real session.
 
-### 2.1 — Phase 1 perf wins (informed by the harness)
+### 2.1 — Measured perf wins — mostly ✓ closed
 
-Land as v0.8.3, v0.8.4 etc., one focused release per fix, each measured
-against the harness output from the previous release.
+Shipped across v0.8.10 → v0.8.12, each informed by real harness
+traces from the operator's 63K-item dataset.
 
-- [ ] **Generation-counter row render cache** (`ui_bulk`) — expected
-  328 ms → ~20 ms on filter change
+- [x] **Generation-counter row render cache** (v0.8.10) — `ui_bulk`
+  cache hits are now `int == int` compares instead of 20-field
+  signature recomputes
+- [x] **Memoized `_suggest_min_max`** per session with cycle-change
+  invalidation (v0.8.10)
+- [x] **Eliminate `normalize_items_to_cycle` redundant pass** (v0.8.10)
+  — folded into `prepare_assignment_session`'s single loop; −23 s
+- [x] **Memoized `_resolve_pack_size_with_source`** per session (v0.8.12)
+- [x] **Memoized `suggest_min_max_with_source`** via session cache
+  (v0.8.12)
+- [x] **Short-circuit `receipt_pack_size_for_key`** when the key has
+  no receipt history (v0.8.12)
+- [x] **Lazy description index** — eliminated an **O(n²)** linear
+  scan in `_description_for_key` that was dominating 29 seconds of
+  prepare_assignment_session (v0.8.12) — **the biggest single perf
+  win in the v0.8.x train**
+- [x] **Lazy sales-history index** — same fix for
+  `sales_history_for_key` (v0.8.12)
+- [x] **`bulk_row_values` shared empty-dict sentinel** + hoisted locals
+  in `build_bulk_sheet_rows` (v0.8.12)
+- [x] **Hoisted locals in `prepare_assignment_session` candidate-build
+  and enrich loops** (v0.8.10 / v0.8.12)
+- [x] **`_finish_bulk_final` defensive row build** — bad rows are
+  logged and skipped instead of crashing the whole pass (v0.8.4)
+- [x] **`check_stock_warnings` short-circuit** when >50 flagged items
+  (was building 12,000 Tk widgets) (v0.8.9)
+
+**Still open (not yet worth the risk):**
+
 - [ ] **Precomputed `_text_haystack`** per item — expected 83 ms → ~10 ms
-  on text filter
+  on text filter (small interactive win, no user complaint yet)
 - [ ] **Fused warning-generation loop** in `parse_all_files` — expected
-  ~80 ms saved
-- [ ] **String-intern hot path values** in `_parse_x4_detailed_part_sales_row`
-- [ ] **Preallocated bucket dicts** in `sync_bulk_session_metadata`
-- [ ] **No-op filter guard** — skip metadata rebuild when nothing
-  affecting it changed
-- [ ] **Memoized `_suggest_min_max`** per session with edit-driven
-  invalidation
+  ~80 ms saved (negligible on the 17 s parse)
+- [ ] **Fused `parse_detailed_pair_aggregates` three-pass loop** into
+  one — expected 2-4 s saved on parse
+- [ ] **`build_bulk_sheet_rows` first-paint optimization** — still 8.9 s
+  on 59K items; see the audit in v0.8.11 notes.  No O(n²) bug found,
+  the cost is genuine per-row tuple construction.  Target for v0.8.13
+  or a Cython `bulk_row_values` if push comes to shove.
 - [ ] **Per-row-id snapshot in bulk history capture** instead of
   `deepcopy` of full `filtered_items`
-- [ ] **Lazy `receipt_history_lookup` finalization**
-- [ ] **Fast-path `classify_package_profile`**
-- [ ] **Parse cache generation bump on app version change** (already
-  done in v0.6.7; verify render cache has the same discipline)
-- [ ] **Drop redundant `annotate_release_decisions` sweep** on
-  cycle-only changes
+- [ ] **`sheet.set_rows` on 59K rows** — measured 24 ms in v0.8.11, not a
+  target
 
 ---
 

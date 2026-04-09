@@ -263,30 +263,37 @@ def do_export(
     vendor_groups = group_assigned_items(selected_export_items)
 
     created_files = []
-    for vendor, items in sorted(vendor_groups.items()):
-        try:
-            filepath = export_vendor_po(vendor, items, output_dir)
-            created_files.append(filepath)
-        except Exception as exc:
-            app._hide_loading()
-            messagebox.showerror("Export Error", f"Failed to export PO for {vendor}:\n{exc}")
-            return
+    with perf_trace.span("export_flow.write_vendor_files", vendor_count=len(vendor_groups)):
+        for vendor, items in sorted(vendor_groups.items()):
+            try:
+                with perf_trace.span("export_flow.export_vendor_po", vendor=vendor, item_count=len(items)):
+                    filepath = export_vendor_po(vendor, items, output_dir)
+                created_files.append(filepath)
+            except Exception as exc:
+                app._hide_loading()
+                messagebox.showerror("Export Error", f"Failed to export PO for {vendor}:\n{exc}")
+                return
 
-    storage.append_order_history(order_history_file, audited_export_items)
+    with perf_trace.span("export_flow.append_order_history"):
+        storage.append_order_history(order_history_file, audited_export_items)
     suspense_carry_result = None
     if hasattr(app, "_persist_suspense_carry"):
-        suspense_carry_result = app._persist_suspense_carry()
-    maintenance_issues = app._build_maintenance_report()
-    session_snapshot = build_session_snapshot(
-        app,
-        output_dir,
-        created_files,
-        maintenance_issues,
-        exported_items=audited_export_items,
-        export_scope_label=export_scope_label,
-    )
+        with perf_trace.span("export_flow.persist_suspense_carry"):
+            suspense_carry_result = app._persist_suspense_carry()
+    with perf_trace.span("export_flow.build_maintenance_report"):
+        maintenance_issues = app._build_maintenance_report()
+    with perf_trace.span("export_flow.build_session_snapshot"):
+        session_snapshot = build_session_snapshot(
+            app,
+            output_dir,
+            created_files,
+            maintenance_issues,
+            exported_items=audited_export_items,
+            export_scope_label=export_scope_label,
+        )
     try:
-        storage.save_session_snapshot(sessions_dir, session_snapshot)
+        with perf_trace.span("export_flow.save_session_snapshot"):
+            storage.save_session_snapshot(sessions_dir, session_snapshot)
     except Exception as exc:
         app._hide_loading()
         messagebox.showerror("Session Save Error", f"Failed to save session snapshot:\n{exc}")

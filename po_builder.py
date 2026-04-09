@@ -873,6 +873,10 @@ class POBuilderApp:
                 var_map[which].set(path)
 
     def _do_load(self):
+        with perf_trace.span("po_builder._do_load"):
+            POBuilderApp._do_load_inner(self)
+
+    def _do_load_inner(self):
         detailed_sales_path = getattr(self, "var_detailed_sales_path", None)
         received_parts_path = getattr(self, "var_received_parts_path", None)
         detailed_sales_path = detailed_sales_path.get().strip() if detailed_sales_path is not None else ""
@@ -904,8 +908,9 @@ class POBuilderApp:
         if result is None:
             return
 
-        load_flow.apply_load_result(self.session, result)
-        self.sales_span_days = result.get("sales_span_days")
+        with perf_trace.span("po_builder.apply_load_result_and_warnings"):
+            load_flow.apply_load_result(self.session, result)
+            self.sales_span_days = result.get("sales_span_days")
 
         if not self.sales_items:
             messagebox.showwarning(
@@ -997,8 +1002,10 @@ class POBuilderApp:
         self.lbl_load_status.config(text="✓  " + "  ·  ".join(status_parts))
 
         # Data quality summary
-        dq_summary = load_flow.compute_data_quality_summary(self.session)
-        ui_load.refresh_data_quality_card(self, dq_summary)
+        with perf_trace.span("po_builder.compute_data_quality_summary"):
+            dq_summary = load_flow.compute_data_quality_summary(self.session)
+        with perf_trace.span("po_builder.refresh_data_quality_card"):
+            ui_load.refresh_data_quality_card(self, dq_summary)
         if dq_summary.get("gate_required"):
             unresolved = dq_summary.get("unresolved_item_codes", 0)
             total = dq_summary.get("total_items", 1)
@@ -1014,7 +1021,8 @@ class POBuilderApp:
             )
 
         # Populate exclude tab and enable it
-        self._populate_exclude_tab()
+        with perf_trace.span("po_builder.populate_exclude_tab"):
+            self._populate_exclude_tab()
         self.notebook.tab(1, state="normal")
         self.notebook.select(1)
 
@@ -1169,20 +1177,49 @@ class POBuilderApp:
         return pack
 
     def _resolve_pack_size_with_source(self, key):
-        """Resolve pack size and report where it came from."""
+        """Resolve pack size and report where it came from.
+
+        v0.8.12: memoized per session.  The receipt-history fallback
+        branch (`receipt_pack_size_for_key` → `receipt_vendor_evidence`
+        + `_description_for_key` + looks_like_reel_item classification)
+        costs ~300 µs per miss.  On 59K candidates during
+        `prepare_assignment_session` that was **17.6 seconds** out of
+        a 19.8-second candidate-build phase.  Per-key is deterministic
+        — same session, same answer.
+        """
+        cache = getattr(self, "_pack_size_resolution_cache", None)
+        if cache is None:
+            cache = {}
+            self._pack_size_resolution_cache = cache
+        hit = cache.get(key)
+        if hit is not None:
+            return hit
         pack = self.pack_size_lookup.get(key)
         if pack:
-            return pack, "x4_exact"
+            result = (pack, "x4_exact")
+            cache[key] = result
+            return result
         generic = self.pack_size_lookup.get(("", key[1]))
         if generic:
-            return generic, "x4_item"
+            result = (generic, "x4_item")
+            cache[key] = result
+            return result
         fallback = self.pack_size_by_item.get(key[1])
         if fallback:
-            return fallback, "x4_item_fallback"
+            result = (fallback, "x4_item_fallback")
+            cache[key] = result
+            return result
         receipt_pack = reorder_flow.receipt_pack_size_for_key(self, key)
         if receipt_pack:
-            return receipt_pack, "receipt_history"
-        return None, ""
+            result = (receipt_pack, "receipt_history")
+            cache[key] = result
+            return result
+        result = (None, "")
+        cache[key] = result
+        return result
+
+    def _invalidate_pack_size_resolution_cache(self):
+        self._pack_size_resolution_cache = {}
 
     def _get_x4_pack_size(self, key):
         """Return the original X4 order multiple from the loaded source files."""
@@ -1205,6 +1242,13 @@ class POBuilderApp:
         return persistent_state_flow.persist_suspense_carry(self, write_debug)
 
     def _proceed_to_assign(self):
+        with perf_trace.span("po_builder.proceed_to_assign"):
+            # Call the real method off the class so test fakes that
+            # don't inherit from POBuilderApp still route through the
+            # unbound function path.
+            POBuilderApp._proceed_to_assign_inner(self)
+
+    def _proceed_to_assign_inner(self):
         """Apply all filters, merge suspended items, and move to bulk vendor assignment."""
         self._show_loading("Crunching numbers...")
         self.root.update()
@@ -1213,6 +1257,20 @@ class POBuilderApp:
         except Exception:
             days = 14
 
+        # v0.8.10: _suggest_min_max cache is keyed by (line_code, item_code)
+        # against the loaded session lookups.  On a fresh load the
+        # underlying data is all-new so any prior memo is stale.
+        invalidate = getattr(self, "_invalidate_suggest_min_max_cache", None)
+        if callable(invalidate):
+            invalidate()
+        else:
+            self._suggest_min_max_cache = {}
+        # v0.8.12: pack size resolution is also memoized.
+        self._pack_size_resolution_cache = {}
+        # v0.8.12: suggest_min_max_with_source is memoized per session;
+        # fresh load invalidates.
+        if hasattr(self.session, "_suggest_min_max_source_cache"):
+            self.session._suggest_min_max_source_cache = {}
         try:
             has_items = assignment_flow.prepare_assignment_session(
                 self.session,
@@ -1263,9 +1321,12 @@ class POBuilderApp:
         if btn_trend is not None:
             btn_trend.config(state="normal" if has_trend_history else "disabled")
         try:
-            self._refresh_vendor_inputs()
-            ui_bulk.restore_bulk_filter_sort_state(self)
-            self._populate_bulk_tree()
+            with perf_trace.span("po_builder.refresh_vendor_inputs"):
+                self._refresh_vendor_inputs()
+            with perf_trace.span("po_builder.restore_bulk_filter_sort_state"):
+                ui_bulk.restore_bulk_filter_sort_state(self)
+            with perf_trace.span("po_builder.populate_bulk_tree"):
+                self._populate_bulk_tree()
             self.notebook.tab(3, state="normal")
             self.notebook.select(3)
         except Exception as exc:
@@ -1311,11 +1372,34 @@ class POBuilderApp:
     def _suggest_min_max(self, key):
         """
         Calculate suggested min/max based on 12-month sales and reorder cycle.
-        Min = usage during 1 cycle (reorder point)
-        Max = usage during 2 cycles (stock-up target)
-        Returns (sug_min, sug_max) or (None, None) if history is too sparse.
+
+        v0.8.10 perf: memoize the result per session.  The bulk grid
+        row renderer calls this once per row per filter/sort/render,
+        and on 59K items that's 59K potentially-identical calls per
+        filter change.  The underlying `reorder_flow.suggest_min_max`
+        walks session.detailed_sales_stats_lookup + inventory + rules,
+        so each call is ~50-100 µs.  59K × 100 µs = ~6 s of pure
+        redundant work.  Cache clears on session reset + cycle change.
         """
-        return reorder_flow.suggest_min_max(self, key, MIN_ANNUAL_SALES_FOR_SUGGESTIONS)
+        cache = getattr(self, "_suggest_min_max_cache", None)
+        if cache is None:
+            cache = {}
+            self._suggest_min_max_cache = cache
+        hit = cache.get(key)
+        if hit is not None:
+            return hit
+        result = reorder_flow.suggest_min_max(self, key, MIN_ANNUAL_SALES_FOR_SUGGESTIONS)
+        cache[key] = result
+        return result
+
+    def _invalidate_suggest_min_max_cache(self):
+        """Drop the per-session _suggest_min_max cache.
+
+        Called on cycle change, full data reload, and any edit that
+        changes the min-annual-sales threshold or the underlying
+        stats lookup.
+        """
+        self._suggest_min_max_cache = {}
 
     def _find_filtered_item(self, key):
         return ui_bulk.find_filtered_item(self, key)
@@ -1473,6 +1557,20 @@ class POBuilderApp:
 
     def _refresh_suggestions(self):
         """Recalculate suggestions when the reorder cycle changes."""
+        # v0.8.10: clear the _suggest_min_max memo because it depends
+        # on cycle.  Guard via getattr so test fakes don't need to
+        # stub the new method.
+        invalidate = getattr(self, "_invalidate_suggest_min_max_cache", None)
+        if callable(invalidate):
+            invalidate()
+        else:
+            self._suggest_min_max_cache = {}
+        # v0.8.12: suggest_min_max_with_source cache also depends on cycle
+        session = getattr(self, "session", None)
+        if session is not None and hasattr(session, "_suggest_min_max_source_cache"):
+            session._suggest_min_max_source_cache = {}
+        # Pack size resolution depends on rule / receipt data — safe to keep
+        # across cycle changes since neither changes with cycle.
         reorder_flow.refresh_suggestions(self)
 
     def _refresh_recent_orders(self):

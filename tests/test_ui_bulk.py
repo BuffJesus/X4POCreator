@@ -1571,14 +1571,21 @@ class UIBulkTests(unittest.TestCase):
         self.assertEqual(first, second)
         self.assertEqual(calls, [("AER-", "GH781-4")])
 
-    def test_cached_bulk_row_values_invalidates_when_cycle_changes(self):
+    def test_cached_bulk_row_values_invalidates_when_generation_bumped(self):
+        """v0.8.10: cache is generation-keyed instead of signature-keyed.
+
+        Cycle changes flow through `_refresh_suggestions` which calls
+        `_rebuild_bulk_metadata_after_inplace_recalc` →
+        `sync_bulk_cache_state(filtered_items_changed=True)` →
+        `bump_bulk_row_render_generation`.  This test exercises the
+        low-level contract: a generation bump invalidates cached rows.
+        """
         calls = []
-        cycle_state = {"value": "Biweekly"}
         fake_app = SimpleNamespace(
             inventory_lookup={("AER-", "GH781-4"): {"mo12_sales": 52}},
             order_rules={},
-            var_reorder_cycle=SimpleNamespace(get=lambda: cycle_state["value"]),
-            _suggest_min_max=lambda key: calls.append((key, cycle_state["value"])) or (2, 5),
+            var_reorder_cycle=SimpleNamespace(get=lambda: "Biweekly"),
+            _suggest_min_max=lambda key: calls.append(key) or (2, 5),
         )
         item = {
             "line_code": "AER-",
@@ -1594,14 +1601,15 @@ class UIBulkTests(unittest.TestCase):
             "why": "",
         }
 
+        # Two reads without a bump → one renderer call, cache hit on second
         ui_bulk.cached_bulk_row_values(fake_app, item)
-        cycle_state["value"] = "Weekly"
         ui_bulk.cached_bulk_row_values(fake_app, item)
+        self.assertEqual(len(calls), 1, "cache should have reused the first render")
 
-        self.assertEqual(
-            calls,
-            [(("AER-", "GH781-4"), "Biweekly"), (("AER-", "GH781-4"), "Weekly")],
-        )
+        # Bump generation → next call re-renders
+        ui_bulk.bump_bulk_row_render_generation(fake_app)
+        ui_bulk.cached_bulk_row_values(fake_app, item)
+        self.assertEqual(len(calls), 2, "cache should have invalidated on generation bump")
 
     def test_prune_bulk_row_render_cache_removes_entries_not_in_filtered_items(self):
         keep_item = {"line_code": "AER-", "item_code": "KEEP"}

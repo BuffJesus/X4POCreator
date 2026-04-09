@@ -244,10 +244,19 @@ def receipt_history_for_key(app, key):
 
 
 def sales_history_for_key(app, key):
-    for item in getattr(app, "sales_items", []) or []:
-        if (item.get("line_code", ""), item.get("item_code", "")) == key:
-            return dict(item or {})
-    return {}
+    """v0.8.12: per-session index replaces the O(n) linear scan."""
+    cache = getattr(app, "_sales_history_index_cache", None)
+    if cache is None:
+        cache = {}
+        for entry in getattr(app, "sales_items", None) or ():
+            if not isinstance(entry, dict):
+                continue
+            k = (entry.get("line_code", ""), entry.get("item_code", ""))
+            if k not in cache:
+                cache[k] = entry
+        app._sales_history_index_cache = cache
+    entry = cache.get(key)
+    return dict(entry) if entry else {}
 
 
 def receipt_sales_balance_for_key(app, key):
@@ -267,34 +276,71 @@ def receipt_sales_balance_for_key(app, key):
     })
 
 
+def _build_description_index(app):
+    """Single-pass scan that builds a (line_code, item_code) → description
+    index from every loaded source.
+
+    v0.8.12: `_description_for_key` used to scan every sales item /
+    receipt / open PO row linearly for every key it was asked about.
+    On the 63K-item dataset with 59K lookups that was O(n²) ≈ 18
+    billion dict comparisons and cost ~17 seconds inside
+    `receipt_pack_size_for_key`.  One upfront O(n) sweep + O(1)
+    lookups per query fixes it.
+    """
+    index = {}
+    for attr in (
+        "sales_items",
+        "receipts_items",
+        "open_po_items",
+        "suspended_items",
+        "detailed_sales_rows",
+    ):
+        collection = getattr(app, attr, None) or ()
+        for entry in collection:
+            if not isinstance(entry, dict):
+                continue
+            lc = entry.get("line_code", "")
+            ic = entry.get("item_code", "")
+            if not ic:
+                continue
+            key = (lc, ic)
+            if key in index:
+                continue
+            description = entry.get("description", "")
+            if description:
+                text = str(description).strip()
+                if text:
+                    index[key] = text
+    susp_lookup = getattr(app, "suspended_lookup", None) or {}
+    for key, entries in susp_lookup.items():
+        if key in index:
+            continue
+        for entry in entries or ():
+            if not isinstance(entry, dict):
+                continue
+            description = entry.get("description", "")
+            if description:
+                text = str(description).strip()
+                if text:
+                    index[key] = text
+                    break
+    return index
+
+
 def _description_for_key(app, key):
     inv = (getattr(app, "inventory_lookup", {}) or {}).get(key, {}) or {}
     description = str(inv.get("description", "") or "").strip()
     if description:
         return description
-    # Walk every loaded source so items appearing only in receipts, open
-    # POs, suspended carry, or detailed sales rollups still get a label.
-    sources = (
-        ("sales_items", getattr(app, "sales_items", None)),
-        ("receipts_items", getattr(app, "receipts_items", None)),
-        ("open_po_items", getattr(app, "open_po_items", None)),
-        ("suspended_items", getattr(app, "suspended_items", None)),
-        ("detailed_sales_rows", getattr(app, "detailed_sales_rows", None)),
-    )
-    for _name, collection in sources:
-        for item in collection or ():
-            if (item.get("line_code", ""), item.get("item_code", "")) == key:
-                description = str(item.get("description", "") or "").strip()
-                if description:
-                    return description
-    # Suspended lookup is keyed by (lc, ic) and may carry the only label.
-    susp_lookup = getattr(app, "suspended_lookup", None) or {}
-    susp_entries = susp_lookup.get(key) or []
-    for entry in susp_entries:
-        description = str((entry or {}).get("description", "") or "").strip()
-        if description:
-            return description
-    return ""
+    # v0.8.12: lazy per-session description index — one O(n) sweep on
+    # first call, O(1) lookup thereafter.  Eliminates the O(n²)
+    # behavior that cost 17+ seconds inside the candidate-build loop
+    # on the operator's 63K-item dataset.
+    cache = getattr(app, "_description_index_cache", None)
+    if cache is None:
+        cache = _build_description_index(app)
+        app._description_index_cache = cache
+    return cache.get(key, "")
 
 
 def receipt_vendor_evidence(app, key):
@@ -327,6 +373,16 @@ def receipt_vendor_evidence(app, key):
 
 
 def receipt_pack_size_for_key(app, key, *, minimum_confidence="high"):
+    # v0.8.12: fast short-circuit.  `receipt_vendor_evidence`,
+    # `_description_for_key`, and the classification calls below are
+    # each tens of microseconds.  On the real 63K-candidate dataset
+    # this function ran 59K times and burned 17.6 seconds in the
+    # candidate-build loop.  The vast majority of items don't have
+    # receipt history for their specific key — an O(1) dict check
+    # before any real work eliminates 95%+ of the cost.
+    receipt_history = getattr(app, "receipt_history_lookup", None) or {}
+    if key not in receipt_history:
+        return None
     evidence = receipt_vendor_evidence(app, key)
     confidence = evidence["receipt_pack_confidence"]
     candidate = evidence["receipt_pack_candidate"]
@@ -336,8 +392,11 @@ def receipt_pack_size_for_key(app, key, *, minimum_confidence="high"):
         return None
     if minimum_confidence == "medium" and confidence not in ("high", "medium"):
         return None
+    # `dict((...).get(key, {}) or {})` was a per-call copy that
+    # contributed a meaningful chunk on 59K calls.  Read the inv dict
+    # directly — the classifiers below only read fields, never mutate.
+    inv = (getattr(app, "inventory_lookup", {}) or {}).get(key) or {}
     description = _description_for_key(app, key)
-    inv = dict((getattr(app, "inventory_lookup", {}) or {}).get(key, {}) or {})
     item_context = {
         "line_code": key[0],
         "item_code": key[1],
@@ -473,24 +532,33 @@ def refresh_suggestions(app):
 def normalize_items_to_cycle(app):
     """Normalize demand_signal on all filtered_items to match the current reorder cycle.
 
-    Called once after assignment_flow.prepare_assignment_session() builds the
-    raw item list.  assignment_flow sets demand_signal as a total over the full
-    sales export window (e.g. 40 bearings sold in a year).  Without this step,
-    items without a current_max in inventory fall back to that raw total as their
-    target stock, producing wildly over-sized suggestions on long export windows.
+    v0.8.10: cycle normalization now runs inside
+    `assignment_flow.prepare_assignment_session`'s single candidate-build
+    loop, so this function is a **redundant second pass on fresh session
+    loads** — it used to take ~23 s on the 63K-item dataset because it
+    re-enriches every item via `_recalculate_item`.  We detect the
+    "fresh load" case by checking whether the cycle has actually
+    changed since prepare_assignment_session ran; if not, this is a
+    no-op that completes in < 1 ms.
 
-    Items whose normalized demand rounds to zero are left at zero — calculate_raw_need
-    will still include them if their inventory is below a set X4 minimum, but pure
-    one-off sales from a long window will no longer generate spurious suggestions.
-
-    Formula: demand_signal = round(raw_demand * cycle_days / span_days)
-    Example: 40 sold / 365 days * 7 days (weekly) = 0.77 -> 1
-    Example: 1 sold / 365 days * 7 days (weekly) = 0.019 -> 0  (one-off, suppressed)
+    The full recalculation loop is still needed when the operator
+    flips the Reorder Cycle dropdown mid-session — in that case the
+    previously-stored `reorder_cycle_weeks` on each item is stale and
+    we have to re-enrich.
     """
-    span_days = getattr(app, "sales_span_days", None)
     cycle_weeks = app._get_cycle_weeks()
+    items = getattr(app, "filtered_items", None) or []
+    if items:
+        sample = items[0]
+        if sample.get("reorder_cycle_weeks") == cycle_weeks:
+            # Fast path: prepare_assignment_session already normalized
+            # to this cycle (v0.8.10).  No re-enrich needed — the bulk
+            # metadata is already in sync.  This saves ~23 s on the
+            # real 63K dataset.
+            return
+    span_days = getattr(app, "sales_span_days", None)
 
-    for item in app.filtered_items:
+    for item in items:
         item["reorder_cycle_weeks"] = cycle_weeks
         raw_eff_sales = item.get("effective_qty_sold", item.get("qty_sold", 0))
         raw_eff_susp = item.get("effective_qty_suspended", item.get("qty_suspended", 0))

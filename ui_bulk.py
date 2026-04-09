@@ -470,27 +470,36 @@ def build_bulk_tab(app, editable_cols):
     ).pack(side=tk.RIGHT, padx=4)
 
 
+@perf_trace.timed("ui_bulk.populate_bulk_tree")
 def populate_bulk_tree(app):
+    perf_trace.stamp("populate_bulk_tree.stage", stage="begin")
     sync_bulk_cache_state(app)
     metadata = getattr(app, "_bulk_line_code_values", None), getattr(app, "_bulk_summary_counts", None)
     line_codes, counts = metadata
     if not counts or counts.get("total") != len(app.filtered_items) or line_codes is None:
-        metadata = sync_bulk_session_metadata(app)
+        with perf_trace.span("populate_bulk_tree.sync_metadata"):
+            metadata = sync_bulk_session_metadata(app)
         counts = metadata["counts"]
         line_codes = list(metadata["line_codes"])
     visible_scope = ("populate", len(app.filtered_items))
     cached_rows = cached_bulk_visible_rows(app, visible_scope)
     if cached_rows is None:
         row_ids, rows = build_bulk_sheet_rows(app, app.filtered_items, row_id_factory=lambda _item, idx: str(idx))
-        store_bulk_visible_rows(app, visible_scope, row_ids, rows)
+        with perf_trace.span("populate_bulk_tree.store_visible_rows"):
+            store_bulk_visible_rows(app, visible_scope, row_ids, rows)
     else:
         row_ids, rows = cached_rows
+    perf_trace.stamp("populate_bulk_tree.stage", stage="rows_ready", count=len(rows))
 
-    set_combobox_values_if_changed(getattr(app, "combo_bulk_lc", None), ["ALL"] + list(line_codes))
-    set_combobox_values_if_changed(getattr(app, "combo_bulk_vendor", None), app.vendor_codes_used)
-    update_bulk_summary(app, counts=counts)
+    with perf_trace.span("populate_bulk_tree.combobox_values"):
+        set_combobox_values_if_changed(getattr(app, "combo_bulk_lc", None), ["ALL"] + list(line_codes))
+        set_combobox_values_if_changed(getattr(app, "combo_bulk_vendor", None), app.vendor_codes_used)
+    with perf_trace.span("populate_bulk_tree.update_summary"):
+        update_bulk_summary(app, counts=counts)
     if app.bulk_sheet:
-        app.bulk_sheet.set_rows(rows, row_ids)
+        with perf_trace.span("populate_bulk_tree.sheet_set_rows", rows=len(rows)):
+            app.bulk_sheet.set_rows(rows, row_ids)
+    perf_trace.stamp("populate_bulk_tree.stage", stage="done")
 
 
 def item_source(item):
@@ -535,6 +544,9 @@ def sync_bulk_cache_state(app, *, filtered_items_changed=False, retain_items=Non
     if filtered_items_changed:
         invalidate_bulk_row_index(app)
         invalidate_bulk_filter_result_cache(app)
+        # v0.8.10: bump render generation on any filtered_items
+        # replacement so cached row tuples are invalidated in one op
+        bump_bulk_row_render_generation(app)
         invalidate_bulk_visible_rows_cache(app)
     return prune_bulk_row_render_cache(app, retain_items=retain_items)
 
@@ -616,9 +628,16 @@ def bulk_row_render_signature(app, item):
     )
 
 
+_EMPTY_INV: dict = {}
+
+
 def bulk_row_values(app, item):
-    key = (item["line_code"], item["item_code"])
-    inventory = app.inventory_lookup.get(key, {})
+    line_code = item["line_code"]
+    item_code = item["item_code"]
+    key = (line_code, item_code)
+    # v0.8.12: shared empty-dict sentinel avoids a per-call allocation
+    # on 59K first-paint calls.
+    inventory = app.inventory_lookup.get(key) or _EMPTY_INV
     supplier = inventory.get("supplier", "")
     qoh = inventory.get("qoh", "")
     if qoh not in ("", None):
@@ -634,16 +653,15 @@ def bulk_row_values(app, item):
     raw_need = item.get("raw_need", item.get("order_qty", 0))
     suggested_qty = item.get("suggested_qty", raw_need)
     final_qty = item.get("final_qty", item.get("order_qty", 0))
-    rule_key = f"{item['line_code']}:{item['item_code']}"
-    rule = app.order_rules.get(rule_key)
+    rule = app.order_rules.get(f"{line_code}:{item_code}")
     buy_rule = get_buy_rule_summary(item, rule)
     why = item.get("why", "")
     risk_score = item.get("stockout_risk_score")
     risk_display = f"{int(round(risk_score * 100))}%" if isinstance(risk_score, float) else ""
     return (
         item.get("vendor", ""),
-        item["line_code"],
-        item["item_code"],
+        line_code,
+        item_code,
         item["description"],
         source,
         status,
@@ -663,26 +681,64 @@ def bulk_row_values(app, item):
     )
 
 
+def _bulk_row_render_generation(app):
+    return getattr(app, "_bulk_row_render_generation_counter", 0)
+
+
+def bump_bulk_row_render_generation(app):
+    """Invalidate every cached row render tuple in a single O(1) op.
+
+    v0.8.10: row render cache is now generation-keyed — cache entries
+    are `(generation, values)` and a hit just compares two ints.
+    Previously the cache stored `(signature, values)` and every hit
+    recomputed the signature (~280 ms on 59K items for every filter
+    change).  Generation-bumping moves the invalidation cost from
+    per-render to per-edit.
+    """
+    app._bulk_row_render_generation_counter = _bulk_row_render_generation(app) + 1
+
+
 def cached_bulk_row_values(app, item):
     row_id = bulk_row_id(item)
-    signature = bulk_row_render_signature(app, item)
     cache = _bulk_row_render_cache(app)
+    generation = _bulk_row_render_generation(app)
     cached = cache.get(row_id)
-    if cached and cached[0] == signature:
+    if cached is not None and cached[0] == generation:
         return cached[1]
     renderer = getattr(app, "_bulk_row_values", None)
     values = renderer(item) if callable(renderer) else bulk_row_values(app, item)
-    cache[row_id] = (signature, values)
+    cache[row_id] = (generation, values)
     return values
 
 
 @perf_trace.timed("ui_bulk.build_bulk_sheet_rows")
 def build_bulk_sheet_rows(app, items, *, row_id_factory=bulk_row_id):
+    # v0.8.12: hoist the cache + renderer lookups to locals.  Inside
+    # the 59K-row loop, every attribute access was a LOAD_ATTR chain;
+    # stashing them as locals cuts the per-row dispatch cost.
+    cache = _bulk_row_render_cache(app)
+    generation = _bulk_row_render_generation(app)
+    renderer = getattr(app, "_bulk_row_values", None)
+    if not callable(renderer):
+        renderer = lambda i, _app=app: bulk_row_values(_app, i)
+    default_row_id = row_id_factory is bulk_row_id
     row_ids = []
     rows = []
+    local_bulk_row_id = bulk_row_id
+    row_ids_append = row_ids.append
+    rows_append = rows.append
     for idx, item in enumerate(items):
-        row_ids.append(row_id_factory(item, idx) if row_id_factory is not bulk_row_id else bulk_row_id(item))
-        rows.append(list(cached_bulk_row_values(app, item)))
+        row_ids_append(local_bulk_row_id(item) if default_row_id else row_id_factory(item, idx))
+        # Inline cache lookup — cached_bulk_row_values fast path, no
+        # function-call overhead.
+        rid = local_bulk_row_id(item)
+        cached = cache.get(rid)
+        if cached is not None and cached[0] == generation:
+            rows_append(list(cached[1]))
+            continue
+        values = renderer(item)
+        cache[rid] = (generation, values)
+        rows_append(list(values))
     return row_ids, rows
 
 
