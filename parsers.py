@@ -805,13 +805,18 @@ def parse_detailed_pair_aggregates(detailed_sales_path, received_parts_path, *, 
     detailed_sales_rollup = {}
     sales_start = None
     sales_end = None
+    # Hoist locals for the 830K-row inner loop
+    _coerce = _coerce_int
+    _max = max
+    sales_row_count = 0
 
     for row in _iter_detailed_part_sales_csv(detailed_sales_path):
+        sales_row_count += 1
         key = (row.get("line_code", ""), row.get("item_code", ""))
         if not key[1]:
             continue
         description = row.get("description", "")
-        qty_sold = max(0, _coerce_int(row.get("qty_sold", 0)))
+        qty_sold = _max(0, _coerce(row.get("qty_sold", 0)))
         sale_date = str(row.get("sale_date", "") or "").strip()
 
         summary_entry = sales_summary.setdefault(key, {
@@ -863,13 +868,20 @@ def parse_detailed_pair_aggregates(detailed_sales_path, received_parts_path, *, 
                 if sales_end is None or sale_dt > sales_end:
                     sales_end = sale_dt
 
+    perf_trace.stamp(
+        "parse_detailed_pair_aggregates.sales_done",
+        rows=sales_row_count,
+        keys=len(sales_summary),
+    )
     receipt_history_lookup = {}
+    receipt_row_count = 0
     for row in _iter_received_parts_detail_csv(received_parts_path):
+        receipt_row_count += 1
         key = (row.get("line_code", ""), row.get("item_code", ""))
         if not key[1]:
             continue
         description = row.get("description", "")
-        qty_received = max(0, _coerce_int(row.get("qty_received", 0)))
+        qty_received = _max(0, _coerce(row.get("qty_received", 0)))
         vendor = _normalize_vendor_code(row.get("vendor", ""))
         receipt_date = str(row.get("receipt_date", "") or "").strip()
 
@@ -930,6 +942,11 @@ def parse_detailed_pair_aggregates(detailed_sales_path, received_parts_path, *, 
             if iso_date > vendor_entry["last_receipt_date"]:
                 vendor_entry["last_receipt_date"] = iso_date
 
+    perf_trace.stamp(
+        "parse_detailed_pair_aggregates.receipts_done",
+        rows=receipt_row_count,
+        keys=len(receipt_history_lookup),
+    )
     return {
         "sales_items": list(sales_summary.values()),
         "sales_window": (sales_start, sales_end),

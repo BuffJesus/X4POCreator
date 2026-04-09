@@ -1639,8 +1639,10 @@ def _finish_bulk_final_inner(app):
     # default + _coerce_int_safe keeps the operator moving instead of
     # crashing; diagnostic debug logging captures the offending row
     # shape so we can find the upstream cause.
+    import perf_trace as _pt
     app.assigned_items = []
     crash_diag_count = 0
+    _pt.stamp("finish_bulk_final.row_build_start", total_filtered=len(app.filtered_items))
     for item in app.filtered_items:
         try:
             vendor = str(item.get("vendor", "") or "").strip()
@@ -1719,6 +1721,7 @@ def _finish_bulk_final_inner(app):
             write_debug("finish_bulk_final.row_error.total", count=crash_diag_count)
         except Exception:
             pass
+    _pt.stamp("finish_bulk_final.row_build_done", assigned=len(app.assigned_items), errors=crash_diag_count)
     if not app.assigned_items:
         messagebox.showwarning(
             "No Items",
@@ -1731,7 +1734,8 @@ def _finish_bulk_final_inner(app):
     skipped_zero = sum(1 for item in app.filtered_items if item.get("vendor") and item.get("final_qty", item.get("order_qty", 0)) <= 0)
 
     if hasattr(app, "_annotate_release_decisions"):
-        app._annotate_release_decisions()
+        with _pt.span("finish_bulk_final.annotate_release_decisions"):
+            app._annotate_release_decisions()
 
     # Populate and switch tabs FIRST.  Previous versions showed the
     # Items Excluded dialog here and then switched tabs — which left

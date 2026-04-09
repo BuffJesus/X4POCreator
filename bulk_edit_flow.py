@@ -4,7 +4,7 @@ import item_workflow
 import ui_bulk
 
 
-def apply_editor_value(app, row_id, col_name, raw, editable_cols, get_rule_key, write_debug):
+def apply_editor_value(app, row_id, col_name, raw, editable_cols, get_rule_key, write_debug, *, defer_save=False):
     write_debug("bulk_apply_editor_value.begin", row_id=row_id, col_name=col_name, raw=str(raw))
     resolve_row = getattr(app, "_resolve_bulk_row_id", None)
     if callable(resolve_row):
@@ -24,7 +24,25 @@ def apply_editor_value(app, row_id, col_name, raw, editable_cols, get_rule_key, 
     before_summary_item = ui_bulk.bulk_filter_bucket_snapshot(item)
     key = (item["line_code"], item["item_code"])
     inv = app.inventory_lookup.get(key, {})
-    if col_name == "vendor":
+    if col_name == "notes":
+        new_val = raw.strip()
+        item["notes"] = new_val
+        # Persist notes immediately
+        notes_dict = getattr(app, "item_notes", None)
+        if notes_dict is not None:
+            nk = f"{item['line_code']}:{item['item_code']}"
+            if new_val:
+                notes_dict[nk] = new_val
+            else:
+                notes_dict.pop(nk, None)
+            if not defer_save:
+                try:
+                    import item_notes_flow
+                    item_notes_flow.save_notes(app._data_path("item_notes"), notes_dict)
+                except Exception:
+                    pass
+        write_debug("bulk_apply_editor_value.notes", row_id=row_id, notes=new_val[:40])
+    elif col_name == "vendor":
         new_val = raw.strip().upper()
         if new_val:
             item["vendor"] = new_val
@@ -34,7 +52,7 @@ def apply_editor_value(app, row_id, col_name, raw, editable_cols, get_rule_key, 
         try:
             qty = int(float(raw))
             app._set_effective_order_qty(item, qty, manual_override=True)
-            app._recalculate_item(item)
+            app._recalculate_item(item, annotate_release=not defer_save)
             write_debug(
                 "bulk_apply_editor_value.final_qty",
                 row_id=row_id,
@@ -53,7 +71,7 @@ def apply_editor_value(app, row_id, col_name, raw, editable_cols, get_rule_key, 
                 app.qoh_adjustments[key] = {"old": old_qoh, "new": new_qoh}
                 if key in app.inventory_lookup:
                     app.inventory_lookup[key]["qoh"] = new_qoh
-                app._recalculate_item(item)
+                app._recalculate_item(item, annotate_release=not defer_save)
             write_debug(
                 "bulk_apply_editor_value.qoh",
                 row_id=row_id,
@@ -80,7 +98,7 @@ def apply_editor_value(app, row_id, col_name, raw, editable_cols, get_rule_key, 
                 app.inventory_lookup[key]["min"] = parsed
             else:
                 app.inventory_lookup[key]["max"] = parsed
-            app._recalculate_item(item)
+            app._recalculate_item(item, annotate_release=not defer_save)
             write_debug(
                 "bulk_apply_editor_value.minmax",
                 row_id=row_id,
@@ -99,9 +117,10 @@ def apply_editor_value(app, row_id, col_name, raw, editable_cols, get_rule_key, 
             old_suggested = item.get("suggested_qty")
             old_final = item.get("final_qty")
             rule_key, _rule = item_workflow.apply_pack_size_edit(item, raw, app.order_rules, get_rule_key)
-            app._save_order_rules()
+            if not defer_save:
+                app._save_order_rules()
             app._clear_manual_override(item)
-            app._recalculate_item(item)
+            app._recalculate_item(item, annotate_release=not defer_save)
             write_debug(
                 "bulk_apply_editor_value.pack_size",
                 row_id=row_id,

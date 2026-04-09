@@ -44,7 +44,7 @@ class POBuilderTests(unittest.TestCase):
         )
         fake_app._clear_manual_override = lambda item: po_builder.POBuilderApp._clear_manual_override(item)
         fake_app._effective_order_rule = lambda item, rule: po_builder.POBuilderApp._effective_order_rule(fake_app, item, rule)
-        fake_app._recalculate_item = lambda item: po_builder.POBuilderApp._recalculate_item(fake_app, item)
+        fake_app._recalculate_item = lambda item, **kw: po_builder.POBuilderApp._recalculate_item(fake_app, item, **kw)
         fake_app._sync_review_item_to_filtered = (
             lambda item: po_builder.POBuilderApp._sync_review_item_to_filtered(fake_app, item)
         )

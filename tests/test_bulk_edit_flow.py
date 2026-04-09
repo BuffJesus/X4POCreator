@@ -44,7 +44,7 @@ class BulkEditFlowTests(unittest.TestCase):
             filtered_items=[{"line_code": "AER-", "item_code": "GH781-4"}],
             inventory_lookup={},
             order_rules={},
-            _recalculate_item=lambda item: events.append(("recalc", item["item_code"])),
+            _recalculate_item=lambda item, **kw: events.append(("recalc", item["item_code"])),
         )
 
         bulk_edit_flow.apply_editor_value(

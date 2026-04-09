@@ -343,14 +343,14 @@ def build_bulk_tab(app, editable_cols):
         "vendor", "line_code", "item_code", "description", "source",
         "status", "raw_need", "suggested_qty", "final_qty", "buy_rule",
         "qoh", "cur_min", "cur_max", "sug_min", "sug_max",
-        "pack_size", "supplier", "why", "risk",
+        "pack_size", "supplier", "why", "notes", "risk",
     )
     widths = {
         "vendor": 80, "line_code": 48, "item_code": 92, "description": 150,
         "source": 40, "status": 52, "raw_need": 44, "suggested_qty": 54, "final_qty": 64,
         "buy_rule": 72, "qoh": 44, "cur_min": 44, "cur_max": 44,
         "sug_min": 48, "sug_max": 48, "pack_size": 40, "supplier": 72, "why": 180,
-        "risk": 44,
+        "notes": 100, "risk": 44,
     }
     labels = {
         "vendor": "Vendor", "line_code": "LC", "item_code": "Item Code",
@@ -358,7 +358,7 @@ def build_bulk_tab(app, editable_cols):
         "raw_need": "Qty Needed Before Pack", "suggested_qty": "Suggested Qty", "final_qty": "Final Qty",
         "buy_rule": "Buy Rule", "qoh": "QOH", "cur_min": "Min", "cur_max": "Max",
         "sug_min": "Sug Min", "sug_max": "Sug Max", "pack_size": "Pack",
-        "supplier": "Supplier", "why": "Why This Qty", "risk": "Risk",
+        "supplier": "Supplier", "why": "Why This Qty", "notes": "Notes", "risk": "Risk",
     }
 
     app.bulk_tree_labels = labels
@@ -384,6 +384,11 @@ def build_bulk_tab(app, editable_cols):
             lambda e: app.bulk_sheet.resize_to_container() if app.bulk_sheet else None,
             add="+",
         )
+        # Header click to sort, double-click to auto-size
+        ch = getattr(app.bulk_sheet.sheet, "CH", None)
+        if ch is not None:
+            ch.bind("<Button-1>", lambda e: _header_click_sort(app, e), add="+")
+            ch.bind("<Double-Button-1>", lambda e: _header_double_click_autosize(app, e))
         app.bulk_sheet.sheet.bind("<Delete>", app._bulk_delete_selected)
         app.bulk_sheet.sheet.bind("<BackSpace>", app._bulk_delete_selected)
         app.bulk_sheet.sheet.bind("<Control-c>", app._bulk_copy_selection)
@@ -405,7 +410,7 @@ def build_bulk_tab(app, editable_cols):
         app.bulk_sheet.sheet.bind("<Control-Return>", app._bulk_apply_current_value_to_selection)
         app.bulk_sheet.sheet.bind("<Control-KP_Enter>", app._bulk_apply_current_value_to_selection)
         app.bulk_sheet.sheet.bind("<F2>", app._bulk_begin_edit)
-        app.bulk_sheet.sheet.bind("<Return>", app._bulk_begin_edit)
+        app.bulk_sheet.sheet.bind("<Return>", lambda e: app._view_item_details())
         app.bulk_sheet.sheet.bind("<Tab>", app._bulk_move_next_editable_cell)
         app.bulk_sheet.sheet.bind("<ISO_Left_Tab>", app._bulk_move_prev_editable_cell)
         app.bulk_sheet.sheet.bind("<Shift-Tab>", app._bulk_move_prev_editable_cell)
@@ -656,6 +661,7 @@ def bulk_row_values(app, item):
     rule = app.order_rules.get(f"{line_code}:{item_code}")
     buy_rule = get_buy_rule_summary(item, rule)
     why = item.get("why", "")
+    notes = item.get("notes", "")
     risk_score = item.get("stockout_risk_score")
     risk_display = f"{int(round(risk_score * 100))}%" if isinstance(risk_score, float) else ""
     return (
@@ -677,6 +683,7 @@ def bulk_row_values(app, item):
         pack_size if pack_size else "",
         supplier,
         why,
+        notes,
         risk_display,
     )
 
@@ -1393,23 +1400,66 @@ def _sort_column_depends_on_changes(sort_col, changed_cols):
 
 
 def refresh_bulk_view_after_edit(app, row_ids, changed_cols=None):
+    # Evict stale caches for edited rows BEFORE any refresh path.
+    # Three caches can hold pre-edit data:
+    #   1. Per-row render cache (generation-keyed tuples)
+    #   2. Visible-rows cache (full row set for current filter state)
+    #   3. Filter-result cache (item lists for current filter state)
+    # Evicting all three ensures both the incremental and full-rebuild
+    # paths recompute from the updated item dicts.
+    cache = _bulk_row_render_cache(app)
+    for row_id in row_ids:
+        idx, item = resolve_bulk_row_id(app, row_id)
+        if idx is not None and item is not None:
+            cache.pop(bulk_row_id(item), None)
+    invalidate_bulk_visible_rows_cache(app)
+    invalidate_bulk_filter_result_cache(app)
     filter_state = bulk_filter_state(app)
-    if _changed_columns_require_rebuild(app, changed_cols, filter_state=filter_state):
-        if _try_targeted_filtered_refresh(app, row_ids, filter_state=filter_state):
-            return True
-        app._apply_bulk_filter()
+    needs_rebuild = _changed_columns_require_rebuild(app, changed_cols, filter_state=filter_state)
+    from debug_log import write_debug as _wd
+    _wd(
+        "refresh_bulk_view_after_edit.path",
+        changed_cols=",".join(changed_cols or ()),
+        row_ids=",".join(str(r) for r in row_ids),
+        needs_rebuild=needs_rebuild,
+    )
+    if needs_rebuild:
+        with perf_trace.span(
+            "ui_bulk.refresh_bulk_view_after_edit.rebuild",
+            changed_cols=",".join(changed_cols or ()),
+            row_count=len(row_ids),
+        ):
+            targeted = _try_targeted_filtered_refresh(app, row_ids, filter_state=filter_state)
+            _wd("refresh_bulk_view_after_edit.rebuild", targeted=targeted)
+            if targeted:
+                return True
+            app._apply_bulk_filter()
         return False
     if not getattr(app, "bulk_sheet", None):
         return False
-    for row_id in row_ids:
-        idx, item = resolve_bulk_row_id(app, row_id)
-        if idx is None or item is None:
-            continue
-        effective_row_id = str(row_id)
-        if effective_row_id not in getattr(app.bulk_sheet, "row_lookup", {}):
-            effective_row_id = bulk_row_id(item)
-        if effective_row_id in getattr(app.bulk_sheet, "row_lookup", {}):
-            app.bulk_sheet.refresh_row(effective_row_id, cached_bulk_row_values(app, item))
+    with perf_trace.span(
+        "ui_bulk.refresh_bulk_view_after_edit.incremental",
+        row_count=len(row_ids),
+    ):
+        for row_id in row_ids:
+            idx, item = resolve_bulk_row_id(app, row_id)
+            if idx is None or item is None:
+                _wd("refresh_bulk_view_after_edit.incremental.skip", row_id=row_id, reason="not_found")
+                continue
+            effective_row_id = str(row_id)
+            if effective_row_id not in getattr(app.bulk_sheet, "row_lookup", {}):
+                effective_row_id = bulk_row_id(item)
+            in_lookup = effective_row_id in getattr(app.bulk_sheet, "row_lookup", {})
+            _wd(
+                "refresh_bulk_view_after_edit.incremental.row",
+                row_id=row_id,
+                effective_row_id=effective_row_id,
+                in_lookup=in_lookup,
+                item_pack=item.get("pack_size"),
+            )
+            if in_lookup:
+                values = cached_bulk_row_values(app, item)
+                app.bulk_sheet.refresh_row(effective_row_id, values)
     return True
 
 
@@ -1504,6 +1554,8 @@ def _apply_bulk_filter_inner(app):
     if not counts or counts.get("total") != len(app.filtered_items):
         counts = _recompute_summary_counts(app.filtered_items)
     visible_items = cached_bulk_filter_result(app, filter_state)
+    from debug_log import write_debug as _wd2
+    _wd2("_apply_bulk_filter_inner.filter_cache", hit=visible_items is not None)
     if visible_items is None:
         candidate_items = filtered_candidate_items(app, filter_state)
         if bulk_filter_is_default(filter_state) or (
@@ -1516,6 +1568,7 @@ def _apply_bulk_filter_inner(app):
     update_bulk_summary(app, counts=counts)
     if app.bulk_sheet:
         cached_rows = cached_bulk_visible_rows(app, tuple(sorted(filter_state.items())))
+        _wd2("_apply_bulk_filter_inner.visible_cache", hit=cached_rows is not None)
         if cached_rows is None:
             row_ids, rows = build_bulk_sheet_rows(app, visible_items)
             store_bulk_visible_rows(app, tuple(sorted(filter_state.items())), row_ids, rows)
@@ -1529,6 +1582,52 @@ def autosize_bulk_tree(app):
     if not getattr(app, "bulk_sheet", None):
         return
     return
+
+
+def _header_click_sort(app, event):
+    """Sort by the clicked column header."""
+    bulk_sheet = getattr(app, "bulk_sheet", None)
+    if not bulk_sheet:
+        return
+    try:
+        col_idx = bulk_sheet.sheet.identify_column(event)
+    except Exception:
+        return
+    if col_idx is None or col_idx < 0 or col_idx >= len(bulk_sheet.columns):
+        return
+    col_name = bulk_sheet.columns[col_idx]
+    with perf_trace.span("ui_bulk.header_click_sort", col=col_name):
+        app._sort_bulk_tree(col_name)
+
+
+def _header_double_click_autosize(app, event):
+    """Auto-size columns on header double-click."""
+    bulk_sheet = getattr(app, "bulk_sheet", None)
+    if bulk_sheet:
+        bulk_sheet.fit_columns_to_window()
+    return "break"
+
+
+def _update_sort_arrows(app):
+    """Add ▲/▼ arrow to the sorted column header."""
+    bulk_sheet = getattr(app, "bulk_sheet", None)
+    if not bulk_sheet or not hasattr(bulk_sheet, "columns"):
+        return
+    sort_col = getattr(app, "_bulk_sort_col", None)
+    reverse = getattr(app, "_bulk_sort_reverse", False)
+    headers = []
+    for col_name in bulk_sheet.columns:
+        label = bulk_sheet.labels.get(col_name, col_name)
+        # Strip any existing arrows
+        label = label.rstrip(" ▲▼")
+        if col_name == sort_col:
+            label = f"{label} {'▼' if reverse else '▲'}"
+        headers.append(label)
+    try:
+        bulk_sheet.sheet.headers(headers, redraw=False)
+        bulk_sheet.sheet.redraw()
+    except Exception:
+        pass
 
 
 def sort_bulk_tree(app, col):
@@ -1548,8 +1647,11 @@ def sort_bulk_tree(app, col):
         except Exception:
             return (1, str(value).lower())
 
-    sort_filtered_items(app, key=_sort_key, reverse=reverse)
-    apply_bulk_filter(app)
+    with perf_trace.span("ui_bulk.sort_bulk_tree.sort", col=col, items=len(getattr(app, "filtered_items", []) or [])):
+        sort_filtered_items(app, key=_sort_key, reverse=reverse)
+    with perf_trace.span("ui_bulk.sort_bulk_tree.apply_filter"):
+        apply_bulk_filter(app)
+    _update_sort_arrows(app)
     save_bulk_filter_sort_state(app)
 
 
@@ -1596,6 +1698,8 @@ def bulk_sort_value(app, item, col):
         return inventory.get("supplier", "")
     if col == "why":
         return item.get("why", "")
+    if col == "notes":
+        return item.get("notes", "")
     if col == "risk":
         return item.get("stockout_risk_score", 0.0) or 0.0
     return ""

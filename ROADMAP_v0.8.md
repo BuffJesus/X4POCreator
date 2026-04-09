@@ -2,7 +2,7 @@
 
 Status: In progress (v0.8.0 → v0.8.12 shipped)
 
-Current app version: `0.8.12`
+Current app version: `0.8.13`
 
 ## Live confirmation (2026-04-08 22:10 operator run)
 
@@ -95,26 +95,26 @@ the end of this file.
 - [x] Delete key removes multi-row (including non-contiguous ctrl-click)
   selections — v0.8.1
 - [x] Dark-themed right-click context menu — v0.8.1
-- [ ] Click column header to sort + ▲/▼ direction arrows in header text
-- [ ] Ctrl+F focuses the bulk search box globally
-- [ ] Ctrl+D fill-down selected column from the top cell
-- [ ] Double-click column header → auto-size to content
-- [ ] Enter on selected row → open "View Item Details"
+- [x] Click column header to sort + ▲/▼ direction arrows in header text — v0.8.13
+- [x] Ctrl+F focuses the bulk search box globally — v0.8.13
+- [x] Ctrl+D fill-down selected column from the top cell (already implemented)
+- [x] Double-click column header → auto-size to content — v0.8.13
+- [x] Enter on selected row → open "View Item Details" — v0.8.13
 - [ ] Shift+click header → secondary sort stack (optional)
 
-### 1c. Per-item notes column (new, from operator feedback)
+### 1c. Per-item notes column (new, from operator feedback) — ✓ closed (v0.8.13)
 
-- [ ] `item_notes_flow.py` — pure helpers:
+- [x] `item_notes_flow.py` — pure helpers:
   `load_notes(path)`, `save_notes(path, notes)`,
   `apply_notes_to_items(items, notes)`,
-  `clear_notes_for_keys(notes, keys)`
-- [ ] New `notes` column on the bulk grid (editable), placed after `why`
-- [ ] Persistence to `item_notes.json` keyed by `LC:IC`; loaded in
-  `apply_load_result` next to `order_rules`
-- [ ] `export_flow` picks up `item["notes"]` and writes a `Notes` column
-  to the vendor xlsx
+  `clear_notes_for_keys(notes, keys)` — v0.8.13
+- [x] New `notes` column on the bulk grid (editable), placed after `why` — v0.8.13
+- [x] Persistence to `item_notes.json` keyed by `LC:IC`; loaded in
+  `load_persistent_state` — v0.8.13
+- [x] `export_vendor_po` picks up `item["notes"]` and writes a `Notes`
+  column to the vendor xlsx — v0.8.13
 - [ ] "Clear notes for selected rows" in the removal row toolbar
-- [ ] Tests for all four pure helpers + one xlsx export round-trip
+- [x] Tests for all four pure helpers — v0.8.13 (10 tests)
 
 ---
 
@@ -212,8 +212,8 @@ traces from the operator's 63K-item dataset.
   on 59K items; see the audit in v0.8.11 notes.  No O(n²) bug found,
   the cost is genuine per-row tuple construction.  Target for v0.8.13
   or a Cython `bulk_row_values` if push comes to shove.
-- [ ] **Per-row-id snapshot in bulk history capture** instead of
-  `deepcopy` of full `filtered_items`
+- [x] **Per-row-id snapshot in bulk history capture** instead of
+  `deepcopy` of full `filtered_items` — v0.8.13
 - [ ] **`sheet.set_rows` on 59K rows** — measured 24 ms in v0.8.11, not a
   target
 
@@ -229,13 +229,11 @@ payoff.
 Lock current behavior down before touching a line.  All three are
 Phase 3 prerequisites.
 
-- [ ] **`tests/test_enrich_golden.py`** — 50-item fixture captured from
-  the real `CSVs/` dataset, one per interesting status / performance /
-  attention / data-flag combination.  Each fixture asserts the full
-  post-enrich shape (`status`, `final_qty`, `suggested_qty`,
-  `order_policy`, `raw_need`, `data_flags`, `reason_codes`, `why`,
-  `projected_overstock_qty`, `overstock_within_tolerance`,
-  `recency_confidence`, `heuristic_confidence`, `confirmed_stocking`).
+- [x] **`tests/test_enrich_golden.py`** — 20 golden fixtures covering
+  exact_qty, standard, soft_pack, pack_trigger, manual_only,
+  reel/large pack, dead stock, confirmed stocking, suspense,
+  open PO offset, recency levels, overstock, receipt pack mismatch,
+  min packs on hand.  Pins full post-enrich shape. — v0.8.13
 - [ ] **`tests/test_parse_golden.py`** — loads the full 293 MB dataset,
   asserts top-line counts (sales_items, inventory_lookup, window dates,
   no_minmax_coverage_keys).  Marked `skipUnless` so CI skips and dev
@@ -247,20 +245,25 @@ Phase 3 prerequisites.
 
 Biggest long-term payoff.  Splits the 380-line `enrich_item` monolith.
 
-- [ ] Extract `rules/calc.py` with `compute_calc_inputs(item, inv, rule)`
-  and `run_calc_kernel(inputs) → CalcResult` (pure, no mutation,
-  returns a dataclass)
+- [x] Extract `rules/calc.py` — `calculate_inventory_position`,
+  `determine_target_stock`, `determine_reorder_trigger_threshold`,
+  `evaluate_reorder_trigger`, `calculate_raw_need`,
+  `determine_acceptable_overstock_qty`, `assess_post_receipt_overstock`,
+  `calculate_suggested_qty`, `compute_stockout_risk_score` — v0.8.13
+- [x] Extract `rules/status.py` — `evaluate_item_status` — v0.8.13
 - [ ] Extract `rules/explanation.py` with `build_why(item, calc_result,
-  rule) → str` — currently interleaved with calculation
-- [ ] Extract `rules/policy.py` with the escalation ladder and
-  `should_force_recency_review`
-- [ ] Extract `rules/status.py` with `evaluate_item_status` (already
-  small; move for consistency)
-- [ ] `rules.enrich_item` becomes a thin orchestrator calling the four
-  extracted kernels in order, preserving the current signature exactly
-- [ ] New implementation runs behind a feature flag alongside the old
-  one for one release; characterization tests compare both on every
-  fixture; flag flips to new-only once green
+  rule) → str` — currently interleaved with calculation in enrich_item
+- [x] Extract `rules/policy.py` — `determine_order_policy`,
+  `should_force_recency_review`, `should_suppress_manual_only_qty`,
+  `classify_package_profile`, `classify_replenishment_unit_mode`,
+  `classify_recency_confidence`, `classify_low_confidence_recency`,
+  `classify_dead_stock`, pattern matchers, graduation logic — v0.8.13
+- [x] Extract `rules/_constants.py` — all shared constants — v0.8.13
+- [x] Extract `rules/_helpers.py` — rule field accessors (`get_rule_int`,
+  `get_rule_float`, `has_exact_qty_override`, `apply_rule_fields`,
+  `has_pack_trigger_fields`, `get_rule_pack_size`) — v0.8.13
+- [ ] Slim `rules.enrich_item` orchestrator to ≤ 60 lines (currently
+  ~380 lines; explanation building is the main blocker)
 
 ### 3.3 — `AppSessionState` sub-states (R2 from the audit)
 

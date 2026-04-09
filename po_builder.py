@@ -115,7 +115,7 @@ MAX_EXCEED_MARGIN = 1.5
 MAX_EXCEED_ABS_BUFFER = 5
 MAX_LOADING_GIF_FRAMES = 90
 CORNER_LOADING_GIF_SIZE = (52, 52)
-BULK_EDITABLE_COLS = ("vendor", "final_qty", "qoh", "cur_min", "cur_max", "pack_size")
+BULK_EDITABLE_COLS = ("vendor", "final_qty", "qoh", "cur_min", "cur_max", "pack_size", "notes")
 REVIEW_EDITABLE_COLS = ("vendor", "order_qty", "pack_size")
 DEFAULT_MIXED_EXPORT_BEHAVIOR = "all_exportable"
 MIXED_EXPORT_BEHAVIOR_OPTIONS = ("all_exportable", "immediate_only", "ask_when_mixed")
@@ -315,7 +315,8 @@ def export_vendor_po(vendor_code, items, output_dir, po_memo=""):
     )
 
     headers = ["product group", "item code", "order quantity"]
-    include_notes = bool(po_memo)
+    has_item_notes = any(item.get("notes") for item in items)
+    include_notes = bool(po_memo) or has_item_notes
     if include_notes:
         headers.append("Notes")
     for col_idx, header in enumerate(headers, 1):
@@ -336,7 +337,8 @@ def export_vendor_po(vendor_code, items, output_dir, po_memo=""):
         ic_cell.number_format = "@"
         qty_cell.alignment = Alignment(horizontal="center")
         if include_notes:
-            notes_cell = ws.cell(row=row_idx, column=4, value=po_memo)
+            note_text = item.get("notes", "") or po_memo
+            notes_cell = ws.cell(row=row_idx, column=4, value=note_text)
             notes_cell.border = thin_border
 
     # Column widths
@@ -446,6 +448,13 @@ class POBuilderApp:
             self.root.bind_all("<KP_Delete>", self._global_delete_key_handler, add="+")
         except Exception as exc:
             write_debug("po_builder.delete_bind.error", error=str(exc))
+
+        # Ctrl+F focuses the bulk search box when on the Assign Vendors tab.
+        try:
+            self.root.bind_all("<Control-f>", self._global_ctrl_f_handler)
+            self.root.bind_all("<Control-F>", self._global_ctrl_f_handler)
+        except Exception as exc:
+            write_debug("po_builder.ctrl_f_bind.error", error=str(exc))
 
         # Loading overlay
         self._loading_overlay = None
@@ -783,6 +792,22 @@ class POBuilderApp:
             except Exception:
                 pass
             self._last_notebook_tab = current
+
+    def _global_ctrl_f_handler(self, event=None):
+        """Focus the bulk text-search entry when Ctrl+F is pressed on the Assign Vendors tab."""
+        active_tab = str(getattr(self, "_last_notebook_tab", "") or "")
+        if "Assign Vendors" not in active_tab:
+            return None
+        entry = getattr(self, "entry_bulk_text_filter", None)
+        if entry is None:
+            return None
+        try:
+            entry.focus_set()
+            entry.select_range(0, "end")
+            entry.icursor("end")
+        except Exception:
+            pass
+        return "break"
 
     def _toggle_perf_trace(self):
         """Enable or disable the perf trace harness from the Help menu."""
@@ -1311,6 +1336,10 @@ class POBuilderApp:
         # export window; divide it down to one cycle's worth so that e.g.
         # 40 bearings sold over a year on a weekly cycle suggests ~1, not 40.
         reorder_flow.normalize_items_to_cycle(self)
+
+        # Apply per-item notes from item_notes.json
+        import item_notes_flow
+        item_notes_flow.apply_notes_to_items(self.filtered_items, getattr(self, "item_notes", {}))
 
         self._loaded_vendor_codes = list(self.vendor_codes_used)
         self.last_removed_bulk_items = []
@@ -1886,8 +1915,8 @@ class POBuilderApp:
             write_debug("po_builder.delete_key.error", error=str(exc))
             return None
 
-    def _bulk_apply_editor_value(self, row_id, col_name, raw):
-        bulk_edit_flow.apply_editor_value(self, row_id, col_name, raw, BULK_EDITABLE_COLS, get_rule_key, write_debug)
+    def _bulk_apply_editor_value(self, row_id, col_name, raw, *, defer_save=False):
+        bulk_edit_flow.apply_editor_value(self, row_id, col_name, raw, BULK_EDITABLE_COLS, get_rule_key, write_debug, defer_save=defer_save)
 
     def _apply_bulk_filter(self):
         ui_bulk.apply_bulk_filter(self)

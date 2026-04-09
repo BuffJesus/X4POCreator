@@ -99,7 +99,14 @@ class BulkSheetView:
             "shift_row_select",
         ):
             self.sheet.extra_bindings(binding, self._handle_select)
-        self.sheet.extra_bindings("end_edit_table", self._handle_edit)
+        self.sheet.extra_bindings("end_edit_cell", self._handle_edit)
+        self.sheet.extra_bindings("begin_edit_cell", self._handle_begin_edit)
+        # Verify binding was actually registered
+        write_debug(
+            "bulk_sheet.init.bindings_check",
+            end_edit_func_set=self.sheet.MT.extra_end_edit_cell_func is not None,
+            begin_edit_func_set=self.sheet.MT.extra_begin_edit_cell_func is not None,
+        )
         self.sheet.disable_bindings("rc_popup_menu")
         # tksheet's "all" bindings capture Delete internally to clear
         # cell contents.  Disable it so our Delete handler gets the
@@ -313,6 +320,20 @@ class BulkSheetView:
                 self.sheet.bind_key_text_editor(key, func)
             except Exception:
                 pass
+
+    def _handle_begin_edit(self, event_data):
+        """Suppress tksheet's inline text editor.
+
+        Edits on this sheet are handled by the dialog-prompt path
+        (``bulk_begin_edit`` via Double-click / F2 / Return bindings).
+        If the inline editor is allowed to open, it races with the
+        dialog: focus-out on the editor fires ``close_text_editor``
+        which writes the OLD value back via ``set_cell_data_undo``,
+        overwriting the dialog's new value.
+
+        Returning None tells tksheet to cancel the editor open.
+        """
+        return None
 
     def _handle_edit(self, event_data):
         self._drain_pending_edit()
@@ -556,10 +577,16 @@ class BulkSheetView:
     def set_rows(self, rows, row_ids):
         normalized_row_ids = tuple(str(row_id) for row_id in row_ids)
         normalized_rows = tuple(tuple(row) for row in rows)
-        if (
-            normalized_row_ids == getattr(self, "_rendered_row_ids", ())
-            and normalized_rows == getattr(self, "_rendered_rows", ())
-        ):
+        ids_match = normalized_row_ids == getattr(self, "_rendered_row_ids", ())
+        rows_match = normalized_rows == getattr(self, "_rendered_rows", ())
+        write_debug(
+            "bulk_sheet.set_rows.dedup_check",
+            ids_match=ids_match,
+            rows_match=rows_match,
+            new_count=len(normalized_rows),
+            old_count=len(getattr(self, "_rendered_rows", ())),
+        )
+        if ids_match and rows_match:
             self.row_ids = list(normalized_row_ids)
             self.row_lookup = {str(row_id): idx for idx, row_id in enumerate(self.row_ids)}
             self.app._update_bulk_sheet_status()
@@ -760,18 +787,27 @@ class BulkSheetView:
             return tuple()
         explicit_rows = self.explicit_selected_row_ids()
         if explicit_rows:
+            write_debug("selected_target_row_ids.source", source="explicit", count=len(explicit_rows))
             return explicit_rows
-        # tksheet clears the live selection before firing context menu commands;
-        # fall back to the snapshot captured at right-click time.
-        snap_rows = self.snapshot_row_ids()
-        if snap_rows:
-            return snap_rows
+        # Check live cell selection first — this survives drag selections
+        # that the snapshot may have missed (the snapshot is overwritten on
+        # every cell_select event, but tksheet's internal selection state
+        # preserves the full drag range).
         selected_cells = self.selected_cells()
         if selected_cells:
             matching_rows = {r for r, c in selected_cells if c == col_idx}
             if matching_rows:
+                write_debug("selected_target_row_ids.source", source="live_cells", count=len(matching_rows), col_idx=col_idx)
                 return tuple(str(self.row_ids[r]) for r in sorted(matching_rows) if 0 <= r < len(self.row_ids))
-        return self.selected_row_ids()
+        # Live selection empty (e.g. right-click cleared it) — fall back
+        # to the snapshot captured at the last select event.
+        snap_rows = self.snapshot_row_ids()
+        if snap_rows:
+            write_debug("selected_target_row_ids.source", source="snapshot", count=len(snap_rows))
+            return snap_rows
+        fallback = self.selected_row_ids()
+        write_debug("selected_target_row_ids.source", source="fallback", count=len(fallback))
+        return fallback
 
     def selected_editable_column_name(self):
         get_selected_columns = getattr(self.sheet, "get_selected_columns", None)
@@ -797,6 +833,13 @@ class BulkSheetView:
 
     def refresh_row(self, row_id, values):
         row_pos = self.row_lookup.get(str(row_id))
+        write_debug(
+            "bulk_sheet.refresh_row",
+            row_id=row_id,
+            row_pos=row_pos,
+            values_len=len(values) if values else 0,
+            sample=str(values[0] if values else "")[:40] if values else "",
+        )
         if row_pos is None:
             return
         self.sheet.set_row_data(row_pos, values=values, redraw=True)

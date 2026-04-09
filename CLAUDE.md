@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What This App Does
 
-**PO Builder** is a Windows desktop application (**v0.8.12**) that converts X4 ERP report exports (CSV) into vendor-specific purchase order Excel files. It merges sales, receipts, inventory, open PO, and suspended-item reports, calculates order quantities, and lets the user assign vendors before exporting per-vendor `.xlsx` files in X4 import format.
+**PO Builder** is a Windows desktop application (**v0.8.13**) that converts X4 ERP report exports (CSV) into vendor-specific purchase order Excel files. It merges sales, receipts, inventory, open PO, and suspended-item reports, calculates order quantities, and lets the user assign vendors before exporting per-vendor `.xlsx` files in X4 import format.
 
 The operator runs it weekly against a large production dataset (~63K candidate items, 8 years of history, ~293 MB Detailed Part Sales CSV). **Session load perf on that dataset is a first-class concern** — see the Performance Notes section below.
 
@@ -20,7 +20,7 @@ python po_builder.py
 ```bash
 python -m unittest discover -s tests -q
 ```
-As of v0.8.12: **1,110 tests**.
+As of v0.8.13: **1,140 tests**.
 
 **Run a single test file:**
 ```bash
@@ -158,6 +158,7 @@ Notable releases in chronological order — see corresponding `RELEASE_v0.8.*.md
 - **v0.8.10** — `normalize_items_to_cycle` eliminated as redundant pass (−23 s); generation-counter row render cache; memoized `_suggest_min_max`
 - **v0.8.11** — Crunching-numbers instrumentation release: full span coverage of `_do_load` / `_proceed_to_assign` / `populate_bulk_tree` with per-loop breakdown stamps
 - **v0.8.12** — **Eliminated O(n²) linear scan** in `_description_for_key`: `prepare_assignment_session` 34.5 s → 5.6 s (6.2× faster); `sales_history_for_key` also indexed; short-circuit in `receipt_pack_size_for_key`
+- **v0.8.13** — **Fixed cell editing regression** (tksheet binding name change broke all grid edits); Ctrl+F global shortcut; perf substep stamps on `bulk_remove_flow` and `finish_bulk_final`
 
 ## Lessons from the v0.8.x debugging arc (for future sessions)
 

@@ -19,6 +19,7 @@ def build_data_paths(data_dir):
         "vendor_policies": os.path.join(data_dir, "vendor_policies.json"),
         "ignored_items": os.path.join(data_dir, "ignored_items.txt"),
         "supplier_vendor_map": os.path.join(data_dir, "supplier_vendor_map.json"),
+        "item_notes": os.path.join(data_dir, "item_notes.json"),
     }
 
 
@@ -54,6 +55,8 @@ def load_persistent_state(app, known_vendors):
     app.suspense_carry = dict(suspense_carry)
     app.vendor_codes_used = list(vendor_codes)
     app.vendor_policies = dict(vendor_policies)
+    import item_notes_flow
+    app.item_notes = item_notes_flow.load_notes(app._data_path("item_notes"))
     app._loaded_dup_whitelist = set(app.dup_whitelist)
     app._loaded_ignored_item_keys = set(app.ignored_item_keys)
     app._loaded_order_rules = copy.deepcopy(app.order_rules)

@@ -143,7 +143,7 @@ class BulkSheetStatusTests(unittest.TestCase):
                 clear_selection=lambda: calls.append(("cleared",)),
             ),
             root=None,
-            _bulk_apply_editor_value=lambda row_id, col_name, value: calls.append((row_id, col_name, value)),
+            _bulk_apply_editor_value=lambda row_id, col_name, value, **kw: calls.append((row_id, col_name, value)),
             _refresh_bulk_view_after_edit=lambda row_ids: calls.append(("refresh", tuple(row_ids))),
             _update_bulk_summary=lambda: calls.append(("summary",)),
             _update_bulk_cell_status=lambda: calls.append(("status",)),
@@ -167,7 +167,7 @@ class BulkSheetStatusTests(unittest.TestCase):
                 clear_selection=lambda: calls.append(("cleared",)),
             ),
             root=None,
-            _bulk_apply_editor_value=lambda row_id, col_name, value: calls.append((row_id, col_name, value)),
+            _bulk_apply_editor_value=lambda row_id, col_name, value, **kw: calls.append((row_id, col_name, value)),
             _refresh_bulk_view_after_edit=lambda row_ids: calls.append(("refresh", tuple(row_ids))),
             _update_bulk_summary=lambda: calls.append(("summary",)),
             _update_bulk_cell_status=lambda: calls.append(("status",)),
@@ -193,7 +193,7 @@ class BulkSheetStatusTests(unittest.TestCase):
             ),
             root=None,
             _right_click_bulk_context=None,
-            _bulk_apply_editor_value=lambda row_id, col_name, value: calls.append((row_id, col_name, value)),
+            _bulk_apply_editor_value=lambda row_id, col_name, value, **kw: calls.append((row_id, col_name, value)),
             _refresh_bulk_view_after_edit=lambda row_ids: calls.append(("refresh", tuple(row_ids))),
             _update_bulk_summary=lambda: calls.append(("summary",)),
             _update_bulk_cell_status=lambda: calls.append(("status",)),
@@ -220,7 +220,7 @@ class BulkSheetStatusTests(unittest.TestCase):
             ),
             root=None,
             _right_click_bulk_context={"row_id": "8", "col_name": "pack_size"},
-            _bulk_apply_editor_value=lambda row_id, col_name, value: calls.append((row_id, col_name, value)),
+            _bulk_apply_editor_value=lambda row_id, col_name, value, **kw: calls.append((row_id, col_name, value)),
             _refresh_bulk_view_after_edit=lambda row_ids: calls.append(("refresh", tuple(row_ids))),
             _update_bulk_summary=lambda: calls.append(("summary",)),
             _update_bulk_cell_status=lambda: calls.append(("status",)),
@@ -246,7 +246,7 @@ class BulkSheetStatusTests(unittest.TestCase):
             ),
             root=None,
             _right_click_bulk_context={"row_id": "5", "col_name": "pack_size"},
-            _bulk_apply_editor_value=lambda row_id, col_name, value: calls.append((row_id, col_name, value)),
+            _bulk_apply_editor_value=lambda row_id, col_name, value, **kw: calls.append((row_id, col_name, value)),
             _refresh_bulk_view_after_edit=lambda row_ids: calls.append(("refresh", tuple(row_ids))),
             _update_bulk_summary=lambda: calls.append(("summary",)),
             _update_bulk_cell_status=lambda: calls.append(("status",)),
@@ -272,7 +272,7 @@ class BulkSheetStatusTests(unittest.TestCase):
             ),
             root=None,
             _right_click_bulk_context={"row_id": "3", "col_name": "pack_size"},
-            _bulk_apply_editor_value=lambda row_id, col_name, value: calls.append((row_id, col_name, value)),
+            _bulk_apply_editor_value=lambda row_id, col_name, value, **kw: calls.append((row_id, col_name, value)),
             _refresh_bulk_view_after_edit=lambda row_ids: calls.append(("refresh", tuple(row_ids))),
             _update_bulk_summary=lambda: calls.append(("summary",)),
             _update_bulk_cell_status=lambda: calls.append(("status",)),
@@ -300,7 +300,7 @@ class BulkSheetStatusTests(unittest.TestCase):
             ),
             root=None,
             _right_click_bulk_context=None,
-            _bulk_apply_editor_value=lambda row_id, col_name, value: calls.append((row_id, col_name, value)),
+            _bulk_apply_editor_value=lambda row_id, col_name, value, **kw: calls.append((row_id, col_name, value)),
             _refresh_bulk_view_after_edit=lambda row_ids: calls.append(("refresh", tuple(row_ids))),
             _update_bulk_summary=lambda: calls.append(("summary",)),
             _update_bulk_cell_status=lambda: calls.append(("status",)),
@@ -367,7 +367,7 @@ class BulkSheetStatusTests(unittest.TestCase):
                 current_cell_value=lambda: "500",
                 clear_selection=lambda: calls.append(("cleared",)),
             ),
-            _bulk_apply_editor_value=lambda row_id, col_name, value: calls.append((row_id, col_name, value)),
+            _bulk_apply_editor_value=lambda row_id, col_name, value, **kw: calls.append((row_id, col_name, value)),
             _refresh_bulk_view_after_edit=lambda row_ids: calls.append(("refresh", tuple(row_ids))),
             _update_bulk_summary=lambda: calls.append(("summary",)),
             _update_bulk_cell_status=lambda: calls.append(("status",)),
@@ -698,7 +698,7 @@ class BulkSheetViewTests(unittest.TestCase):
         view._selection_serial = 0
         view.selected_target_row_ids = lambda col_name: ("4",)
         view.app = SimpleNamespace(
-            _bulk_apply_editor_value=lambda row_id, col_name, value: calls.append((row_id, col_name, value)),
+            _bulk_apply_editor_value=lambda row_id, col_name, value, **kw: calls.append((row_id, col_name, value)),
             _refresh_bulk_view_after_edit=lambda row_ids: calls.append(("refresh", tuple(row_ids))) or True,
             _update_bulk_summary=lambda: calls.append(("summary",)),
             _update_bulk_sheet_status=lambda: calls.append(("status",)),
@@ -747,7 +747,7 @@ class BulkSheetViewTests(unittest.TestCase):
         }
         view.selected_target_row_ids = lambda col_name: ("8",)
         view.app = SimpleNamespace(
-            _bulk_apply_editor_value=lambda row_id, col_name, value: calls.append((row_id, col_name, value)),
+            _bulk_apply_editor_value=lambda row_id, col_name, value, **kw: calls.append((row_id, col_name, value)),
             _refresh_bulk_view_after_edit=lambda row_ids: calls.append(("refresh", tuple(row_ids))) or True,
             _update_bulk_summary=lambda: calls.append(("summary",)),
             _update_bulk_sheet_status=lambda: calls.append(("status",)),
@@ -795,7 +795,7 @@ class BulkSheetViewTests(unittest.TestCase):
             "selection_serial": 1,
         }
         view.app = SimpleNamespace(
-            _bulk_apply_editor_value=lambda row_id, col_name, value: calls.append((row_id, col_name, value)),
+            _bulk_apply_editor_value=lambda row_id, col_name, value, **kw: calls.append((row_id, col_name, value)),
             _refresh_bulk_view_after_edit=lambda row_ids: calls.append(("refresh", tuple(row_ids))) or True,
             _update_bulk_summary=lambda: calls.append(("summary",)),
             _update_bulk_sheet_status=lambda: calls.append(("status",)),
@@ -834,7 +834,7 @@ class BulkSheetViewTests(unittest.TestCase):
             "generation": 2,
         }
         view.app = SimpleNamespace(
-            _bulk_apply_editor_value=lambda row_id, col_name, value: calls.append((row_id, col_name, value)),
+            _bulk_apply_editor_value=lambda row_id, col_name, value, **kw: calls.append((row_id, col_name, value)),
             _refresh_bulk_view_after_edit=lambda row_ids: calls.append(("refresh", tuple(row_ids))) or True,
             _update_bulk_summary=lambda: calls.append(("summary",)),
             _update_bulk_sheet_status=lambda: calls.append(("status",)),
@@ -865,7 +865,7 @@ class BulkSheetViewTests(unittest.TestCase):
         view._scheduled_edit_generation = None
         view.selected_target_row_ids = lambda col_name: ("4", "8")
         view.app = SimpleNamespace(
-            _bulk_apply_editor_value=lambda row_id, col_name, value: calls.append((row_id, col_name, value)),
+            _bulk_apply_editor_value=lambda row_id, col_name, value, **kw: calls.append((row_id, col_name, value)),
             _refresh_bulk_view_after_edit=lambda row_ids, changed_cols=None: calls.append(("refresh", tuple(row_ids))) or True,
             _update_bulk_summary=lambda: calls.append(("summary",)),
             _update_bulk_sheet_status=lambda: calls.append(("status",)),
@@ -943,7 +943,7 @@ class BulkSheetViewTests(unittest.TestCase):
         }
         view.app = SimpleNamespace(
             _capture_bulk_history_state=lambda: {"before": True},
-            _bulk_apply_editor_value=lambda row_id, col_name, value: calls.append((row_id, col_name, value)),
+            _bulk_apply_editor_value=lambda row_id, col_name, value, **kw: calls.append((row_id, col_name, value)),
             _refresh_bulk_view_after_edit=lambda row_ids, changed_cols=None: calls.append(("refresh", tuple(row_ids), changed_cols)) or True,
             _update_bulk_summary=lambda: calls.append(("summary",)),
             _update_bulk_sheet_status=lambda: calls.append(("status",)),
@@ -1465,7 +1465,7 @@ class BulkSheetViewTests(unittest.TestCase):
         view.selected_target_row_ids = lambda col_name: ("4", "8")
         view.current_cell = lambda: (0, 1)
         view.app = SimpleNamespace(
-            _bulk_apply_editor_value=lambda row_id, col_name, value: calls.append((row_id, col_name, value)),
+            _bulk_apply_editor_value=lambda row_id, col_name, value, **kw: calls.append((row_id, col_name, value)),
             _refresh_bulk_view_after_edit=lambda row_ids: calls.append(("refresh", tuple(row_ids))) or True,
             _apply_bulk_filter=lambda: calls.append(("filter",)),
             _capture_bulk_history_state=lambda: {"before": True},
@@ -1505,7 +1505,7 @@ class BulkSheetViewTests(unittest.TestCase):
         view.selected_target_row_ids = lambda col_name: ()
         view.current_cell = lambda: (1, 0)
         view.app = SimpleNamespace(
-            _bulk_apply_editor_value=lambda row_id, col_name, value: calls.append((row_id, col_name, value)),
+            _bulk_apply_editor_value=lambda row_id, col_name, value, **kw: calls.append((row_id, col_name, value)),
             _refresh_bulk_view_after_edit=lambda row_ids: calls.append(("refresh", tuple(row_ids))) or True,
             _apply_bulk_filter=lambda: calls.append(("filter",)),
             _capture_bulk_history_state=lambda: {"before": True},
@@ -1547,7 +1547,7 @@ class BulkSheetViewTests(unittest.TestCase):
         view.selected_target_row_ids = lambda col_name: ("4",)
         view.current_cell = lambda: (0, 1)
         view.app = SimpleNamespace(
-            _bulk_apply_editor_value=lambda row_id, col_name, value: calls.append((row_id, col_name, value)),
+            _bulk_apply_editor_value=lambda row_id, col_name, value, **kw: calls.append((row_id, col_name, value)),
             _refresh_bulk_view_after_edit=lambda row_ids: calls.append(("refresh", tuple(row_ids))) or False,
             _apply_bulk_filter=lambda: calls.append(("filter",)),
             _update_bulk_summary=lambda: calls.append(("summary",)),
