@@ -180,6 +180,7 @@ def build_bulk_tab(app, editable_cols):
         ttk.Button(removal_row, text="Skip Cleanup...", command=app._open_skip_actions),
         ttk.Button(removal_row, text="QOH Changes...", command=app._open_qoh_review),
         ttk.Button(removal_row, text="Undo Last Remove", command=app._undo_last_bulk_removal),
+        ttk.Button(removal_row, text="Clear Notes", command=app._clear_notes_for_selected),
     ]
     for idx, button in enumerate(removal_buttons):
         button.pack(side=tk.LEFT, padx=(8 if idx == 0 else 4, 0))
@@ -734,8 +735,13 @@ def build_bulk_sheet_rows(app, items, *, row_id_factory=bulk_row_id):
     local_bulk_row_id = bulk_row_id
     row_ids_append = row_ids.append
     rows_append = rows.append
+    _build_hay = _build_text_haystack
     for idx, item in enumerate(items):
         row_ids_append(local_bulk_row_id(item) if default_row_id else row_id_factory(item, idx))
+        # Stamp text haystack for fast filtering (avoids per-filter
+        # str.lower on 4 fields × 59K items).
+        if "_text_haystack" not in item:
+            item["_text_haystack"] = _build_hay(item)
         # Inline cache lookup — cached_bulk_row_values fast path, no
         # function-call overhead.
         rid = local_bulk_row_id(item)
@@ -1254,30 +1260,36 @@ def bulk_filter_is_default(filter_state):
     return True
 
 
-def item_matches_text_filter(item, text):
-    """Case-insensitive substring match against item_code, description, supplier.
+def _build_text_haystack(item):
+    """Build a lowered search string for fast text filtering."""
+    inv = item.get("inventory") or {}
+    return "\0".join((
+        item.get("line_code", ""),
+        item.get("item_code", ""),
+        item.get("description", ""),
+        inv.get("supplier", ""),
+        item.get("vendor", ""),
+        item.get("notes", ""),
+    )).lower()
 
-    Returns True when *text* is empty (no filter active).  Otherwise the
-    item matches when *any* of (line_code, item_code, description,
-    supplier) contains the search term.  Supplier is read from the
-    inventory record stamped onto the item by enrich_item.
+
+def item_matches_text_filter(item, text):
+    """Case-insensitive substring match against key item fields.
+
+    Uses a precomputed ``_text_haystack`` when available (stamped by
+    ``build_bulk_sheet_rows`` or ``refresh_bulk_view_after_edit``).
+    Falls back to building one on the fly.
     """
     if not text:
         return True
     needle = str(text or "").strip().lower()
     if not needle:
         return True
-    inv = item.get("inventory") or {}
-    haystacks = (
-        item.get("line_code", ""),
-        item.get("item_code", ""),
-        item.get("description", ""),
-        inv.get("supplier", ""),
-    )
-    for value in haystacks:
-        if value and needle in str(value).lower():
-            return True
-    return False
+    haystack = item.get("_text_haystack")
+    if haystack is None:
+        haystack = _build_text_haystack(item)
+        item["_text_haystack"] = haystack
+    return needle in haystack
 
 
 def item_matches_bulk_filter(item, filter_state):
@@ -1412,6 +1424,7 @@ def refresh_bulk_view_after_edit(app, row_ids, changed_cols=None):
         idx, item = resolve_bulk_row_id(app, row_id)
         if idx is not None and item is not None:
             cache.pop(bulk_row_id(item), None)
+            item.pop("_text_haystack", None)
     invalidate_bulk_visible_rows_cache(app)
     invalidate_bulk_filter_result_cache(app)
     filter_state = bulk_filter_state(app)

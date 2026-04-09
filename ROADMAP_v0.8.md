@@ -2,7 +2,7 @@
 
 Status: In progress (v0.8.0 → v0.8.12 shipped)
 
-Current app version: `0.8.13`
+Current app version: `0.8.14`
 
 ## Live confirmation (2026-04-08 22:10 operator run)
 
@@ -113,7 +113,7 @@ the end of this file.
   `load_persistent_state` — v0.8.13
 - [x] `export_vendor_po` picks up `item["notes"]` and writes a `Notes`
   column to the vendor xlsx — v0.8.13
-- [ ] "Clear notes for selected rows" in the removal row toolbar
+- [x] "Clear notes for selected rows" button in the removal row toolbar — v0.8.14
 - [x] Tests for all four pure helpers — v0.8.13 (10 tests)
 
 ---
@@ -202,8 +202,10 @@ traces from the operator's 63K-item dataset.
 
 **Still open (not yet worth the risk):**
 
-- [ ] **Precomputed `_text_haystack`** per item — expected 83 ms → ~10 ms
-  on text filter (small interactive win, no user complaint yet)
+- [x] **Precomputed `_text_haystack`** per item — stamped during
+  `build_bulk_sheet_rows`, invalidated on edit; text filter now does
+  one `in` check on a pre-lowered string instead of building and
+  lowering 4+ fields per item per filter — v0.8.14
 - [ ] **Fused warning-generation loop** in `parse_all_files` — expected
   ~80 ms saved (negligible on the 17 s parse)
 - [ ] **Fused `parse_detailed_pair_aggregates` three-pass loop** into
@@ -287,7 +289,8 @@ Biggest long-term payoff.  Splits the 380-line `enrich_item` monolith.
 - [x] Fixed pre-existing HEADER_ALIASES bug: underscore forms
   (`qty_sold`, `sale_date`, `qty_received`, `receipt_date`) were
   missing from alias sets — v0.8.13
-- [ ] `parsers/csv_io.py` — raw CSV iteration + layout detection
+- [x] `parsers/csv_io.py` — header matching, layout detection, dedup,
+  generic + X4 row iterators — v0.8.14
 - [ ] `parsers/x4_dialect.py` — X4 row shape knowledge + row builders
 - [ ] `parsers/aggregators.py` — `parse_detailed_pair_aggregates` etc.
 

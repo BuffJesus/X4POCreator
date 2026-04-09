@@ -1247,3 +1247,24 @@ from parsers.normalize import (  # noqa: E402, F811
     _coerce_int,
     _normalize_vendor_code,
 )
+from parsers.csv_io import (  # noqa: E402, F811
+    _detail_row_signature,
+    _first_nonempty_csv_row,
+    _iter_generic_detail_rows,
+    _iter_x4_detail_rows,
+    _dedupe_detail_rows,
+)
+from parsers.csv_io import (
+    _match_header_columns as _csv_io_match_header_columns,
+    _detect_detail_layout as _csv_io_detect_detail_layout,
+)
+
+
+def _match_header_columns(rows, required_fields, optional_fields=()):  # noqa: F811
+    return _csv_io_match_header_columns(rows, required_fields, optional_fields, header_aliases=HEADER_ALIASES)
+
+
+def _detect_detail_layout(filepath, required_fields, *, optional_fields=(), x4_row_checker=None, sample_limit=64):  # noqa: F811
+    return _csv_io_detect_detail_layout(filepath, required_fields, optional_fields=optional_fields,
+                                        x4_row_checker=x4_row_checker, sample_limit=sample_limit,
+                                        header_aliases=HEADER_ALIASES)

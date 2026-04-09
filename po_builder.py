@@ -1661,6 +1661,44 @@ class POBuilderApp:
     def _undo_last_bulk_removal(self):
         ui_assignment_actions.undo_last_bulk_removal(self)
 
+    def _clear_notes_for_selected(self):
+        import item_notes_flow
+        bulk_sheet = getattr(self, "bulk_sheet", None)
+        if not bulk_sheet:
+            return
+        row_ids = list(bulk_sheet.selected_row_ids()) or [bulk_sheet.current_row_id()]
+        row_ids = [r for r in row_ids if r is not None]
+        if not row_ids:
+            return
+        keys = []
+        for row_id in row_ids:
+            resolve = getattr(self, "_resolve_bulk_row_id", None)
+            if callable(resolve):
+                _idx, item = resolve(row_id)
+            else:
+                continue
+            if item is not None:
+                keys.append((item.get("line_code", ""), item.get("item_code", "")))
+                item.pop("notes", None)
+        notes = getattr(self, "item_notes", {})
+        removed = item_notes_flow.clear_notes_for_keys(notes, keys)
+        if removed > 0:
+            item_notes_flow.save_notes(self._data_path("item_notes"), notes)
+        # Refresh display for affected rows
+        import ui_bulk
+        cache = ui_bulk._bulk_row_render_cache(self)
+        for row_id in row_ids:
+            _idx, item = self._resolve_bulk_row_id(row_id)
+            if item is not None:
+                cache.pop(ui_bulk.bulk_row_id(item), None)
+        if bulk_sheet:
+            for row_id in row_ids:
+                _idx, item = self._resolve_bulk_row_id(row_id)
+                if item is not None:
+                    rid = ui_bulk.bulk_row_id(item)
+                    if rid in getattr(bulk_sheet, "row_lookup", {}):
+                        bulk_sheet.refresh_row(rid, ui_bulk.cached_bulk_row_values(self, item))
+
     def _update_bulk_cell_status(self):
         ui_state_flow.update_bulk_cell_status(self)
 
