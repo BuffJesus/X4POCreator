@@ -428,9 +428,31 @@ class POBuilderApp:
         self._loaded_vendor_codes = []
         self._load_persistent_state()
 
-        # Build the notebook (tabbed interface) — styles set by apply_dark_theme()
+        # Workflow progress stepper
+        self._stepper_frame = ttk.Frame(root)
+        self._stepper_frame.pack(fill=tk.X, padx=8, pady=(6, 0))
+        self._stepper_labels = {}
+        steps = [
+            ("Load", "1. Load Files"),
+            ("Filter", "2. Filter"),
+            ("Assign", "3. Assign Vendors"),
+            ("Review", "4. Review & Export"),
+        ]
+        for i, (key, text) in enumerate(steps):
+            lbl = ttk.Label(
+                self._stepper_frame, text=text,
+                font=("Segoe UI", 9), anchor="center",
+                padding=(12, 3),
+            )
+            lbl.pack(side=tk.LEFT, padx=(0 if i == 0 else 2, 0))
+            self._stepper_labels[key] = lbl
+            if i < len(steps) - 1:
+                ttk.Label(self._stepper_frame, text="›", font=("Segoe UI", 11)).pack(side=tk.LEFT, padx=2)
+        self._update_stepper("Load")
+
+        # Build the notebook (tabbed interface)
         self.notebook = ttk.Notebook(root)
-        self.notebook.pack(fill=tk.BOTH, expand=True, padx=8, pady=8)
+        self.notebook.pack(fill=tk.BOTH, expand=True, padx=8, pady=(4, 8))
         self._last_notebook_tab = ""
         self.notebook.bind("<<NotebookTabChanged>>", self._on_notebook_tab_changed)
 
@@ -792,6 +814,27 @@ class POBuilderApp:
             except Exception:
                 pass
             self._last_notebook_tab = current
+            self._update_stepper_from_tab(current)
+
+    def _update_stepper(self, active_key):
+        """Highlight the active step in the workflow stepper."""
+        for key, lbl in self._stepper_labels.items():
+            if key == active_key:
+                lbl.configure(style="Info.TLabel", font=("Segoe UI", 9, "bold"))
+            else:
+                lbl.configure(style="TLabel", font=("Segoe UI", 9))
+
+    def _update_stepper_from_tab(self, tab_text):
+        """Map notebook tab text to stepper step key."""
+        tab_text = (tab_text or "").lower()
+        if "load" in tab_text:
+            self._update_stepper("Load")
+        elif "line code" in tab_text or "customer" in tab_text:
+            self._update_stepper("Filter")
+        elif "assign" in tab_text or "individual" in tab_text:
+            self._update_stepper("Assign")
+        elif "review" in tab_text or "export" in tab_text:
+            self._update_stepper("Review")
 
     def _global_ctrl_f_handler(self, event=None):
         """Focus the bulk text-search entry when Ctrl+F is pressed on the Assign Vendors tab."""
