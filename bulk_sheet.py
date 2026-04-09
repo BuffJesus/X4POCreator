@@ -609,12 +609,13 @@ class BulkSheetView:
         self.app._update_bulk_sheet_status()
         return True
 
-    # Row color palette by status + vendor assignment
+    # Row color palette — subtle tints over the dark grid background.
+    # Keep contrast low so text stays readable against the base theme.
     _ROW_COLORS = {
-        "assigned":  {"bg": "#1a3a2a", "fg": "#c0e8d0"},   # green tint — assigned vendor
-        "review":    {"bg": "#3a351a", "fg": "#e8dca0"},   # amber tint — needs review
-        "warning":   {"bg": "#3a2020", "fg": "#e8a0a0"},   # red tint — warning
-        "skip":      {"bg": "#2a2a2a", "fg": "#808080"},   # dimmed — skip/not needed
+        "assigned":  {"bg": "#243030"},   # very faint green tint
+        "review":    {"bg": "#302c1e"},   # very faint amber tint
+        "warning":   {"bg": "#302020"},   # very faint red tint
+        "skip":      {"bg": "#1e1e1e"},   # slightly darker than base
     }
 
     def _apply_row_colors(self, rows):
@@ -631,10 +632,11 @@ class BulkSheetView:
         except Exception:
             pass
         for row_idx, row_data in enumerate(rows):
-            if row_idx >= len(row_data):
+            if not row_data:
                 continue
-            status = str(row_data[status_col]).strip().upper() if status_col < len(row_data) else ""
-            vendor = str(row_data[vendor_col]).strip() if vendor_col is not None and vendor_col < len(row_data) else ""
+            ncols = len(row_data)
+            status = str(row_data[status_col]).strip().upper() if status_col < ncols else ""
+            vendor = str(row_data[vendor_col]).strip() if vendor_col is not None and vendor_col < ncols else ""
             if vendor and status not in ("REVIEW", "WARN", "WARNING"):
                 colors = self._ROW_COLORS.get("assigned")
             elif status in ("REVIEW",):
@@ -647,7 +649,7 @@ class BulkSheetView:
                 continue
             if colors:
                 try:
-                    self.sheet.highlight_rows(row_idx, bg=colors["bg"], fg=colors["fg"], redraw=False)
+                    self.sheet.highlight_rows(row_idx, bg=colors["bg"], redraw=False)
                 except Exception:
                     pass
 
