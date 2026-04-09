@@ -6,6 +6,7 @@ from datetime import datetime
 
 import parsers
 import performance_flow
+import perf_trace
 import sales_history_flow
 import storage
 
@@ -363,6 +364,7 @@ def _normalize_inventory_min_max(inventory_lookup):
     return normalized, issues
 
 
+@perf_trace.timed("load_flow.parse_all_files")
 def parse_all_files(paths, *, old_po_warning_days, short_sales_window_days, now=None, progress_callback=None):
     """Parse the selected input files into a single workflow result."""
     cache_signature = _build_parse_cache_signature(
@@ -846,6 +848,7 @@ def parse_all_files(paths, *, old_po_warning_days, short_sales_window_days, now=
     return result
 
 
+@perf_trace.timed("load_flow.apply_load_result")
 def apply_load_result(session, result, *, parsers_module=parsers):
     """Apply a parsed load result onto the current session state."""
     session.sales_items = result["sales_items"]

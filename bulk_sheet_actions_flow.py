@@ -2,6 +2,7 @@ import json
 
 import bulk_remove_flow
 import session_state_flow
+from debug_log import write_debug
 
 
 def maybe_break(result):
@@ -465,9 +466,76 @@ def bulk_clear_selected_cells(app, editable_cols, showinfo):
 
 
 def bulk_delete_selected(app, event=None):
-    if app.bulk_sheet and app.bulk_sheet.explicit_selected_row_ids():
+    """Delete key handler — ALWAYS removes rows.
+
+    The operator's mental model (confirmed across multiple bug
+    reports since v0.8.0) is that Delete on the bulk grid should
+    remove the row under the selection, period.  The previous
+    Excel-style "cells selected → clear cells" branch silently
+    cleared the vendor cell instead, which looked like "delete key
+    doesn't work" even though the interceptor was firing correctly
+    (v0.8.6 debug logging proved it).
+
+    Dispatch order:
+        1. Explicit row-header selection (click row numbers, ctrl-click
+           for multiple) → remove those rows
+        2. Cell selection(s) → derive the rows they live on and
+           remove those rows
+        3. Current row fallback → remove the single focused row
+        4. Nothing → no-op
+    """
+    sheet = getattr(app, "bulk_sheet", None)
+    if sheet is None:
+        return None
+
+    # 1. Explicit row-header selection
+    row_ids = tuple(sheet.explicit_selected_row_ids())
+    if row_ids:
+        write_debug("bulk_delete_selected.source", mode="row_header", n=len(row_ids))
         return app._bulk_remove_selected_rows(event)
-    if app.bulk_sheet and app.bulk_sheet.selected_cells():
-        app._bulk_clear_selected_cells()
-        return "break"
-    return app._bulk_remove_selected_rows(event)
+
+    # 2. Cell selection → promote to row selection
+    cells = list(sheet.selected_cells() or [])
+    if cells:
+        row_ids_set = set()
+        for r, _c in cells:
+            if 0 <= r < len(sheet.row_ids):
+                row_ids_set.add(str(sheet.row_ids[r]))
+        if row_ids_set:
+            write_debug(
+                "bulk_delete_selected.source",
+                mode="cell_promoted_to_row",
+                n=len(row_ids_set),
+            )
+            # Feed the promoted set back to the sheet's selection so
+            # `_bulk_remove_selected_rows` picks it up via the normal
+            # `explicit_selected_row_ids()` path.  Also seed the
+            # snapshot so the confirm dialog sees the same rows.
+            try:
+                sheet._selection_snapshot = {
+                    "rows": tuple(sorted({
+                        r for r, _c in cells if 0 <= r < len(sheet.row_ids)
+                    })),
+                    "cells": tuple(cells),
+                }
+            except Exception:
+                pass
+            return app._bulk_remove_selected_rows(event)
+
+    # 3. Current row fallback
+    current_row = sheet.current_row_id() if hasattr(sheet, "current_row_id") else None
+    if current_row is not None:
+        write_debug("bulk_delete_selected.source", mode="current_row", row_id=str(current_row))
+        try:
+            sheet._selection_snapshot = {
+                "rows": (sheet.row_lookup.get(str(current_row), -1),)
+                if hasattr(sheet, "row_lookup") else (),
+                "cells": (),
+            }
+        except Exception:
+            pass
+        return app._bulk_remove_selected_rows(event)
+
+    # 4. Nothing to do
+    write_debug("bulk_delete_selected.source", mode="empty")
+    return None

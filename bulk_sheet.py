@@ -220,17 +220,77 @@ class BulkSheetView:
             return
 
         def _on_delete(event=None):
+            write_debug(
+                "bulk_sheet.delete_interceptor.fired",
+                widget=type(getattr(event, "widget", None)).__name__ if event is not None else "",
+            )
             try:
-                return delete_handler(event)
+                result = delete_handler(event)
+                write_debug("bulk_sheet.delete_interceptor.handled", result=repr(result))
             except Exception as exc:
                 write_debug("bulk_sheet.delete_key.error", error=str(exc))
                 return None
+            # Returning "break" stops Tk from dispatching the event to
+            # any remaining bindtags (tksheet's class-level Delete handler
+            # that was eating the event before our previous attempts).
+            return "break"
 
+        # Collect every widget the Delete key could land on.  tksheet's
+        # Sheet is a composite: the MainTable (MT) is the cell area,
+        # RowIndex (RI) is the row header column, ColumnHeader (CH) is
+        # the header row, and TopLeftRectangle (TL) is the corner.
         targets = [self.sheet]
-        for attr in ("MT", "RI", "CH"):
+        for attr in ("MT", "RI", "CH", "TL"):
             child = getattr(self.sheet, attr, None)
             if child is not None:
                 targets.append(child)
+
+        # --------- The real fix: bindtag interception ---------------
+        # Previous attempts bound on these widgets with add="+" but
+        # tksheet registers its own Delete handler at the CLASS level
+        # (via bind_class on Canvas) which runs in a later bindtag and
+        # returns "break", stopping event propagation.  Widget-level
+        # `add="+"` bindings run in the order they were registered on
+        # the same bindtag — which on the widget tag means tksheet's
+        # widget-level handler runs first.
+        #
+        # The bulletproof fix is to INSERT a custom bindtag at position
+        # 0 on each target widget.  Tk dispatches events through
+        # bindtags in order, so a custom tag at position 0 runs before
+        # the widget's own tag, before the class tag, before toplevel,
+        # before "all".  tksheet's bindings can't preempt us because
+        # they live in later bindtags.
+        custom_tag = "POBuilderSheetDelete"
+        try:
+            # Register the handler on the custom bindtag (once per
+            # BulkSheetView instance — same handler closure, idempotent
+            # rebinding is fine).
+            self.sheet.bind_class(custom_tag, "<Delete>", _on_delete)
+            self.sheet.bind_class(custom_tag, "<KP_Delete>", _on_delete)
+        except Exception as exc:
+            write_debug("bulk_sheet.delete_interceptor.bind_class_error", error=str(exc))
+
+        for target in targets:
+            try:
+                current = list(target.bindtags())
+                if custom_tag in current:
+                    continue
+                target.bindtags((custom_tag,) + tuple(current))
+                write_debug(
+                    "bulk_sheet.delete_interceptor.tag_installed",
+                    widget=type(target).__name__,
+                    bindtags=repr(target.bindtags()),
+                )
+            except Exception as exc:
+                write_debug(
+                    "bulk_sheet.delete_interceptor.tag_error",
+                    widget=type(target).__name__,
+                    error=str(exc),
+                )
+
+        # Also keep the legacy widget-level bindings as a fallback —
+        # harmless when the bindtag interception works, a safety net
+        # on tksheet versions where bindtags don't behave as expected.
         for target in targets:
             for sequence in ("<Delete>", "<KP_Delete>"):
                 try:

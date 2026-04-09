@@ -928,6 +928,7 @@ class BulkDialogTests(unittest.TestCase):
             _annotate_release_decisions=lambda: events.append("annotate"),
             _populate_review_tab=lambda: events.append("review"),
             notebook=SimpleNamespace(tab=lambda *args, **kwargs: None, select=lambda idx: events.append(("select", idx))),
+            root=None,  # v0.8.3 passes parent=app.root to messageboxes
         )
 
         with patch("ui_bulk_dialogs.messagebox.showinfo"), \
@@ -946,6 +947,73 @@ class BulkDialogTests(unittest.TestCase):
         self.assertEqual(assigned["final_qty"], 2)
         self.assertIn("annotate", events)
         self.assertIn("review", events)
+
+    def test_finish_bulk_final_items_excluded_dialog_uses_topmost_helper(self):
+        """Regression for v0.8.3 → v0.8.5 lock-up sequence:
+
+        - v0.8.3 tried fixing the lock-up by passing parent=app.root
+          to the messagebox.
+        - v0.8.5 operator report: the dialog STILL lands behind the
+          main window on their machine.
+        - v0.8.5 fix: route every "Items Excluded" notice through
+          `_show_info_topmost`, which force-lifts the root + pumps
+          the event loop + flips `-topmost` briefly to force Windows
+          to reorder the z-stack before showing the dialog.
+
+        The test asserts the topmost helper is called rather than
+        `messagebox.showinfo` directly.  That's the contract that
+        guarantees the Windows z-order fix runs.
+        """
+        topmost_calls = []
+        events = []
+
+        def fake_topmost(_app, title, message):
+            topmost_calls.append({"title": title, "message": message})
+
+        class FakeRoot:
+            def update_idletasks(self): pass
+            def deiconify(self): pass
+            def lift(self): pass
+            def attributes(self, *args, **kwargs): pass
+            def focus_force(self): pass
+            def after(self, *args, **kwargs): pass
+
+        app = SimpleNamespace(
+            filtered_items=[
+                {
+                    "line_code": "A", "item_code": "1", "description": "keep",
+                    "qty_sold": 0, "vendor": "V1",
+                    "final_qty": 5, "order_qty": 5,
+                    "status": "ok", "data_flags": [],
+                    "review_required": False, "review_resolved": False,
+                },
+                {
+                    "line_code": "A", "item_code": "2", "description": "drop",
+                    "qty_sold": 0, "vendor": "",
+                    "final_qty": 5, "order_qty": 5,
+                    "status": "ok", "data_flags": [],
+                    "review_required": False, "review_resolved": False,
+                },
+            ],
+            assigned_items=[],
+            _annotate_release_decisions=lambda: events.append("annotate"),
+            _populate_review_tab=lambda: events.append("populate"),
+            notebook=SimpleNamespace(
+                tab=lambda *args, **kwargs: None,
+                select=lambda idx: events.append(("select", idx)),
+            ),
+            root=FakeRoot(),
+        )
+
+        with patch("ui_bulk_dialogs._show_info_topmost", side_effect=fake_topmost), \
+             patch("ui_bulk_dialogs.messagebox.askyesno", return_value=True):
+            ui_bulk_dialogs.finish_bulk_final(app)
+
+        # The topmost helper was invoked exactly once with the
+        # expected title, meaning the Windows z-order fix ran.
+        self.assertEqual(len(topmost_calls), 1)
+        self.assertEqual(topmost_calls[0]["title"], "Items Excluded")
+        self.assertIn("unassigned", topmost_calls[0]["message"])
 
 
 class ResolveReviewFromBulkTests(unittest.TestCase):

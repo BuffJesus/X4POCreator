@@ -2,6 +2,7 @@ import json
 import tkinter as tk
 from tkinter import ttk
 
+import perf_trace
 from bulk_sheet import BulkSheetView, HAS_TKSHEET, TKSHEET_IMPORT_ERROR
 from rules import get_buy_rule_summary
 
@@ -675,6 +676,7 @@ def cached_bulk_row_values(app, item):
     return values
 
 
+@perf_trace.timed("ui_bulk.build_bulk_sheet_rows")
 def build_bulk_sheet_rows(app, items, *, row_id_factory=bulk_row_id):
     row_ids = []
     rows = []
@@ -868,6 +870,7 @@ def build_bulk_session_metadata(items):
     }
 
 
+@perf_trace.timed("ui_bulk.sync_bulk_session_metadata")
 def sync_bulk_session_metadata(app, items=None):
     normalized = list(getattr(app, "filtered_items", ()) or ()) if items is None else list(items or [])
     metadata = build_bulk_session_metadata(normalized)
@@ -1429,6 +1432,14 @@ def restore_bulk_filter_sort_state(app):
 
 
 def apply_bulk_filter(app):
+    with perf_trace.span(
+        "ui_bulk.apply_bulk_filter",
+        items_total=len(getattr(app, "filtered_items", []) or []),
+    ):
+        _apply_bulk_filter_inner(app)
+
+
+def _apply_bulk_filter_inner(app):
     flush_pending_bulk_sheet_edit(app)
     sync_bulk_cache_state(app)
     filter_state = bulk_filter_state(app)

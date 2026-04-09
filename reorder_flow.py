@@ -2,6 +2,7 @@ import math
 
 import item_workflow
 import performance_flow
+import perf_trace
 import storage
 from rules import looks_like_hardware_pack_item, looks_like_reel_item
 
@@ -435,6 +436,7 @@ def _rebuild_bulk_metadata_after_inplace_recalc(app):
     ui_bulk.rebuild_bulk_metadata_after_inplace_recalc(app)
 
 
+@perf_trace.timed("reorder_flow.refresh_suggestions")
 def refresh_suggestions(app):
     """Recalculate suggestions when the reorder cycle changes.
 
@@ -467,6 +469,7 @@ def refresh_suggestions(app):
     app._apply_bulk_filter()
 
 
+@perf_trace.timed("reorder_flow.normalize_items_to_cycle")
 def normalize_items_to_cycle(app):
     """Normalize demand_signal on all filtered_items to match the current reorder cycle.
 
@@ -504,6 +507,7 @@ def normalize_items_to_cycle(app):
     _rebuild_bulk_metadata_after_inplace_recalc(app)
 
 
+@perf_trace.timed("reorder_flow.refresh_recent_orders")
 def refresh_recent_orders(app):
     try:
         days = app.var_lookback_days.get()

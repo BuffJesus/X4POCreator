@@ -2,6 +2,7 @@ from collections import defaultdict
 
 import item_workflow
 import performance_flow
+import perf_trace
 import reorder_flow
 import shipping_flow
 import storage
@@ -31,6 +32,7 @@ def _compute_override_pattern(entries):
     return "mixed"
 
 
+@perf_trace.timed("assignment_flow.prepare_assignment_session")
 def prepare_assignment_session(
     session,
     *,
@@ -127,6 +129,7 @@ def prepare_assignment_session(
             item["core_why"] = merged
             item["why"] = merged
 
+    perf_trace.stamp("assignment_flow.stage", stage="begin")
     filtered_items = []
     seen_keys = set()
     for item in session.sales_items:
@@ -251,6 +254,7 @@ def prepare_assignment_session(
     filtered_items.sort(key=lambda x: (x["line_code"], x["item_code"]))
     ui_bulk.replace_filtered_items(session, filtered_items)
 
+    perf_trace.stamp("assignment_flow.stage", stage="candidates_built", count=len(filtered_items))
     session.recent_orders = storage.get_recent_orders(order_history_path, lookback_days)
     missing_inventory_keys = set(getattr(session, "inventory_coverage_missing_keys", set()) or set())
     detailed_conflict_keys = set(getattr(session, "detailed_sales_conflict_keys", set()) or set())
@@ -327,10 +331,12 @@ def prepare_assignment_session(
             )
         reorder_flow.append_suggestion_comparison_reason(item)
         item_workflow.apply_suggestion_gap_review_state(item)
+    perf_trace.stamp("assignment_flow.stage", stage="enriched", count=len(session.filtered_items))
     performance_flow.annotate_items(
         session.filtered_items,
         inventory_lookup=session.inventory_lookup,
     )
+    perf_trace.stamp("assignment_flow.stage", stage="performance_annotated")
 
     duplicate_ic_lookup = defaultdict(set)
     for line_code, item_code in session.inventory_lookup:
@@ -351,4 +357,5 @@ def prepare_assignment_session(
             session.vendor_codes_used.append(vendor)
     session.vendor_codes_used.sort()
     shipping_flow.annotate_release_decisions(session)
+    perf_trace.stamp("assignment_flow.stage", stage="release_annotated")
     return True

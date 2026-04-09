@@ -6,6 +6,7 @@ import os
 import re
 from tkinter import filedialog, messagebox
 
+import perf_trace
 import shipping_flow
 import storage
 from models import SessionSnapshot
@@ -176,6 +177,7 @@ def build_export_audit_items(items, export_scope_label):
     return audited
 
 
+@perf_trace.timed("export_flow.do_export")
 def do_export(
     app,
     export_vendor_po,

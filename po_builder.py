@@ -32,6 +32,7 @@ import load_flow
 import loading_flow
 import maintenance_flow
 import parsers
+import perf_trace
 import persistent_state_flow
 import reorder_flow
 import review_flow
@@ -393,6 +394,15 @@ class POBuilderApp:
         self.update_check_enabled = False
         self.session = AppSessionState()
         self._configure_initial_data_dir()
+        # Perf trace auto-enable — opt-in via DEBUG_PERF=1 env var or a
+        # `perf_trace.enabled` flag file next to the exe/script.  Safe
+        # to call even when the harness is already on (no-op).  Must
+        # land here so spans cover the whole session from parse through
+        # export; atexit hook writes the summary on clean shutdown.
+        try:
+            perf_trace.maybe_auto_enable()
+        except Exception:
+            pass
         self.root.title("PO Builder — X4 Import Tool")
         self.root.geometry("1100x720")
         self.root.minsize(900, 600)
@@ -419,6 +429,23 @@ class POBuilderApp:
         # Build the notebook (tabbed interface) — styles set by apply_dark_theme()
         self.notebook = ttk.Notebook(root)
         self.notebook.pack(fill=tk.BOTH, expand=True, padx=8, pady=8)
+        self._last_notebook_tab = ""
+        self.notebook.bind("<<NotebookTabChanged>>", self._on_notebook_tab_changed)
+
+        # Root-level Delete / Backspace binding.  Previous versions
+        # bound <Delete> on tksheet surfaces, but tksheet's internal
+        # bindings are version-dependent and the operator reported
+        # the key never reaching our handler.  `bind_all` listens on
+        # every Tk widget in the process, so even if tksheet consumes
+        # the event downstream, we still get a chance to act on it
+        # first.  The handler checks whether the bulk sheet has focus
+        # before acting, so Delete in an Entry widget (e.g. the search
+        # box) still behaves normally.
+        try:
+            self.root.bind_all("<Delete>", self._global_delete_key_handler, add="+")
+            self.root.bind_all("<KP_Delete>", self._global_delete_key_handler, add="+")
+        except Exception as exc:
+            write_debug("po_builder.delete_bind.error", error=str(exc))
 
         # Loading overlay
         self._loading_overlay = None
@@ -737,6 +764,50 @@ class POBuilderApp:
 
     def _open_session_diff(self):
         ui_session_diff.open_session_diff_dialog(self)
+
+    def _on_notebook_tab_changed(self, _event=None):
+        """Stamp a perf trace event every time the operator switches tabs.
+
+        The timing value is the wall-clock duration the *previous* tab
+        was visible, which is more useful for the operator's feel than
+        the tab-switch event itself (which is near-instant).
+        """
+        try:
+            current = self.notebook.tab(self.notebook.select(), "text").strip()
+        except Exception:
+            current = ""
+        previous = getattr(self, "_last_notebook_tab", "") or ""
+        if previous != current:
+            try:
+                perf_trace.stamp("notebook.tab_switch", old=previous, new=current)
+            except Exception:
+                pass
+            self._last_notebook_tab = current
+
+    def _toggle_perf_trace(self):
+        """Enable or disable the perf trace harness from the Help menu."""
+        if perf_trace.is_enabled():
+            summary_path = perf_trace.disable(write_summary=True)
+            if summary_path:
+                messagebox.showinfo(
+                    "Perf Trace Stopped",
+                    f"Performance trace disabled.\n\nSummary written to:\n{summary_path}",
+                )
+            else:
+                messagebox.showinfo(
+                    "Perf Trace Stopped",
+                    "Performance trace disabled.",
+                )
+        else:
+            log_path = os.path.join(self.data_dir or LOCAL_DATA_DIR, "perf_trace.jsonl")
+            summary_path = os.path.join(self.data_dir or LOCAL_DATA_DIR, "perf_summary.txt")
+            perf_trace.enable(log_path, session_label="manual", summary_path=summary_path)
+            messagebox.showinfo(
+                "Perf Trace Started",
+                f"Recording performance events to:\n{log_path}\n\n"
+                "Stop recording via Help → Toggle Perf Trace to get the "
+                "summary.  The file persists across runs.",
+            )
 
     def _browse_folder(self):
         path = filedialog.askdirectory(title="Select Folder Containing X4 Report CSVs")
@@ -1668,6 +1739,54 @@ class POBuilderApp:
 
     def _bulk_delete_selected(self, event=None):
         return bulk_sheet_actions_flow.bulk_delete_selected(self, event)
+
+    def _global_delete_key_handler(self, event=None):
+        """Root-level Delete / KP_Delete handler.
+
+        Fires for every Delete keystroke in the entire process.  We
+        only act on it when the bulk sheet is the focused widget (so
+        Delete still works normally in Entry widgets, the help text
+        search, dialog fields, etc.).  Every keystroke is logged to
+        the debug trace so the operator and I can confirm the event
+        is actually being received — the previous attempts to wire
+        this key failed because tksheet's internal bindings ate the
+        event before reaching us, and without logging we couldn't
+        tell where it was disappearing.
+        """
+        try:
+            focus_widget = self.root.focus_get()
+        except Exception:
+            focus_widget = None
+        focus_class = type(focus_widget).__name__ if focus_widget is not None else "None"
+        # Log every fired Delete so we can see them in debug_trace.log.
+        write_debug(
+            "po_builder.delete_key.fired",
+            focus=focus_class,
+            active_tab=str(getattr(self, "_last_notebook_tab", "") or ""),
+        )
+        # Only act when the operator is on the bulk tab and has a
+        # selection on the bulk sheet.  Otherwise fall through so the
+        # Delete behaves normally wherever focus is.
+        active_tab = str(getattr(self, "_last_notebook_tab", "") or "")
+        if "Assign Vendors" not in active_tab:
+            return None
+        sheet = getattr(self, "bulk_sheet", None)
+        if sheet is None:
+            return None
+        # Don't hijack Delete while the operator is editing a cell
+        # inline — Delete inside a Text/Entry widget should delete a
+        # character, not a row.
+        focus_widget_name = focus_class.lower()
+        if any(t in focus_widget_name for t in ("entry", "text", "combobox", "spinbox")):
+            write_debug("po_builder.delete_key.skip_editor", focus=focus_class)
+            return None
+        try:
+            result = self._bulk_delete_selected(event)
+            write_debug("po_builder.delete_key.handled", result=repr(result))
+            return "break"
+        except Exception as exc:
+            write_debug("po_builder.delete_key.error", error=str(exc))
+            return None
 
     def _bulk_apply_editor_value(self, row_id, col_name, raw):
         bulk_edit_flow.apply_editor_value(self, row_id, col_name, raw, BULK_EDITABLE_COLS, get_rule_key, write_debug)

@@ -5,6 +5,8 @@ from collections import Counter, defaultdict
 from statistics import median
 from datetime import datetime
 
+import perf_trace
+
 
 HEADER_ALIASES = {
     "line_code": {"linecode", "line_code", "line", "pg", "productgroup", "product_group"},
@@ -795,6 +797,7 @@ def _finalize_streamed_sales_stats(stats_lookup):
     return stats_lookup
 
 
+@perf_trace.timed("parsers.parse_detailed_pair_aggregates")
 def parse_detailed_pair_aggregates(detailed_sales_path, received_parts_path, *, parse_date=None):
     parse_date = parse_date or parse_x4_date
     sales_summary = {}

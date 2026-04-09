@@ -1243,7 +1243,180 @@ def check_stock_warnings(app):
     return result["proceed"]
 
 
+def _show_info_topmost(app, title, message):
+    """Custom foreground-guaranteed info dialog.
+
+    v0.8.3 → v0.8.6 all tried fixing "Remove Unassigned → Review
+    locks up" via various messagebox tricks (parent kwarg, lift,
+    -topmost flip, reorder-before-tab-switch).  The operator
+    report on v0.8.6 was decisive: "some words appear in the upper
+    left corner, but disappear when the mouse is over them" —
+    that's a Toplevel being drawn with unresolved geometry at
+    screen origin (0, 0).  `messagebox.showinfo` on Windows Tk
+    picks its own position based on the parent's center, and when
+    the parent is mid-layout from a tab switch + tree populate,
+    the center resolves to something weird.
+
+    v0.8.7 replaces `messagebox` with a custom `tk.Toplevel` we
+    control completely: explicit geometry centered on the root,
+    explicit `-topmost` on the dialog (not the root), explicit
+    `grab_set` on the dialog, and an explicit focused OK button.
+    Every step logs to debug_trace.log so future failures are
+    diagnosable without operator intervention.
+    """
+    import tkinter as tk
+    from tkinter import ttk
+    from debug_log import write_debug
+
+    write_debug("finish_bulk_final.info_topmost.begin", title=title)
+    try:
+        root = app.root
+        try:
+            root.update_idletasks()
+        except Exception:
+            pass
+
+        dlg = tk.Toplevel(root)
+        dlg.title(title)
+        try:
+            dlg.configure(bg="#1e1e2e")
+        except Exception:
+            pass
+        dlg.transient(root)
+        dlg.resizable(False, False)
+
+        frame = ttk.Frame(dlg, padding=20)
+        frame.pack(fill=tk.BOTH, expand=True)
+        ttk.Label(
+            frame, text=message,
+            wraplength=480,
+            justify="left",
+        ).pack(anchor="w", pady=(0, 16))
+
+        result = {"closed": False}
+
+        def _close(event=None):
+            result["closed"] = True
+            try:
+                dlg.grab_release()
+            except Exception:
+                pass
+            try:
+                dlg.destroy()
+            except Exception:
+                pass
+
+        ok_button = ttk.Button(frame, text="OK", style="Big.TButton", command=_close)
+        ok_button.pack(anchor="e")
+        dlg.bind("<Return>", _close)
+        dlg.bind("<Escape>", _close)
+        dlg.protocol("WM_DELETE_WINDOW", _close)
+
+        # Force geometry calculation BEFORE positioning so we know
+        # how big the dialog actually is.
+        dlg.update_idletasks()
+
+        # Center on the root window.  Use the root's current geometry
+        # — whatever Tk has computed by this point — and fall back to
+        # the primary screen center if anything goes wrong.
+        try:
+            root.update_idletasks()
+            root_x = root.winfo_rootx()
+            root_y = root.winfo_rooty()
+            root_w = root.winfo_width()
+            root_h = root.winfo_height()
+            dlg_w = dlg.winfo_width()
+            dlg_h = dlg.winfo_height()
+            # Guard against the mid-layout "0x0 at (0,0)" state the
+            # operator reported.
+            if root_w <= 1 or root_h <= 1:
+                root_w = root.winfo_screenwidth() // 2
+                root_h = root.winfo_screenheight() // 2
+                root_x = root.winfo_screenwidth() // 4
+                root_y = root.winfo_screenheight() // 4
+            if dlg_w <= 1 or dlg_h <= 1:
+                dlg_w, dlg_h = 520, 180
+            x = root_x + max(0, (root_w - dlg_w) // 2)
+            y = root_y + max(0, (root_h - dlg_h) // 3)
+            dlg.geometry(f"{dlg_w}x{dlg_h}+{x}+{y}")
+            write_debug(
+                "finish_bulk_final.info_topmost.geometry",
+                root=f"{root_w}x{root_h}+{root_x}+{root_y}",
+                dlg=f"{dlg_w}x{dlg_h}+{x}+{y}",
+            )
+        except Exception as exc:
+            write_debug("finish_bulk_final.info_topmost.geometry_error", error=str(exc))
+
+        # Force topmost + visible + focused — on the DIALOG, not the
+        # root.  This is the key difference from v0.8.5: we're now
+        # controlling the actual Toplevel that displays the message.
+        try:
+            dlg.deiconify()
+        except Exception:
+            pass
+        try:
+            dlg.lift()
+        except Exception:
+            pass
+        try:
+            dlg.attributes("-topmost", True)
+            # Un-topmost AFTER the dialog is closed via the _close
+            # callback, not via a scheduled `after`.  Scheduled
+            # `after` during a blocking dialog never fires.
+        except Exception:
+            pass
+        try:
+            dlg.focus_force()
+            ok_button.focus_set()
+        except Exception:
+            pass
+        try:
+            dlg.grab_set()
+        except Exception:
+            pass
+
+        dlg.wait_window()
+        write_debug("finish_bulk_final.info_topmost.end", closed_cleanly=result["closed"])
+    except Exception as exc:
+        write_debug("finish_bulk_final.info_topmost.error", error=str(exc))
+
+
+def _coerce_int_safe(value, default=0):
+    """Best-effort int conversion for operator-facing quantity fields.
+
+    Real-world sessions on the 63K-item dataset have produced rows
+    where `final_qty` or `order_qty` was None because some edit /
+    recalc path cleared it without restoring a numeric value.  The
+    v0.8.3 finish-bulk crash traced back to `int(None)` inside the
+    assigned_items list comprehension — this helper turns that into
+    a silent fallback instead of a TypeError.
+    """
+    if value is None or value == "":
+        return default
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        try:
+            return int(float(value))
+        except (TypeError, ValueError):
+            return default
+
+
+def _resolve_final_qty(item):
+    """Effective final qty for an item with defensive coercion."""
+    value = item.get("final_qty")
+    if value is None or value == "":
+        value = item.get("order_qty")
+    return _coerce_int_safe(value, default=0)
+
+
 def finish_bulk_final(app):
+    import perf_trace
+    with perf_trace.span("ui_bulk_dialogs.finish_bulk_final"):
+        _finish_bulk_final_inner(app)
+
+
+def _finish_bulk_final_inner(app):
     flush_pending_bulk_sheet_edit(app)
     unresolved = [
         item for item in app.filtered_items
@@ -1255,62 +1428,105 @@ def finish_bulk_final(app):
         resp = messagebox.askyesno(
             "Unresolved Reviews",
             f"{len(unresolved)} item(s) need review before export:\n\n{names}{suffix}\n\n"
-            "Include them anyway? (Select No to go back and resolve them.)"
+            "Include them anyway? (Select No to go back and resolve them.)",
+            parent=app.root,
         )
         if not resp:
             return
 
-    app.assigned_items = [
-        {
-            "line_code": item["line_code"],
-            "item_code": item["item_code"],
-            "description": item["description"],
-            "order_qty": max(0, int(item.get("final_qty", item.get("order_qty", 0)))),
-            "final_qty": max(0, int(item.get("final_qty", item.get("order_qty", 0)))),
-            "qty_sold": item["qty_sold"],
-            "qty_suspended": item.get("qty_suspended", 0),
-            "qty_received": item.get("qty_received", 0),
-            "vendor": item["vendor"],
-            "pack_size": item.get("pack_size"),
-            "status": item.get("status", "ok"),
-            "why": item.get("why", ""),
-            "core_why": item.get("core_why", item.get("why", "")),
-            "order_policy": item.get("order_policy", ""),
-            "data_flags": item.get("data_flags", []),
-            "review_required": item.get("review_required", False),
-            "review_resolved": item.get("review_resolved", False),
-            "suggested_qty": item.get("suggested_qty", 0),
-            "raw_need": item.get("raw_need", 0),
-            "recency_confidence": item.get("recency_confidence", ""),
-            "data_completeness": item.get("data_completeness", ""),
-            "recency_review_bucket": item.get("recency_review_bucket"),
-            "performance_profile": item.get("performance_profile", ""),
-            "sales_health_signal": item.get("sales_health_signal", ""),
-            "reorder_attention_signal": item.get("reorder_attention_signal", ""),
-            "recent_local_order_count": item.get("recent_local_order_count", 0),
-            "recent_local_order_qty": item.get("recent_local_order_qty", 0),
-            "recent_local_order_date": item.get("recent_local_order_date", ""),
-            "receipt_primary_vendor": item.get("receipt_primary_vendor", ""),
-            "receipt_most_recent_vendor": item.get("receipt_most_recent_vendor", ""),
-            "receipt_vendor_confidence": item.get("receipt_vendor_confidence", ""),
-            "receipt_vendor_confidence_reason": item.get("receipt_vendor_confidence_reason", ""),
-            "receipt_vendor_ambiguous": item.get("receipt_vendor_ambiguous", False),
-            "receipt_vendor_qty_share": item.get("receipt_vendor_qty_share"),
-            "receipt_vendor_receipt_share": item.get("receipt_vendor_receipt_share"),
-            "receipt_vendor_candidates": list(item.get("receipt_vendor_candidates", []) or []),
-            "suggested_source": item.get("suggested_source", ""),
-            "suggested_source_label": item.get("suggested_source_label", ""),
-            "detailed_suggested_min": item.get("detailed_suggested_min"),
-            "detailed_suggested_max": item.get("detailed_suggested_max"),
-            "detailed_suggestion_compare": item.get("detailed_suggestion_compare", ""),
-            "detailed_suggestion_compare_label": item.get("detailed_suggestion_compare_label", ""),
-            "inventory_position": item.get("inventory_position", 0),
-        }
-        for item in app.filtered_items
-        if item.get("vendor") and item.get("final_qty", item.get("order_qty", 0)) > 0
-    ]
+    # Harden the row build against None / missing / non-numeric values.
+    # v0.8.3 crashed here when a real-world 63K-row session had at
+    # least one item with final_qty=None (possibly from an edit path
+    # that cleared the field without restoring it).  .get() with a
+    # default + _coerce_int_safe keeps the operator moving instead of
+    # crashing; diagnostic debug logging captures the offending row
+    # shape so we can find the upstream cause.
+    app.assigned_items = []
+    crash_diag_count = 0
+    for item in app.filtered_items:
+        try:
+            vendor = str(item.get("vendor", "") or "").strip()
+            if not vendor:
+                continue
+            final_qty = _resolve_final_qty(item)
+            if final_qty <= 0:
+                continue
+            app.assigned_items.append({
+                "line_code": item.get("line_code", ""),
+                "item_code": item.get("item_code", ""),
+                "description": item.get("description", ""),
+                "order_qty": max(0, final_qty),
+                "final_qty": max(0, final_qty),
+                "qty_sold": _coerce_int_safe(item.get("qty_sold"), default=0),
+                "qty_suspended": _coerce_int_safe(item.get("qty_suspended"), default=0),
+                "qty_received": _coerce_int_safe(item.get("qty_received"), default=0),
+                "vendor": vendor,
+                "pack_size": item.get("pack_size"),
+                "status": item.get("status", "ok"),
+                "why": item.get("why", ""),
+                "core_why": item.get("core_why", item.get("why", "")),
+                "order_policy": item.get("order_policy", ""),
+                "data_flags": list(item.get("data_flags") or []),
+                "review_required": bool(item.get("review_required", False)),
+                "review_resolved": bool(item.get("review_resolved", False)),
+                "suggested_qty": _coerce_int_safe(item.get("suggested_qty"), default=0),
+                "raw_need": _coerce_int_safe(item.get("raw_need"), default=0),
+                "recency_confidence": item.get("recency_confidence", ""),
+                "data_completeness": item.get("data_completeness", ""),
+                "recency_review_bucket": item.get("recency_review_bucket"),
+                "performance_profile": item.get("performance_profile", ""),
+                "sales_health_signal": item.get("sales_health_signal", ""),
+                "reorder_attention_signal": item.get("reorder_attention_signal", ""),
+                "recent_local_order_count": _coerce_int_safe(item.get("recent_local_order_count"), default=0),
+                "recent_local_order_qty": _coerce_int_safe(item.get("recent_local_order_qty"), default=0),
+                "recent_local_order_date": item.get("recent_local_order_date", ""),
+                "receipt_primary_vendor": item.get("receipt_primary_vendor", ""),
+                "receipt_most_recent_vendor": item.get("receipt_most_recent_vendor", ""),
+                "receipt_vendor_confidence": item.get("receipt_vendor_confidence", ""),
+                "receipt_vendor_confidence_reason": item.get("receipt_vendor_confidence_reason", ""),
+                "receipt_vendor_ambiguous": bool(item.get("receipt_vendor_ambiguous", False)),
+                "receipt_vendor_qty_share": item.get("receipt_vendor_qty_share"),
+                "receipt_vendor_receipt_share": item.get("receipt_vendor_receipt_share"),
+                "receipt_vendor_candidates": list(item.get("receipt_vendor_candidates", []) or []),
+                "suggested_source": item.get("suggested_source", ""),
+                "suggested_source_label": item.get("suggested_source_label", ""),
+                "detailed_suggested_min": item.get("detailed_suggested_min"),
+                "detailed_suggested_max": item.get("detailed_suggested_max"),
+                "detailed_suggestion_compare": item.get("detailed_suggestion_compare", ""),
+                "detailed_suggestion_compare_label": item.get("detailed_suggestion_compare_label", ""),
+                "inventory_position": _coerce_int_safe(item.get("inventory_position"), default=0),
+            })
+        except Exception as exc:
+            # Log the first few failures so we can diagnose upstream;
+            # keep building the rest of the list so a single bad row
+            # can't block the whole export.
+            crash_diag_count += 1
+            if crash_diag_count <= 5:
+                try:
+                    from debug_log import write_debug
+                    write_debug(
+                        "finish_bulk_final.row_error",
+                        error=str(exc),
+                        line_code=str(item.get("line_code", "") or ""),
+                        item_code=str(item.get("item_code", "") or ""),
+                        final_qty=repr(item.get("final_qty")),
+                        order_qty=repr(item.get("order_qty")),
+                        vendor=str(item.get("vendor", "") or ""),
+                    )
+                except Exception:
+                    pass
+    if crash_diag_count:
+        try:
+            from debug_log import write_debug
+            write_debug("finish_bulk_final.row_error.total", count=crash_diag_count)
+        except Exception:
+            pass
     if not app.assigned_items:
-        messagebox.showwarning("No Items", "No items have a vendor and a final qty > 0.")
+        messagebox.showwarning(
+            "No Items",
+            "No items have a vendor and a final qty > 0.",
+            parent=app.root,
+        )
         return
 
     skipped_no_vendor = sum(1 for item in app.filtered_items if not item.get("vendor"))
@@ -1318,6 +1534,16 @@ def finish_bulk_final(app):
 
     if hasattr(app, "_annotate_release_decisions"):
         app._annotate_release_decisions()
+
+    # Populate and switch tabs FIRST.  Previous versions showed the
+    # Items Excluded dialog here and then switched tabs — which left
+    # the dialog sitting behind the newly-activated Review tab on
+    # Windows (v0.8.3 fix attempt).  v0.8.5 operator report: even
+    # with parent=app.root the dialog still lands behind the main
+    # window on their machine, so the fix has to be stronger: after
+    # the tab switch settles, force the root to the front, then
+    # schedule the dialog via `after_idle` so Tk has drained its
+    # pending work before the modal appears.
     app._populate_review_tab()
     app.notebook.tab(5, state="normal")
     app.notebook.select(5)
@@ -1327,5 +1553,7 @@ def finish_bulk_final(app):
         skip_parts.append(f"{skipped_no_vendor} unassigned")
     if skipped_zero:
         skip_parts.append(f"{skipped_zero} with zero qty")
+
     if skip_parts:
-        messagebox.showinfo("Items Excluded", f"Excluded from PO: {', '.join(skip_parts)}.")
+        message = f"Excluded from PO: {', '.join(skip_parts)}."
+        _show_info_topmost(app, "Items Excluded", message)

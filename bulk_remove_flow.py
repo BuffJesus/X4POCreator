@@ -1,8 +1,18 @@
+import perf_trace
 import ui_bulk
 import session_state_flow
 
 
 def remove_filtered_rows(app, remove_indices, deepcopy, *, history_label="remove:bulk", expected_keys=None):
+    with perf_trace.span(
+        "bulk_remove_flow.remove_filtered_rows",
+        history_label=history_label,
+        requested=len(remove_indices) if remove_indices else 0,
+    ):
+        return _remove_filtered_rows_inner(app, remove_indices, deepcopy, history_label=history_label, expected_keys=expected_keys)
+
+
+def _remove_filtered_rows_inner(app, remove_indices, deepcopy, *, history_label="remove:bulk", expected_keys=None):
     unique_indices = sorted({int(idx) for idx in remove_indices if idx is not None}, reverse=True)
     if not unique_indices:
         return []

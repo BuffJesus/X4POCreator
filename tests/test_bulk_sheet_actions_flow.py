@@ -509,30 +509,47 @@ class BulkSheetActionsFlowTests(unittest.TestCase):
         self.assertIsNone(result)
         self.assertEqual(events[:5], ["flush", ("remove:selected_rows", {"before": True}), "clear", "filter", "summary"])
 
-    def test_bulk_delete_selected_clears_cells_when_cells_are_selected(self):
+    def test_bulk_delete_selected_promotes_cell_selection_to_row_remove(self):
+        """v0.8.7 contract: Delete on a cell selection removes the
+        row(s) the cell lives on.  The previous Excel-style
+        "clear cell" branch was the root cause of the operator's
+        long-standing "delete key doesn't work" complaint — it
+        silently cleared vendor cells instead of removing rows.
+        """
         events = []
         fake_app = SimpleNamespace(
             bulk_sheet=SimpleNamespace(
                 explicit_selected_row_ids=lambda: (),
-                selected_cells=lambda: [(0, 1)],
+                selected_cells=lambda: [(0, 1), (2, 5)],
+                row_ids=["row_0", "row_1", "row_2"],
+                current_row_id=lambda: None,
+                _selection_snapshot={},
             ),
             _bulk_clear_selected_cells=lambda: events.append("clear_cells"),
-            _bulk_remove_selected_rows=lambda event=None: events.append(("remove_rows", event)),
+            _bulk_remove_selected_rows=lambda event=None: events.append(("remove_rows", event)) or "break",
         )
 
         result = bulk_sheet_actions_flow.bulk_delete_selected(fake_app)
 
         self.assertEqual(result, "break")
-        self.assertEqual(events, ["clear_cells"])
+        # Cells (0, 1) and (2, 5) live on rows 0 and 2 → they should be
+        # promoted to a row selection and passed through remove_rows.
+        self.assertEqual(events, [("remove_rows", None)])
+        # And the promoted snapshot should contain those row indices
+        snap_rows = fake_app.bulk_sheet._selection_snapshot.get("rows", ())
+        self.assertEqual(tuple(sorted(snap_rows)), (0, 2))
 
-    def test_bulk_delete_selected_falls_back_to_remove_rows(self):
+    def test_bulk_delete_selected_uses_current_row_fallback(self):
         events = []
         fake_app = SimpleNamespace(
             bulk_sheet=SimpleNamespace(
                 explicit_selected_row_ids=lambda: (),
                 selected_cells=lambda: [],
+                row_ids=["row_0", "row_1"],
+                row_lookup={"row_0": 0, "row_1": 1},
+                current_row_id=lambda: "row_1",
+                _selection_snapshot={},
             ),
-            _bulk_clear_selected_cells=lambda: events.append("clear_cells"),
             _bulk_remove_selected_rows=lambda event=None: events.append(("remove_rows", event)) or "break",
         )
 
@@ -540,6 +557,22 @@ class BulkSheetActionsFlowTests(unittest.TestCase):
 
         self.assertEqual(result, "break")
         self.assertEqual(events, [("remove_rows", "evt")])
+        self.assertEqual(
+            fake_app.bulk_sheet._selection_snapshot.get("rows", ()),
+            (1,),
+        )
+
+    def test_bulk_delete_selected_noop_when_nothing_selected(self):
+        fake_app = SimpleNamespace(
+            bulk_sheet=SimpleNamespace(
+                explicit_selected_row_ids=lambda: (),
+                selected_cells=lambda: [],
+                row_ids=[],
+                current_row_id=lambda: None,
+            ),
+        )
+        result = bulk_sheet_actions_flow.bulk_delete_selected(fake_app)
+        self.assertIsNone(result)
 
 
 if __name__ == "__main__":
