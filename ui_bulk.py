@@ -119,6 +119,12 @@ def build_bulk_tab(app, editable_cols):
     app.lbl_bulk_summary = ttk.Label(top_frame, text="", style="Info.TLabel")
     app.lbl_bulk_summary.pack(side=tk.LEFT)
 
+    # Assignment progress bar
+    app._bulk_progress = ttk.Progressbar(top_frame, length=160, mode="determinate")
+    app._bulk_progress.pack(side=tk.LEFT, padx=(12, 4))
+    app._bulk_progress_label = ttk.Label(top_frame, text="", style="Info.TLabel")
+    app._bulk_progress_label.pack(side=tk.LEFT)
+
     controls_frame = ttk.Frame(frame)
     controls_frame.pack(fill=tk.X, pady=(0, 8))
 
@@ -1141,6 +1147,21 @@ def update_bulk_summary(app, counts=None):
     label = getattr(app, "lbl_bulk_summary", None)
     if label is not None and hasattr(label, "config"):
         label.config(text="  ·  ".join(parts))
+    # Update progress bar
+    pbar = getattr(app, "_bulk_progress", None)
+    plabel = getattr(app, "_bulk_progress_label", None)
+    if pbar is not None:
+        pct = int(100 * assigned / total) if total > 0 else 0
+        try:
+            pbar.configure(value=pct)
+        except Exception:
+            pass
+    if plabel is not None:
+        pct = int(100 * assigned / total) if total > 0 else 0
+        try:
+            plabel.config(text=f"{pct}%")
+        except Exception:
+            pass
 
 
 def _normalize_bucket_keys(key):
