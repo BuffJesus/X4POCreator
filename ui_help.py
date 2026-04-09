@@ -1,7 +1,46 @@
+import re
 import tkinter as tk
 from tkinter import ttk
 import shipping_flow
 from ui_scroll import attach_vertical_mousewheel
+
+
+# ─── Help rendering colors (pulled from po_builder.py's clam theme) ────────────
+# Hardcoding here rather than passing app.style through because tk.Text tags
+# need direct color strings and the help tab is the only place they're used.
+_HELP_BG = "#252538"
+_HELP_FG = "#d6d6e5"
+_HELP_HEADING1 = "#c4a3ff"   # PURPLE_BRIGHT
+_HELP_HEADING2 = "#a084d9"   # PURPLE
+_HELP_CODE_BG = "#1e1e2e"
+_HELP_CODE_FG = "#f3c672"
+_HELP_BULLET = "#8bb4ff"
+_HELP_MATCH_BG = "#5b4670"   # search-hit highlight
+
+# Maps a contextual-help key (the string the caller passes to
+# open_help_for(app, key)) to the HELP_SECTIONS tab title the operator
+# should land on.  Keep in sync with _section_titles() below; the test in
+# tests/test_ui_help.py asserts every mapped section exists.
+CONTEXTUAL_HELP_MAP = {
+    "reorder_cycle":          "Ordering Logic",
+    "history_days":           "Ordering Logic",
+    "skip_filter":            "Bulk Assign",
+    "no_pack_filter":         "Bulk Assign",
+    "acceptable_overstock":   "Ordering Logic",
+    "confirmed_stocking":     "Ordering Logic",
+    "vendor_review":          "Bulk Assign",
+    "supplier_map":           "Bulk Assign",
+    "session_diff":           "Overview",
+    "session_history":        "Overview",
+    "bulk_remove_not_needed": "Bulk Assign",
+    "shared_data_folder":     "Data And Sharing",
+    "shortcuts":              "Shortcuts",
+    "maintenance":            "Maintenance",
+    "shipping_release":       "Shipping And Release",
+    "review_export":          "Review And Export",
+    "reports":                "Reports",
+    "troubleshooting":        "Troubleshooting",
+}
 
 
 HELP_SECTIONS = [
@@ -440,7 +479,135 @@ Undo or redo did not restore what you expected
 ]
 
 
-def _build_help_page(parent, intro, body_text):
+def _section_titles():
+    """All Help tab titles in the order they appear in the notebook."""
+    return tuple(title for title, _intro, _body in HELP_SECTIONS)
+
+
+def _configure_help_text_tags(body):
+    """Install the tag palette the parser below writes against."""
+    base_family = "Segoe UI"
+    body.tag_configure(
+        "heading1",
+        foreground=_HELP_HEADING1,
+        font=(base_family, 13, "bold"),
+        spacing1=10,
+        spacing3=4,
+    )
+    body.tag_configure(
+        "heading2",
+        foreground=_HELP_HEADING2,
+        font=(base_family, 11, "bold"),
+        spacing1=8,
+        spacing3=2,
+    )
+    body.tag_configure(
+        "bullet",
+        foreground=_HELP_BULLET,
+        font=(base_family, 10, "bold"),
+    )
+    body.tag_configure(
+        "code",
+        background=_HELP_CODE_BG,
+        foreground=_HELP_CODE_FG,
+        font=("Consolas", 10),
+    )
+    body.tag_configure(
+        "body",
+        foreground=_HELP_FG,
+        font=(base_family, 10),
+        spacing1=2,
+        spacing3=2,
+        lmargin1=4,
+        lmargin2=4,
+    )
+    body.tag_configure(
+        "match",
+        background=_HELP_MATCH_BG,
+        foreground="#ffffff",
+    )
+
+
+# Body-text line styles:
+#   "# Heading 1"      → large purple heading
+#   "## Heading 2"     → medium purple heading
+#   Lines that START with "- " or "* "  → bullet (first two chars tagged)
+#   Backtick-wrapped words (`like_this`) → inline code style
+# Everything else is body.  This format matches how HELP_SECTIONS bodies
+# are already written today — the old plain-text dump rendered them as
+# flat text; the new renderer just adds tags without asking the content
+# to change.  Section bodies that *don't* start their top line with a
+# "# " heading get one synthesized from the section title so every
+# section has a clear visual top.
+_INLINE_CODE_RE = re.compile(r"`([^`]+)`")
+
+
+def _render_help_body(body, title, body_text):
+    """Write *body_text* into *body* with styled tags.
+
+    The first line is checked for a leading "# " / "## " marker; if
+    absent, the section title is promoted to a heading1 so every
+    section has a visual anchor the search highlight can land on.
+    """
+    lines = (body_text or "").split("\n")
+    if not lines or not lines[0].lstrip().startswith("#"):
+        body.insert("end", f"{title}\n", "heading1")
+
+    for line in lines:
+        stripped = line.lstrip()
+        if stripped.startswith("## "):
+            body.insert("end", stripped[3:] + "\n", "heading2")
+            continue
+        if stripped.startswith("# "):
+            body.insert("end", stripped[2:] + "\n", "heading1")
+            continue
+        if stripped.startswith("- ") or stripped.startswith("* "):
+            indent = line[: len(line) - len(stripped)]
+            body.insert("end", indent, "body")
+            body.insert("end", stripped[:2], "bullet")
+            _insert_inline("body", body, stripped[2:] + "\n")
+            continue
+        _insert_inline("body", body, line + "\n")
+
+
+def _insert_inline(default_tag, body, text):
+    """Insert *text* with inline `code` spans picked out in their own tag."""
+    pos = 0
+    for match in _INLINE_CODE_RE.finditer(text):
+        if match.start() > pos:
+            body.insert("end", text[pos:match.start()], default_tag)
+        body.insert("end", match.group(1), "code")
+        pos = match.end()
+    if pos < len(text):
+        body.insert("end", text[pos:], default_tag)
+
+
+def _highlight_matches(body, needle):
+    """Apply the `match` tag to every occurrence of *needle* in *body*.
+
+    Clears any prior `match` tags first.  Returns the 1-based line
+    number of the first match (so the caller can scroll it into view)
+    or 0 when there are no matches.
+    """
+    body.tag_remove("match", "1.0", "end")
+    if not needle:
+        return 0
+    first_line = 0
+    start = "1.0"
+    needle_len = len(needle)
+    while True:
+        pos = body.search(needle, start, stopindex="end", nocase=True)
+        if not pos:
+            break
+        end = f"{pos}+{needle_len}c"
+        body.tag_add("match", pos, end)
+        if first_line == 0:
+            first_line = int(pos.split(".")[0])
+        start = end
+    return first_line
+
+
+def _build_help_page(parent, title, intro, body_text):
     page = ttk.Frame(parent, padding=12)
     ttk.Label(page, text=intro, style="SubHeader.TLabel", wraplength=900, justify="left").pack(anchor="w", pady=(0, 8))
 
@@ -455,6 +622,11 @@ def _build_help_page(parent, intro, body_text):
         pady=12,
         relief="flat",
         borderwidth=0,
+        background=_HELP_BG,
+        foreground=_HELP_FG,
+        insertbackground=_HELP_FG,
+        selectbackground=_HELP_MATCH_BG,
+        cursor="arrow",
     )
     body.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
 
@@ -463,9 +635,50 @@ def _build_help_page(parent, intro, body_text):
     body.configure(yscrollcommand=scroll.set)
     attach_vertical_mousewheel(body)
 
-    body.insert("1.0", body_text)
+    _configure_help_text_tags(body)
+    _render_help_body(body, title, body_text)
     body.configure(state="disabled")
+    page._help_body_widget = body  # referenced by the search driver
+    page._help_body_text = body_text
+    page._help_title = title
     return page
+
+
+def _apply_help_search(notebook, pages, needle):
+    """Highlight matches across every help page and focus the first hit.
+
+    Returns a (total_matches, total_hit_pages) tuple so the search bar
+    can show a count.
+    """
+    total = 0
+    hit_pages = 0
+    first_hit_index = None
+    for idx, page in enumerate(pages):
+        body = page._help_body_widget
+        body.configure(state="normal")
+        first_line = _highlight_matches(body, needle)
+        body.configure(state="disabled")
+        # Count the matches on this page.
+        range_count = 0
+        pos = "1.0"
+        while True:
+            match_start = body.tag_nextrange("match", pos)
+            if not match_start:
+                break
+            range_count += 1
+            pos = match_start[1]
+        total += range_count
+        if range_count:
+            hit_pages += 1
+            if first_hit_index is None:
+                first_hit_index = idx
+                body.see(f"{first_line}.0")
+    if first_hit_index is not None and needle:
+        try:
+            notebook.select(first_hit_index)
+        except tk.TclError:
+            pass
+    return total, hit_pages
 
 
 def build_help_tab(app):
@@ -628,9 +841,108 @@ def build_help_tab(app):
         justify="left",
     ).pack(anchor="w", pady=(0, 10))
 
+    # ── Search bar ──
+    search_frame = ttk.Frame(frame)
+    search_frame.pack(fill=tk.X, pady=(0, 8))
+    ttk.Label(search_frame, text="Search help:").pack(side=tk.LEFT, padx=(0, 4))
+    app.var_help_search = tk.StringVar(value="")
+    entry_help_search = ttk.Entry(search_frame, textvariable=app.var_help_search, width=40)
+    entry_help_search.pack(side=tk.LEFT, padx=(0, 8))
+    lbl_help_search_status = ttk.Label(search_frame, text="", style="Info.TLabel")
+    lbl_help_search_status.pack(side=tk.LEFT)
+
+    def _clear_search():
+        app.var_help_search.set("")
+
+    ttk.Button(search_frame, text="Clear", command=_clear_search).pack(side=tk.LEFT, padx=(8, 0))
+
     help_notebook = ttk.Notebook(frame)
     help_notebook.pack(fill=tk.BOTH, expand=True)
 
+    help_pages = []
     for title, intro, body_text in HELP_SECTIONS:
-        page = _build_help_page(help_notebook, intro, body_text)
+        page = _build_help_page(help_notebook, title, intro, body_text)
         help_notebook.add(page, text=f"  {title}  ")
+        help_pages.append(page)
+
+    # Expose the pages and notebook so contextual-help callers (and
+    # future Help-tab integrations) can jump to a specific section
+    # without reaching into build_help_tab internals.
+    app._help_notebook = help_notebook
+    app._help_pages = help_pages
+
+    def _on_search_change(*_args):
+        needle = str(app.var_help_search.get() or "").strip()
+        total, hit_pages = _apply_help_search(help_notebook, help_pages, needle)
+        if not needle:
+            lbl_help_search_status.config(text="")
+        elif total == 0:
+            lbl_help_search_status.config(text="No matches")
+        else:
+            suffix = "" if hit_pages == 1 else "s"
+            lbl_help_search_status.config(text=f"{total} match(es) on {hit_pages} page{suffix}")
+
+    app.var_help_search.trace_add("write", _on_search_change)
+
+
+def build_context_help_button(parent, app, context_key, *, text="?", width=2):
+    """Return a tiny '?' button that jumps the Help tab to *context_key*.
+
+    Callers place the button next to confusing controls (Reorder Cycle,
+    Acceptable Overstock, etc.).  Pure ttk so it inherits the theme.
+    The factory returns the widget so the caller can .pack/.grid it
+    however they like — this helper never lays out its own button.
+    """
+    return ttk.Button(
+        parent,
+        text=text,
+        width=width,
+        command=lambda: open_help_for(app, context_key),
+    )
+
+
+def focus_help_section(app, section_title):
+    """Switch the Help notebook to *section_title* and raise the Help tab.
+
+    Silently ignored if the Help tab hasn't been built yet (should never
+    happen in the real app — build_help_tab runs during startup).
+    """
+    notebook = getattr(app, "_help_notebook", None)
+    pages = getattr(app, "_help_pages", None) or []
+    if notebook is None or not pages:
+        return False
+    for idx, page in enumerate(pages):
+        if getattr(page, "_help_title", "") == section_title:
+            try:
+                notebook.select(idx)
+            except tk.TclError:
+                return False
+            # Also raise the Help tab on the outer app notebook.
+            outer = getattr(app, "notebook", None)
+            if outer is not None:
+                help_frame = notebook.master
+                for tab_id in outer.tabs():
+                    try:
+                        if outer.nametowidget(tab_id) is help_frame:
+                            outer.select(tab_id)
+                            break
+                    except tk.TclError:
+                        continue
+            return True
+    return False
+
+
+def open_help_for(app, context_key):
+    """Jump to the Help section registered for *context_key*.
+
+    Callers pass a short stable identifier (e.g. `"reorder_cycle"`);
+    the CONTEXTUAL_HELP_MAP resolves it to the section title.  Falls
+    back to the first section when the key isn't registered so the
+    operator always lands somewhere useful.
+    """
+    title = CONTEXTUAL_HELP_MAP.get(context_key)
+    if title is None and HELP_SECTIONS:
+        title = HELP_SECTIONS[0][0]
+    if title is None:
+        return False
+    return focus_help_section(app, title)

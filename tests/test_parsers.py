@@ -598,5 +598,33 @@ class ParserSmokeTests(unittest.TestCase):
             self.assertIsNone(lookup[("AER-", "GH781-4")]["repl_cost"])
 
 
+    def test_parse_x4_date_handles_both_formats(self):
+        self.assertEqual(
+            parsers.parse_x4_date("20-Mar-2026"),
+            __import__("datetime").datetime(2026, 3, 20),
+        )
+        self.assertEqual(
+            parsers.parse_x4_date("2026-03-20"),
+            __import__("datetime").datetime(2026, 3, 20),
+        )
+        self.assertIsNone(parsers.parse_x4_date(""))
+        self.assertIsNone(parsers.parse_x4_date("not-a-date"))
+
+    def test_parse_x4_date_is_memoized(self):
+        # Regression: the 8-year sales dataset was hitting strptime
+        # 1.67M times at ~20us/call (~33s).  Memoizing the parse is
+        # safe because the input is a short string and the output is
+        # immutable — the cache just avoids redundant strptime work.
+        parsers._PARSE_X4_DATE_CACHE.clear()
+        first = parsers.parse_x4_date("20-Mar-2026")
+        self.assertIn("20-Mar-2026", parsers._PARSE_X4_DATE_CACHE)
+        # Second call returns the exact same cached object.
+        second = parsers.parse_x4_date("20-Mar-2026")
+        self.assertIs(first, second)
+        # Unknown strings don't pollute the cache.
+        self.assertIsNone(parsers.parse_x4_date("garbage"))
+        self.assertNotIn("garbage", parsers._PARSE_X4_DATE_CACHE)
+
+
 if __name__ == "__main__":
     unittest.main()
