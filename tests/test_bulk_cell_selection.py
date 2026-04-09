@@ -75,6 +75,42 @@ class BulkSheetStatusTests(unittest.TestCase):
         self.assertEqual(len(fake_app.filtered_items), 1)
         self.assertEqual(fake_app.filtered_items[0]["item_code"], "A")
 
+    def test_bulk_delete_selected_removes_multiple_noncontiguous_rows(self):
+        # Regression for the v0.8.1 Delete-key wiring: ctrl-clicking
+        # row headers 0, 2, and 4 then pressing Delete should remove
+        # exactly those three rows, not collapse them to a contiguous
+        # range.
+        fake_app = SimpleNamespace(
+            bulk_sheet=SimpleNamespace(
+                # explicit_selected_row_ids returns the ctrl-click set,
+                # which already contains non-contiguous ids.
+                explicit_selected_row_ids=lambda: ("0", "2", "4"),
+                selected_cells=lambda: [],
+                selected_row_ids=lambda: ("0", "2", "4"),
+                clear_selection=lambda: None,
+            ),
+            filtered_items=[
+                {"line_code": "A", "item_code": "1"},
+                {"line_code": "A", "item_code": "2"},
+                {"line_code": "A", "item_code": "3"},
+                {"line_code": "A", "item_code": "4"},
+                {"line_code": "A", "item_code": "5"},
+            ],
+            last_removed_bulk_items=[],
+            _apply_bulk_filter=lambda: None,
+            _update_bulk_summary=lambda: None,
+        )
+        fake_app._bulk_remove_selected_rows = lambda event=None: (
+            po_builder.POBuilderApp._bulk_remove_selected_rows(fake_app, event)
+        )
+
+        with patch("po_builder.messagebox.askyesno", return_value=True):
+            result = po_builder.POBuilderApp._bulk_delete_selected(fake_app)
+
+        self.assertIsNone(result)
+        remaining = [item["item_code"] for item in fake_app.filtered_items]
+        self.assertEqual(remaining, ["2", "4"])
+
     def test_bulk_delete_selected_falls_back_to_current_row(self):
         removed = []
         fake_app = SimpleNamespace(

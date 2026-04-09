@@ -14,6 +14,16 @@ except ImportError as exc:
 
 from debug_log import write_debug
 
+# Dark-theme palette for the right-click context menu.  Kept local
+# because tk.Menu doesn't pick up ttk style settings — it's a classic
+# tk widget, not a themed one.  Colors match the clam theme block in
+# po_builder.py so the menu visually belongs to the rest of the app.
+_CONTEXT_MENU_BG = "#2a2a40"
+_CONTEXT_MENU_FG = "#d6d6e5"
+_CONTEXT_MENU_ACTIVE_BG = "#5b4670"
+_CONTEXT_MENU_ACTIVE_FG = "#ffffff"
+_CONTEXT_MENU_BORDER = "#3a3a52"
+
 
 class BulkSheetView:
     def __init__(self, app, parent, columns, labels, widths, editable_cols):
@@ -37,7 +47,24 @@ class BulkSheetView:
         self._pending_edit_generation = 0
         self._scheduled_edit_generation = None
         self._selection_serial = 0
-        self.context_menu = tk.Menu(parent, tearoff=0)
+        self.context_menu = tk.Menu(
+            parent,
+            tearoff=0,
+            bg=_CONTEXT_MENU_BG,
+            fg=_CONTEXT_MENU_FG,
+            activebackground=_CONTEXT_MENU_ACTIVE_BG,
+            activeforeground=_CONTEXT_MENU_ACTIVE_FG,
+            activeborderwidth=0,
+            bd=1,
+            relief="flat",
+            font=("Segoe UI", 10),
+        )
+        # The border color is set via a configure() call because several
+        # platforms ignore it when passed to the constructor.
+        try:
+            self.context_menu.configure(borderwidth=1, background=_CONTEXT_MENU_BG)
+        except tk.TclError:
+            pass
 
         headers = [self.labels[col] for col in self.columns]
         self.sheet = Sheet(
@@ -74,8 +101,17 @@ class BulkSheetView:
             self.sheet.extra_bindings(binding, self._handle_select)
         self.sheet.extra_bindings("end_edit_table", self._handle_edit)
         self.sheet.disable_bindings("rc_popup_menu")
+        # tksheet's "all" bindings capture Delete internally to clear
+        # cell contents.  Disable it so our Delete handler gets the
+        # event and can route to row removal when row headers are
+        # selected (matching the user's Excel muscle memory).
+        try:
+            self.sheet.disable_bindings("delete")
+        except Exception:
+            pass
         self._build_context_menu()
         self._bind_text_editor_shortcuts()
+        self._bind_row_delete_keys()
 
     @staticmethod
     def _split_clipboard_matrix(text):
@@ -162,6 +198,45 @@ class BulkSheetView:
         self.context_menu.add_command(label="Select All Rows", command=self.app._bulk_select_all_rows)
         self.context_menu.add_command(label="Select Current Row", command=self.app._bulk_select_current_row)
         self.context_menu.add_command(label="Select Current Column", command=self.app._bulk_select_current_column)
+
+    def _bind_row_delete_keys(self):
+        """Route Delete / Backspace on the sheet to `_bulk_delete_selected`.
+
+        The app's `bulk_delete_selected` handler already does the right
+        thing based on what's selected:
+            - explicit row-header selection (including non-contiguous
+              ctrl-click selection) → remove those rows
+            - cell selection → clear the cell contents
+            - no selection → no-op
+
+        tksheet's internal "delete" binding was disabled above so the
+        event reaches us first.  We bind on every surface the event
+        could land on: the Sheet composite, its internal MainTable
+        canvas, and the row-index canvas.  Not every tksheet version
+        exposes the same children, so we tolerate missing attributes.
+        """
+        delete_handler = getattr(self.app, "_bulk_delete_selected", None)
+        if not callable(delete_handler):
+            return
+
+        def _on_delete(event=None):
+            try:
+                return delete_handler(event)
+            except Exception as exc:
+                write_debug("bulk_sheet.delete_key.error", error=str(exc))
+                return None
+
+        targets = [self.sheet]
+        for attr in ("MT", "RI", "CH"):
+            child = getattr(self.sheet, attr, None)
+            if child is not None:
+                targets.append(child)
+        for target in targets:
+            for sequence in ("<Delete>", "<KP_Delete>"):
+                try:
+                    target.bind(sequence, _on_delete, add="+")
+                except Exception:
+                    continue
 
     def _bind_text_editor_shortcuts(self):
         bindings = {
