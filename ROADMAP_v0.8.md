@@ -333,8 +333,8 @@ candidates that survive the "Python cleanup first" bar.
 
 ## Phase 5 — Long-term maintainability
 
-- [ ] Typed row schemas (`TypedDict`) for bulk grid items, sales items,
-  inventory entries — catches field-name typos at import time
+- [x] Typed row schemas (`TypedDict`) for bulk grid items, sales items,
+  inventory entries in `models/schemas.py` — v0.8.14
 - [x] Move `not_needed_reason` out of `ui_bulk_dialogs` into
   `rules/not_needed.py` — v0.8.14
 - [ ] Single generation-keyed cache object replacing the three
