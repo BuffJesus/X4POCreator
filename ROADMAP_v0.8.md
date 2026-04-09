@@ -301,7 +301,7 @@ Biggest long-term payoff.  Splits the 380-line `enrich_item` monolith.
 
 Last of the structural items.  Natural outcome of 3.2 + 3.3.
 
-- [ ] Extract `app/bootstrap.py` with theme setup
+- [x] Extract `app/bootstrap.py` with `apply_dark_theme` — v0.8.14
 - [ ] Extract `app/settings.py` with settings load/save (already
   partially split)
 - [ ] `SessionController` (non-tk) owns the state bundle and the
@@ -335,8 +335,8 @@ candidates that survive the "Python cleanup first" bar.
 
 - [ ] Typed row schemas (`TypedDict`) for bulk grid items, sales items,
   inventory entries — catches field-name typos at import time
-- [ ] Move `not_needed_reason` out of `ui_bulk_dialogs` into
-  `rules/not_needed.py` — it duplicates logic already in `rules.py`
+- [x] Move `not_needed_reason` out of `ui_bulk_dialogs` into
+  `rules/not_needed.py` — v0.8.14
 - [ ] Single generation-keyed cache object replacing the three
   independent caches (`_bulk_row_index_cache` /
   `_bulk_filter_result_cache` / `_bulk_visible_rows_cache`)

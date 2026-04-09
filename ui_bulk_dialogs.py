@@ -22,6 +22,7 @@ from rules import (
     recency_review_bucket_label,
 )
 from ui_scroll import attach_vertical_mousewheel, sync_canvas_window
+from rules.not_needed import not_needed_reason  # noqa: E402
 
 
 def flush_pending_bulk_sheet_edit(app):

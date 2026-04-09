@@ -2230,9 +2230,10 @@ class POBuilderApp:
 
 # ─── Entry Point ─────────────────────────────────────────────────────────────
 
-def apply_dark_theme(root):
-    """Apply a dark mode theme with purple accents."""
-    # Color palette
+from app.bootstrap import apply_dark_theme  # noqa: E402
+
+
+def _REMOVED_apply_dark_theme(root):
     BG = "#1e1e2e"           # main background
     BG_LIGHT = "#2a2a3d"     # slightly lighter panels
     BG_WIDGET = "#333348"    # entry/combo backgrounds
