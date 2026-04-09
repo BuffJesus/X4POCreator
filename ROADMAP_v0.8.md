@@ -293,7 +293,9 @@ Biggest long-term payoff.  Splits the 380-line `enrich_item` monolith.
   generic + X4 row iterators — v0.8.14
 - [x] `parsers/x4_dialect.py` — line code splitting, row checkers/builders,
   `_find_lc_column`, `_clean_item_description` — v0.8.14
-- [ ] `parsers/aggregators.py` — `parse_detailed_pair_aggregates` etc.
+- [x] `parsers/aggregators.py` — `parse_detailed_pair_aggregates`,
+  `build_receipt_history_lookup`, `build_detailed_sales_stats_lookup`,
+  `build_sales_receipt_summary`, finalize helpers — v0.8.14
 
 ### 3.5 — `po_builder.POBuilderApp` slim down (R4 from the audit)
 

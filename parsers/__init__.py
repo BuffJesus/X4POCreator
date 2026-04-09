@@ -1282,3 +1282,12 @@ from parsers.x4_dialect import (  # noqa: E402, F811
     _parse_x4_received_parts_detail_row,
     _parse_x4_received_parts_detail_rows,
 )
+from parsers.aggregators import (  # noqa: E402, F811
+    parse_detailed_sales_date_range,
+    build_sales_receipt_summary,
+    build_receipt_history_lookup,
+    build_detailed_sales_stats_lookup,
+    _finalize_streamed_receipt_history,
+    _finalize_streamed_sales_stats,
+    parse_detailed_pair_aggregates,
+)
