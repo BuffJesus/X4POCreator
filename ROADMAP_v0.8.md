@@ -122,51 +122,10 @@ the end of this file.
 
 ### 2.0 — Perf instrumentation harness (v0.8.2) — ✓ closed
 
-Every perf claim below is either measured from a dev-box profile script
-or estimated.  The harness turns those into "here's the exact ms
-breakdown from the operator's real session."  **This is the foundation
-for every subsequent perf decision** — without it, we're guessing about
-the live app from outside it.
-
-- [ ] New `perf_trace.py` module with:
-  - `enable(log_path, *, session_label)` / `disable()` / `is_enabled()`
-  - `span(event, **fields)` context manager
-  - `stamp(event, **fields)` instantaneous event
-  - `timed(event)` decorator
-  - `write_summary(path=None)` aggregate report generator
-  - JSONL output (one structured row per span/event)
-  - In-memory ring buffer capped at 50K entries
-  - Thread-safe via a simple lock; the harness runs on the Tk main
-    thread today but locking keeps it safe if flows ever move off
-- [ ] Instrumentation points:
-  - **Parse:** `parsers.parse_all_files`, each individual parse function,
-    `apply_load_result`, `prepare_assignment_session`,
-    `normalize_items_to_cycle`
-  - **Enrich (aggregate):** `rules.enrich_item`,
-    `item_workflow.apply_suggestion_gap_review_state`,
-    `performance_flow.annotate_items` — single counter + timer per
-    session, not per-call, to avoid flooding
-  - **Bulk grid:** `apply_bulk_filter`, `sync_bulk_session_metadata`,
-    `build_bulk_sheet_rows`, `bulk_row_values`/`cached_bulk_row_values`
-    hit counter, `bulk_remove_flow.remove_filtered_rows`,
-    `refresh_bulk_view_after_edit`, `bulk_apply_editor_value`
-  - **Reorder:** `refresh_suggestions`, `refresh_recent_orders`,
-    `refresh_active_data_state`
-  - **UI navigation:** notebook tab switch, dialog open/close
-  - **Export:** `do_export`, per-vendor xlsx write, session snapshot
-- [ ] Enable mechanism:
-  - Dev mode: auto-enable when `DEBUG_PERF=1` env var OR
-    `perf_trace.enabled` file exists in data folder
-  - Packaged exe: **Help → Enable Performance Trace** menu entry with
-    toast confirmation
-  - `atexit` hook writes the aggregate summary on clean shutdown
-- [ ] Aggregate summary format with count / total / avg / min / max /
-  p50 / p95 / p99 per event + top-10 slowest individual events
-- [ ] `tests/test_perf_trace.py` — span/stamp unit tests, aggregate math
-  tests, enable/disable smoke test, summary format golden
-
-**Ships as v0.8.2.**  Zero behavior change.  Every subsequent perf fix
-lands with before/after numbers from the operator's real session.
+Shipped as `perf_trace.py` in v0.8.2.  All planned features delivered:
+span/stamp/timed API, JSONL output, atexit summary, auto-enable via
+`DEBUG_PERF=1` or flag file, aggregate p50/p95/p99 table.
+Instrumentation coverage expanded across v0.8.11–v0.8.14.
 
 ### 2.1 — Measured perf wins — mostly ✓ closed
 
@@ -265,9 +224,9 @@ Biggest long-term payoff.  Splits the 380-line `enrich_item` monolith.
 - [x] Extract `rules/_helpers.py` — rule field accessors (`get_rule_int`,
   `get_rule_float`, `has_exact_qty_override`, `apply_rule_fields`,
   `has_pack_trigger_fields`, `get_rule_pack_size`) — v0.8.13
-- [ ] Slim `rules.enrich_item` orchestrator further (now ~177 lines,
-  target ≤ 60; remaining bulk is policy escalation + history gap
-  detection)
+- [x] Slim `rules.enrich_item` orchestrator: 380 → 177 → **110 lines**
+  via `_manual_only_suppression_reason` and `_apply_history_gap_detection`
+  extraction — v0.8.14
 
 ### 3.3 — `AppSessionState` sub-states (R2 from the audit) — partially shipped (v0.8.13)
 

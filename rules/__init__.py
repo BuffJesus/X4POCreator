@@ -1206,6 +1206,78 @@ def _apply_confirmed_stocking(item, inv, rule):
     rule["confirmed_stocking_sessions_without_evidence"] = new_count
 
 
+def _manual_only_suppression_reason(item):
+    """Return the why-explanation when a manual_only item's qty is suppressed to 0."""
+    recency_bucket = item.get("recency_review_bucket")
+    completeness = item.get("data_completeness", "")
+    return {
+        "stale_or_likely_dead": "Manual review required before ordering (missing sale/receipt history; likely stale or dead item)",
+        "new_or_sparse": "Manual review required before ordering (missing sale/receipt history; may be new or too sparse)",
+        "receipt_heavy_unverified": "Manual review required before ordering (receipts outpace sales; receiving history may reflect overstock rather than demand)",
+        "missing_data_uncertain": "Manual review required before ordering (missing sale/receipt history; incomplete data makes demand uncertain)",
+        "critical_min_rule_protected": "Manual review required before ordering (missing sale/receipt history; protected by explicit critical min rule)",
+        "recent_local_po_protected": "Manual review required before ordering (missing sale/receipt history; protected by recent local PO history)",
+        "activity_protected": "Manual review required before ordering (missing sale/receipt history; protected by other evidence)",
+    }.get(recency_bucket, {
+        "missing_recency": "Manual review required before ordering (missing sale/receipt history)",
+        "missing_recency_critical_min_protected": "Manual review required before ordering (missing sale/receipt history; protected by explicit critical min rule)",
+        "missing_recency_local_po_protected": "Manual review required before ordering (missing sale/receipt history; protected by recent local PO history)",
+        "missing_recency_activity_protected": "Manual review required before ordering (missing sale/receipt history; protected by other evidence)",
+        "missing_recency_receipt_heavy": "Manual review required before ordering (receipts outpace sales; receiving history may reflect overstock rather than demand)",
+    }.get(completeness, "Manual review required before ordering"))
+
+
+def _apply_history_gap_detection(item, suggested, policy, reason_codes):
+    """Flag when the current suggestion deviates materially from historical order quantities."""
+    if policy in ("reel_review", "large_pack_review", "manual_only"):
+        item["suggestion_vs_history_gap"] = False
+        return
+
+    historical_order_qty = item.get("historical_order_qty")
+    if (
+        isinstance(historical_order_qty, (int, float))
+        and historical_order_qty > 0
+        and isinstance(suggested, (int, float))
+        and suggested > 0
+    ):
+        ratio = abs(suggested - historical_order_qty) / float(historical_order_qty)
+        if ratio > SUGGESTION_VS_HISTORY_GAP_THRESHOLD:
+            item["suggestion_vs_history_gap"] = True
+            item["review_required"] = True
+            if "suggestion_vs_history_gap" not in reason_codes:
+                reason_codes.append("suggestion_vs_history_gap")
+            item["reason_codes"] = reason_codes
+            detail = f"History gap: current suggestion {suggested:g} deviates from historical median {historical_order_qty:g}"
+            item["why"] = item["why"] + f" | {detail}" if item.get("why") else detail
+        return
+
+    # Secondary fallback: recent local PO history
+    local_qty = item.get("recent_local_order_qty") or 0
+    local_count = item.get("recent_local_order_count") or 0
+    if local_count > 0 and local_qty > 0:
+        per_order_avg = local_qty / local_count
+        suggestion = item.get("suggested_qty") or suggested or 0
+        if per_order_avg > 0 and suggestion > 0:
+            ratio = abs(suggestion - per_order_avg) / per_order_avg
+            if ratio > SUGGESTION_VS_HISTORY_GAP_THRESHOLD:
+                item["suggestion_vs_history_gap"] = True
+                item["review_required"] = True
+                if "suggestion_vs_history_gap" not in reason_codes:
+                    reason_codes.append("suggestion_vs_history_gap")
+                item["reason_codes"] = reason_codes
+                gap_pct = int(ratio * 100)
+                direction = "above" if suggestion > per_order_avg else "below"
+                local_note = (
+                    f"Local PO history gap: suggestion {gap_pct}% {direction} "
+                    f"recent local avg ({int(per_order_avg)})"
+                )
+                item["why"] = item["why"] + f" | {local_note}" if item.get("why") else local_note
+                if item.get("item_status") not in ("review", "warning"):
+                    item["item_status"] = "review"
+                return
+    item["suggestion_vs_history_gap"] = False
+
+
 def enrich_item(item, inv, pack_qty, rule, lead_time_days=None):
     """
     Orchestrate the full enrichment pipeline for a single item.
@@ -1259,23 +1331,7 @@ def enrich_item(item, inv, pack_qty, rule, lead_time_days=None):
     item["order_policy"] = policy
     if should_suppress_manual_only_qty(item):
         suggested = 0
-        completeness = item.get("data_completeness", "")
-        recency_bucket = item.get("recency_review_bucket")
-        why = {
-            "stale_or_likely_dead": "Manual review required before ordering (missing sale/receipt history; likely stale or dead item)",
-            "new_or_sparse": "Manual review required before ordering (missing sale/receipt history; may be new or too sparse)",
-            "receipt_heavy_unverified": "Manual review required before ordering (receipts outpace sales; receiving history may reflect overstock rather than demand)",
-            "missing_data_uncertain": "Manual review required before ordering (missing sale/receipt history; incomplete data makes demand uncertain)",
-            "critical_min_rule_protected": "Manual review required before ordering (missing sale/receipt history; protected by explicit critical min rule)",
-            "recent_local_po_protected": "Manual review required before ordering (missing sale/receipt history; protected by recent local PO history)",
-            "activity_protected": "Manual review required before ordering (missing sale/receipt history; protected by other evidence)",
-        }.get(recency_bucket, {
-            "missing_recency": "Manual review required before ordering (missing sale/receipt history)",
-            "missing_recency_critical_min_protected": "Manual review required before ordering (missing sale/receipt history; protected by explicit critical min rule)",
-            "missing_recency_local_po_protected": "Manual review required before ordering (missing sale/receipt history; protected by recent local PO history)",
-            "missing_recency_activity_protected": "Manual review required before ordering (missing sale/receipt history; protected by other evidence)",
-            "missing_recency_receipt_heavy": "Manual review required before ordering (receipts outpace sales; receiving history may reflect overstock rather than demand)",
-        }.get(completeness, "Manual review required before ordering"))
+        why = _manual_only_suppression_reason(item)
         projected_overstock, overstock_within_tolerance = assess_post_receipt_overstock(item, suggested)
     replenishment_unit_mode = classify_replenishment_unit_mode(policy, item, pack_qty, rule)
     item["replenishment_unit_mode"] = replenishment_unit_mode
@@ -1321,61 +1377,7 @@ def enrich_item(item, inv, pack_qty, rule, lead_time_days=None):
     if "manual_override" not in item:
         item["manual_override"] = False
 
-    # Session-history gap detection: flag when the current suggestion deviates
-    # materially from the median of recent historical order quantities.
-    historical_order_qty = item.get("historical_order_qty")
-    if (
-        isinstance(historical_order_qty, (int, float))
-        and historical_order_qty > 0
-        and isinstance(suggested, (int, float))
-        and suggested > 0
-        and policy not in ("reel_review", "large_pack_review", "manual_only")
-    ):
-        ratio = abs(suggested - historical_order_qty) / float(historical_order_qty)
-        if ratio > SUGGESTION_VS_HISTORY_GAP_THRESHOLD:
-            item["suggestion_vs_history_gap"] = True
-            item["review_required"] = True
-            reason_codes = list(item.get("reason_codes", []))
-            if "suggestion_vs_history_gap" not in reason_codes:
-                reason_codes.append("suggestion_vs_history_gap")
-            item["reason_codes"] = reason_codes
-            detail = f"History gap: current suggestion {suggested:g} deviates from historical median {historical_order_qty:g}"
-            item["why"] = item["why"] + f" | {detail}" if item.get("why") else detail
-    else:
-        # Secondary fallback: use recent local PO history when no session snapshot history exists.
-        local_qty = item.get("recent_local_order_qty") or 0
-        local_count = item.get("recent_local_order_count") or 0
-        if (
-            local_count > 0
-            and local_qty > 0
-            and policy not in ("reel_review", "large_pack_review", "manual_only")
-        ):
-            per_order_avg = local_qty / local_count
-            suggestion = item.get("suggested_qty") or suggested or 0
-            if per_order_avg > 0 and suggestion > 0:
-                ratio = abs(suggestion - per_order_avg) / per_order_avg
-                if ratio > SUGGESTION_VS_HISTORY_GAP_THRESHOLD:
-                    item["suggestion_vs_history_gap"] = True
-                    item["review_required"] = True
-                    reason_codes = list(item.get("reason_codes", []))
-                    if "suggestion_vs_history_gap" not in reason_codes:
-                        reason_codes.append("suggestion_vs_history_gap")
-                    item["reason_codes"] = reason_codes
-                    gap_pct = int(ratio * 100)
-                    direction = "above" if suggestion > per_order_avg else "below"
-                    local_note = (
-                        f"Local PO history gap: suggestion {gap_pct}% {direction} "
-                        f"recent local avg ({int(per_order_avg)})"
-                    )
-                    item["why"] = item["why"] + f" | {local_note}" if item.get("why") else local_note
-                    if item.get("item_status") not in ("review", "warning"):
-                        item["item_status"] = "review"
-                else:
-                    item["suggestion_vs_history_gap"] = False
-            else:
-                item["suggestion_vs_history_gap"] = False
-        else:
-            item["suggestion_vs_history_gap"] = False
+    _apply_history_gap_detection(item, suggested, policy, reason_codes)
 
     status, flags = evaluate_item_status(item)
     for code in reason_codes:
