@@ -920,6 +920,9 @@ class POBuilderApp:
             self.lbl_scan_status.config(
                 text=f"✓  Found {len(populated)} report(s): {', '.join(populated)}"
             )
+            # Remember folder for Quick Load
+            self.app_settings["last_scan_folder"] = folder
+            self._save_app_settings()
         else:
             self.lbl_scan_status.config(text="No X4 report CSVs detected in that folder.")
 
@@ -1384,6 +1387,12 @@ class POBuilderApp:
         import item_notes_flow
         item_notes_flow.apply_notes_to_items(self.filtered_items, getattr(self, "item_notes", {}))
 
+        # Auto-assign vendors from receipt history (ADHD-friendly: reduces
+        # manual work from thousands of items to just the exceptions).
+        import auto_assign_flow
+        auto_result = auto_assign_flow.auto_assign_from_receipts(self)
+        self._last_auto_assign_result = auto_result
+
         self._loaded_vendor_codes = list(self.vendor_codes_used)
         self.last_removed_bulk_items = []
         self.last_protected_bulk_items = []
@@ -1405,6 +1414,37 @@ class POBuilderApp:
             self._hide_loading()
             messagebox.showerror("Vendor Assignment Error", f"Could not open vendor assignment:\n{exc}")
             return
+
+        # Show auto-assign summary (non-blocking toast-style)
+        if auto_result.get("assigned_count", 0) > 0:
+            summary = auto_assign_flow.auto_assign_summary_text(auto_result)
+            self.root.after(500, lambda: self._show_auto_assign_banner(summary))
+
+    def _show_auto_assign_banner(self, text):
+        """Show a non-blocking banner about auto-assigned vendors."""
+        banner = getattr(self, "_auto_assign_banner", None)
+        if banner is not None:
+            try:
+                banner.destroy()
+            except Exception:
+                pass
+        import tkinter as tk
+        banner = tk.Label(
+            self.root,
+            text=f"✓  {text}",
+            font=("Segoe UI", 10), bg="#1a3a2a", fg="#90d8a0",
+            padx=12, pady=8, anchor="w",
+        )
+        banner.pack(fill=tk.X, padx=8, pady=(0, 2))
+        self._auto_assign_banner = banner
+        # Auto-dismiss after 15 seconds
+        def _dismiss(b=banner):
+            try:
+                b.pack_forget()
+                b.destroy()
+            except Exception:
+                pass
+        self.root.after(15000, _dismiss)
 
         # Populate and go to bulk assign
         self._hide_loading()

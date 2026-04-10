@@ -155,12 +155,33 @@ def build_load_tab(app):
     )
     app._refresh_data_folder_labels()
 
+    # ── Quick Load (one-click reload from last folder) ──
+    last_folder = app.app_settings.get("last_scan_folder", "") if hasattr(app, "app_settings") else ""
+    if last_folder:
+        quick_frame = ttk.LabelFrame(content, text="Quick Load", padding=10)
+        quick_frame.pack(fill=tk.X, pady=(0, 8))
+        ttk.Label(
+            quick_frame,
+            text=f"Last folder: {last_folder}",
+            style="Info.TLabel",
+        ).pack(anchor="w")
+
+        def _quick_load():
+            app.var_scan_dir.set(last_folder)
+            app._scan_folder()
+            app.root.after(200, app._do_load)
+
+        ttk.Button(
+            quick_frame, text="Scan & Load Now",
+            style="Big.TButton", command=_quick_load,
+        ).pack(anchor="w", pady=(8, 0))
+
     scan_frame = ttk.LabelFrame(content, text="Auto-Detect from Folder", padding=10)
     scan_frame.pack(fill=tk.X, pady=(0, 8))
 
     scan_row = ttk.Frame(scan_frame)
     scan_row.pack(fill=tk.X)
-    app.var_scan_dir = tk.StringVar()
+    app.var_scan_dir = tk.StringVar(value=last_folder)
     ttk.Entry(scan_row, textvariable=app.var_scan_dir, width=65).pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 8))
 
     scan_button_row = ttk.Frame(scan_frame)
