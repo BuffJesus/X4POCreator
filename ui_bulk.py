@@ -449,38 +449,42 @@ def build_bulk_tab(app, editable_cols):
     app._vendor_worksheet_combo["values"] = app._vendor_worksheet_values
 
     def _on_vendor_worksheet_changed(_event=None):
+        from debug_log import write_debug as _wd
         choice = app.var_vendor_worksheet.get().strip()
-        # Extract vendor from "VENDOR1 (234)" format
         vendor = choice.split(" (")[0].strip() if " (" in choice else choice
+        _wd("vendor_worksheet.changed", choice=choice, vendor=vendor)
         if choice == "Overview":
             _show_overview_panel(app)
             return
         _hide_overview_panel(app)
-        app.var_bulk_vendor_filter_internal = ""
         if vendor == "All Items":
+            app.var_bulk_vendor_filter_internal = ""
             try:
                 app.var_bulk_status_filter.set("ALL")
                 app.var_bulk_item_status.set("ALL")
             except Exception:
                 pass
         elif vendor == "Unassigned":
+            app.var_bulk_vendor_filter_internal = ""
             try:
                 app.var_bulk_status_filter.set("Unassigned")
             except Exception:
                 pass
         elif vendor == "Exceptions":
+            app.var_bulk_vendor_filter_internal = ""
             try:
                 app.var_bulk_status_filter.set("ALL")
                 app.var_bulk_item_status.set("Review")
             except Exception:
                 pass
         else:
+            app.var_bulk_vendor_filter_internal = vendor
             try:
                 app.var_bulk_status_filter.set("ALL")
                 app.var_bulk_item_status.set("ALL")
-                app.var_bulk_vendor_filter_internal = vendor
             except Exception:
                 pass
+        _wd("vendor_worksheet.applying_filter", vendor_tab=app.var_bulk_vendor_filter_internal)
         app._apply_bulk_filter()
 
     app._vendor_worksheet_combo.bind("<<ComboboxSelected>>", _on_vendor_worksheet_changed)
@@ -806,31 +810,41 @@ def _short_why(item):
     pack = item.get("pack_size")
     policy = item.get("order_policy", "")
     status = item.get("status", "")
+    inv = item.get("inventory") or {}
+    qoh = inv.get("qoh", 0) or 0
+    target = item.get("target_stock", 0) or 0
+    position = item.get("inventory_position", 0) or 0
 
     if status == "skip" or (raw <= 0 and final <= 0):
+        if position >= target and target > 0:
+            return f"Stock OK ({int(position)} on hand, target {int(target)})"
         return "No order needed"
     if policy == "manual_only":
-        return "Manual review required"
+        reason = item.get("recency_review_bucket", "")
+        if reason == "stale_or_likely_dead":
+            return "Needs review — may be dead stock"
+        if reason == "new_or_sparse":
+            return "Needs review — new or low-volume item"
+        if reason == "receipt_heavy_unverified":
+            return "Needs review — more received than sold"
+        return "Needs review before ordering"
     if policy in ("reel_review", "large_pack_review"):
-        return f"Review: pack {pack or '?'}, need {raw}"
+        return f"Needs review — large pack ({pack or '?'} per pack, need {raw})"
 
     parts = []
     if raw > 0:
-        parts.append(f"Need {raw}")
-    if suggested != raw and suggested > 0:
-        if pack:
-            parts.append(f"order {suggested} (pk {pack})")
-        else:
-            parts.append(f"order {suggested}")
-    elif suggested > 0 and not parts:
-        parts.append(f"Order {suggested}")
+        parts.append(f"Low stock: have {int(position)}, need {int(target)}")
+    if suggested != raw and suggested > 0 and pack:
+        parts.append(f"ordering {suggested} (pack of {pack})")
+    elif suggested > 0:
+        parts.append(f"ordering {suggested}")
 
     if item.get("zero_demand_min_protection"):
-        parts.append("min-protect")
+        parts.append("⚠ no recent sales, ordering to min")
     if item.get("reorder_trigger_high_vs_max"):
-        parts.append("trigger high")
+        parts.append("⚠ trigger much higher than max")
 
-    return ", ".join(parts) if parts else item.get("why", "")[:60]
+    return " → ".join(parts) if parts else item.get("why", "")[:80]
 
 
 def bulk_row_values(app, item):
@@ -1221,9 +1235,11 @@ def filtered_candidate_items(app, filter_state):
 
 def uses_only_bucket_filters(filter_state):
     # The bucket fast path only knows about the seven combo filters.
-    # Any non-bucket filter (currently just the text search) needs the
-    # matcher to run, otherwise the fast path silently ignores it.
+    # Any non-bucket filter (text search, vendor worksheet) needs the
+    # per-item matcher to run.
     if filter_state.get("text"):
+        return False
+    if filter_state.get("vendor_tab"):
         return False
     return True
 
@@ -1531,11 +1547,11 @@ def item_matches_text_filter(item, text):
 
 
 def item_matches_bulk_filter(item, filter_state):
-    # Vendor worksheet tab filter (from vendor sub-tabs)
+    # Vendor worksheet filter (from vendor combobox)
     vendor_tab = filter_state.get("vendor_tab", "")
     if vendor_tab:
         item_vendor = str(item.get("vendor", "") or "").strip().upper()
-        if item_vendor != vendor_tab.upper():
+        if item_vendor != vendor_tab.strip().upper():
             return False
     text_value = filter_state.get("text", "")
     if text_value and not item_matches_text_filter(item, text_value):
