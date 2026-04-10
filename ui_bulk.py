@@ -137,7 +137,7 @@ def build_bulk_tab(app, editable_cols):
     action_frame = ttk.LabelFrame(controls_frame, text="Actions", padding=8)
     action_frame.pack(side=tk.LEFT, anchor="nw")
 
-    # ── Primary actions (always visible) ──
+    # ── Primary actions row 1: assign + remove ──
     primary_row = ttk.Frame(action_frame)
     primary_row.pack(fill=tk.X, pady=2)
     ttk.Label(primary_row, text="Vendor:").pack(side=tk.LEFT, padx=(0, 4))
@@ -147,8 +147,6 @@ def build_bulk_tab(app, editable_cols):
     app.combo_bulk_vendor.bind("<KeyRelease>", app._bulk_vendor_autocomplete)
     ttk.Button(primary_row, text="Apply to Selected", command=app._bulk_apply_selected).pack(side=tk.LEFT, padx=4)
     ttk.Button(primary_row, text="Apply to All Visible", command=app._bulk_apply_visible).pack(side=tk.LEFT, padx=4)
-    app._vendor_suggestion_label = ttk.Label(primary_row, text="", style="Info.TLabel")
-    app._vendor_suggestion_label.pack(side=tk.LEFT, padx=(8, 0))
     ttk.Separator(primary_row, orient="vertical").pack(side=tk.LEFT, fill=tk.Y, padx=8)
     ttk.Button(primary_row, text="Remove Not Needed", command=app._bulk_remove_not_needed_filtered).pack(side=tk.LEFT, padx=4)
     ttk.Button(primary_row, text="Undo Remove", command=app._undo_last_bulk_removal).pack(side=tk.LEFT, padx=4)
@@ -157,6 +155,10 @@ def build_bulk_tab(app, editable_cols):
     ttk.Button(primary_row, text="Redo", command=app._bulk_redo).pack(side=tk.LEFT, padx=2)
     ttk.Separator(primary_row, orient="vertical").pack(side=tk.LEFT, fill=tk.Y, padx=8)
     ttk.Button(primary_row, text="Batch Edit Rules", command=app._edit_rule_for_selection).pack(side=tk.LEFT, padx=2)
+
+    # Vendor suggestion on its own line so it doesn't push buttons off-screen
+    app._vendor_suggestion_label = ttk.Label(action_frame, text="", style="Info.TLabel")
+    app._vendor_suggestion_label.pack(anchor="w", padx=4)
 
     # ── Expandable advanced actions ──
     app._more_actions_visible = False
