@@ -124,8 +124,16 @@ def apply_editor_value(app, row_id, col_name, raw, editable_cols, get_rule_key, 
                 app._save_order_rules()
             app._clear_manual_override(item)
             app._recalculate_item(item, annotate_release=not defer_save)
-            # Clear stale caches on the item itself
             item.pop("_text_haystack", None)
+            write_debug(
+                "bulk_apply_editor_value.pack_size.AFTER_RECALC",
+                row_id=row_id,
+                new_suggested=item.get("suggested_qty"),
+                new_final=item.get("final_qty"),
+                new_policy=item.get("order_policy", ""),
+                new_status=item.get("status", ""),
+                new_pack=item.get("pack_size"),
+            )
             write_debug(
                 "bulk_apply_editor_value.pack_size",
                 row_id=row_id,
