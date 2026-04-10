@@ -45,6 +45,45 @@ def _hinted_vendor_values(app, codes):
     ]
 
 
+def _suggested_vendor_for_selection(app):
+    """Return the most likely vendor for the current selection based on receipt history.
+
+    Scans selected items' receipt_primary_vendor fields and returns the
+    vendor with the highest confidence + count.  Returns (vendor, hint)
+    or (None, None).
+    """
+    bulk_sheet = getattr(app, "bulk_sheet", None)
+    if not bulk_sheet:
+        return None, None
+    row_ids = list(bulk_sheet.selected_row_ids())
+    if not row_ids:
+        return None, None
+    vendor_scores = {}
+    for row_id in row_ids[:200]:  # cap to avoid slow scans
+        resolve = getattr(app, "_resolve_bulk_row_id", None)
+        if not callable(resolve):
+            break
+        _idx, item = resolve(row_id)
+        if item is None:
+            continue
+        pv = str(item.get("receipt_primary_vendor", "") or "").strip().upper()
+        conf = str(item.get("receipt_vendor_confidence", "") or "").strip().lower()
+        if pv and conf in ("high", "medium"):
+            entry = vendor_scores.setdefault(pv, {"count": 0, "high": 0})
+            entry["count"] += 1
+            if conf == "high":
+                entry["high"] += 1
+    if not vendor_scores:
+        return None, None
+    best = max(vendor_scores.items(), key=lambda kv: (kv[1]["high"], kv[1]["count"]))
+    vendor = best[0]
+    total = len(row_ids)
+    count = best[1]["count"]
+    pct = int(100 * count / total) if total > 0 else 0
+    hint = f"Suggested: {vendor} ({pct}% of selection from receipt history)"
+    return vendor, hint
+
+
 def flush_pending_bulk_sheet_edit(app):
     bulk_sheet = getattr(app, "bulk_sheet", None)
     if bulk_sheet and hasattr(bulk_sheet, "flush_pending_edit"):

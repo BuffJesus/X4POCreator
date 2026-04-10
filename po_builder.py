@@ -1747,6 +1747,15 @@ class POBuilderApp:
 
     def _update_bulk_sheet_status(self):
         self._update_bulk_cell_status()
+        # Update vendor suggestion based on selection
+        lbl = getattr(self, "_vendor_suggestion_label", None)
+        if lbl is not None:
+            try:
+                import ui_assignment_actions
+                vendor, hint = ui_assignment_actions._suggested_vendor_for_selection(self)
+                lbl.config(text=hint or "")
+            except Exception:
+                pass
 
     def _bulk_copy_selection(self, event=None):
         return bulk_sheet_actions_flow.bulk_copy_selection(self)
