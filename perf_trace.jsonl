@@ -224,3 +224,11 @@
 {"event":"perf_trace.disabled","ts":"2026-04-09T18:09:45.648"}
 {"event":"perf_trace.enabled","session_label":"auto","ts":"2026-04-09T18:14:55.714"}
 {"event":"perf_trace.disabled","ts":"2026-04-09T18:14:55.715"}
+{"event":"perf_trace.enabled","session_label":"auto","ts":"2026-04-09T18:23:20.897"}
+{"event":"perf_trace.disabled","ts":"2026-04-09T18:23:20.898"}
+{"event":"perf_trace.enabled","session_label":"auto","ts":"2026-04-09T18:23:28.037"}
+{"event":"perf_trace.disabled","ts":"2026-04-09T18:23:28.038"}
+{"event":"perf_trace.enabled","session_label":"auto","ts":"2026-04-09T18:23:51.920"}
+{"event":"perf_trace.disabled","ts":"2026-04-09T18:23:51.921"}
+{"event":"perf_trace.enabled","session_label":"auto","ts":"2026-04-09T18:28:01.689"}
+{"event":"perf_trace.disabled","ts":"2026-04-09T18:28:01.690"}
