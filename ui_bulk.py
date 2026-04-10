@@ -1843,6 +1843,7 @@ def refresh_vendor_worksheet_tabs(app):
     tabs_nb = getattr(app, "_vendor_tabs", None)
     if tabs_nb is None:
         return
+    perf_trace.stamp("vendor_tabs.refresh_start", items=len(getattr(app, "filtered_items", []) or []))
     # Count items per vendor
     vendor_counts = {}
     unassigned = 0
@@ -1881,8 +1882,10 @@ def refresh_vendor_worksheet_tabs(app):
         tabs_nb.add(f, text=f"  Exceptions ({exceptions})  ")
         app._vendor_tab_frames["Exceptions"] = f
 
+    perf_trace.stamp("vendor_tabs.tabs_built", vendor_count=len(vendor_counts))
     # Refresh overview
     _refresh_overview_cards(app)
+    perf_trace.stamp("vendor_tabs.refresh_done")
 
 
 def _refresh_overview_cards(app):

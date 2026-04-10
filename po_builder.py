@@ -1381,17 +1381,17 @@ class POBuilderApp:
         # assignment_flow sets demand_signal as a raw total over the full sales
         # export window; divide it down to one cycle's worth so that e.g.
         # 40 bearings sold over a year on a weekly cycle suggests ~1, not 40.
-        reorder_flow.normalize_items_to_cycle(self)
+        with perf_trace.span("po_builder.normalize_items_to_cycle"):
+            reorder_flow.normalize_items_to_cycle(self)
 
-        # Apply per-item notes from item_notes.json
-        import item_notes_flow
-        item_notes_flow.apply_notes_to_items(self.filtered_items, getattr(self, "item_notes", {}))
+        with perf_trace.span("po_builder.apply_notes"):
+            import item_notes_flow
+            item_notes_flow.apply_notes_to_items(self.filtered_items, getattr(self, "item_notes", {}))
 
-        # Auto-assign vendors from receipt history (ADHD-friendly: reduces
-        # manual work from thousands of items to just the exceptions).
-        import auto_assign_flow
-        auto_result = auto_assign_flow.auto_assign_from_receipts(self)
-        self._last_auto_assign_result = auto_result
+        with perf_trace.span("po_builder.auto_assign_vendors"):
+            import auto_assign_flow
+            auto_result = auto_assign_flow.auto_assign_from_receipts(self)
+            self._last_auto_assign_result = auto_result
 
         self._loaded_vendor_codes = list(self.vendor_codes_used)
         self.last_removed_bulk_items = []
@@ -1408,6 +1408,8 @@ class POBuilderApp:
                 ui_bulk.restore_bulk_filter_sort_state(self)
             with perf_trace.span("po_builder.populate_bulk_tree"):
                 self._populate_bulk_tree()
+            with perf_trace.span("po_builder.apply_default_hidden_columns"):
+                ui_bulk._apply_column_visibility(self)
             self.notebook.tab(3, state="normal")
             self.notebook.select(3)
         except Exception as exc:
