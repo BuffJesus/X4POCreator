@@ -199,8 +199,9 @@ Phase 3 prerequisites.
   asserts top-line counts (sales_items, inventory_lookup, window dates,
   no_minmax_coverage_keys).  Marked `skipUnless` so CI skips and dev
   machine runs.
-- [ ] **`tests/test_prepare_assignment_golden.py`** — 100-item subset,
-  pins the post-pass filtered_items shape.
+- [x] **`tests/test_prepare_assignment_golden.py`** — 20-item synthetic
+  fixture covering exclusions, PO offset, suspense, pack resolution,
+  ignore keys. 9 tests. — v0.8.14
 
 ### 3.2 — `rules.py` split (R1 from the audit)
 
