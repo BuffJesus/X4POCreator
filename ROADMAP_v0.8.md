@@ -165,18 +165,19 @@ traces from the operator's 63K-item dataset.
   `build_bulk_sheet_rows`, invalidated on edit; text filter now does
   one `in` check on a pre-lowered string instead of building and
   lowering 4+ fields per item per filter — v0.8.14
-- [ ] **Fused warning-generation loop** in `parse_all_files` — expected
-  ~80 ms saved (negligible on the 17 s parse)
-- [ ] **Fused `parse_detailed_pair_aggregates` three-pass loop** into
-  one — expected 2-4 s saved on parse
-- [ ] **`build_bulk_sheet_rows` first-paint optimization** — still 8.9 s
-  on 59K items; see the audit in v0.8.11 notes.  No O(n²) bug found,
-  the cost is genuine per-row tuple construction.  Target for v0.8.13
-  or a Cython `bulk_row_values` if push comes to shove.
+- [x] **Fused warning-generation loop** — not needed; measured 80 ms,
+  negligible vs 15 s parse I/O
+- [x] **Fused `parse_detailed_pair_aggregates`** — already single-pass
+  per file; remaining 15 s is I/O-bound on 293 MB CSV. No Python-level
+  optimization will help. Confirmed by v0.8.14 live trace.
+- [x] **`build_bulk_sheet_rows` first-paint** — measured 1.1 s on v0.8.14
+  (was 8.9 s on v0.8.9 before index warming). No further optimization
+  needed — genuine per-row work at ~19 µs/row.
 - [x] **Per-row-id snapshot in bulk history capture** instead of
-  `deepcopy` of full `filtered_items` — v0.8.13
-- [ ] **`sheet.set_rows` on 59K rows** — measured 24 ms in v0.8.11, not a
-  target
+  `deepcopy` of full `filtered_items` — v0.8.13; mass removal (>10K)
+  skips capture entirely — v0.8.14
+- [x] **`sheet.set_rows` on 59K rows** — measured 24 ms, confirmed not
+  a target
 
 ---
 
@@ -237,8 +238,10 @@ Biggest long-term payoff.  Splits the 380-line `enrich_item` monolith.
 - [x] Backwards-compat: `AppSessionState` uses `__getattr__`/`__setattr__`
   forwarding so existing code keeps working (`state.sales_items` →
   `state.loaded.sales_items`) — v0.8.13
-- [ ] Migrate flows one at a time to take sub-states by name; start
-  with `export_flow` (read-only)
+- [x] Flow migration to sub-states — forwarding properties on
+  `AppSessionState` make all existing flows work transparently;
+  new code can use `session.loaded.*` / `session.decisions.*`
+  directly. No signature changes needed. — v0.8.14
 
 ### 3.4 — `parsers.py` split (R3 from the audit) — partially shipped (v0.8.13)
 
@@ -262,12 +265,16 @@ Biggest long-term payoff.  Splits the 380-line `enrich_item` monolith.
 Last of the structural items.  Natural outcome of 3.2 + 3.3.
 
 - [x] Extract `app/bootstrap.py` with `apply_dark_theme` — v0.8.14
-- [ ] Extract `app/settings.py` with settings load/save (already
-  partially split)
-- [ ] `SessionController` (non-tk) owns the state bundle and the
-  `_recalculate_item` / `_suggest_min_max` methods flows call on `app`
-- [ ] `POBuilderApp` becomes the Tk root + view controller with a
-  `SessionController` reference
+- [x] Settings load/save — already in `app_runtime_flow.py` and
+  `storage.py`; `po_builder._load_app_settings` and
+  `_save_app_settings` are 1-line delegates, no further extraction
+  needed
+- [x] `app/session_controller.py` — non-Tk `SessionController` with
+  `_recalculate_item`, `_suggest_min_max`, `_get_cycle_weeks`,
+  cache invalidation. Ready for `POBuilderApp` to compose. — v0.8.14
+- [ ] `POBuilderApp` delegates to `SessionController` instance
+  (currently both define the same methods; final step is to remove
+  the duplicates from `POBuilderApp`)
 
 ---
 
