@@ -405,7 +405,7 @@ class POBuilderTests(unittest.TestCase):
             po_builder.POBuilderApp._proceed_to_assign(fake_app)
 
         mocked_error.assert_called_once()
-        self.assertIn(("show", "Crunching numbers..."), events)
+        self.assertIn(("show", "Preparing session..."), events)
         self.assertIn(("hide", None), events)
         self.assertNotIn(("refresh", None), events)
         self.assertNotIn(("populate", None), events)

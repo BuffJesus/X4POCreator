@@ -1321,7 +1321,7 @@ class POBuilderApp:
 
     def _proceed_to_assign_inner(self):
         """Apply all filters, merge suspended items, and move to bulk vendor assignment."""
-        self._show_loading("Crunching numbers...")
+        self._show_loading("Preparing session...")
         self.root.update()
         try:
             days = self.var_lookback_days.get()
@@ -1381,6 +1381,8 @@ class POBuilderApp:
         # assignment_flow sets demand_signal as a raw total over the full sales
         # export window; divide it down to one cycle's worth so that e.g.
         # 40 bearings sold over a year on a weekly cycle suggests ~1, not 40.
+        self._set_loading_text("Normalizing demand signals...")
+        self.root.update()
         with perf_trace.span("po_builder.normalize_items_to_cycle"):
             reorder_flow.normalize_items_to_cycle(self)
 
@@ -1388,6 +1390,8 @@ class POBuilderApp:
             import item_notes_flow
             item_notes_flow.apply_notes_to_items(self.filtered_items, getattr(self, "item_notes", {}))
 
+        self._set_loading_text("Auto-assigning vendors from receipt history...")
+        self.root.update()
         with perf_trace.span("po_builder.auto_assign_vendors"):
             import auto_assign_flow
             auto_result = auto_assign_flow.auto_assign_from_receipts(self)
@@ -1402,6 +1406,8 @@ class POBuilderApp:
         if btn_trend is not None:
             btn_trend.config(state="normal" if has_trend_history else "disabled")
         try:
+            self._set_loading_text("Building grid...")
+            self.root.update()
             with perf_trace.span("po_builder.refresh_vendor_inputs"):
                 self._refresh_vendor_inputs()
             with perf_trace.span("po_builder.restore_bulk_filter_sort_state"):
@@ -1416,6 +1422,8 @@ class POBuilderApp:
             self._hide_loading()
             messagebox.showerror("Vendor Assignment Error", f"Could not open vendor assignment:\n{exc}")
             return
+
+        self._hide_loading()
 
         # Show auto-assign summary (non-blocking toast-style)
         if auto_result.get("assigned_count", 0) > 0:
