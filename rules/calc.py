@@ -247,9 +247,13 @@ def evaluate_reorder_trigger(item):
     # Stale demand check: if the annualized demand is below 1 unit/year
     # AND there's no explicit trigger rule, don't auto-order.  This
     # prevents items sold once in 8 years from generating POs.
-    sales_span_days = item.get("sales_span_days") or item.get("reorder_cycle_weeks", 1) * 7
+    #
+    # demand_signal is already normalized to per-cycle (e.g. per-week).
+    # Annualize it: demand_signal * (365 / cycle_days).
+    cycle_days = max(1, (item.get("reorder_cycle_weeks", 1) or 1) * 7)
+    sales_span_days = item.get("sales_span_days") or 365
     if isinstance(sales_span_days, (int, float)) and sales_span_days > 90:
-        annualized = (demand_signal / sales_span_days) * 365
+        annualized = demand_signal * (365.0 / cycle_days)
         if annualized < MIN_ANNUALIZED_DEMAND_FOR_AUTO_ORDER:
             has_explicit_trigger = (trigger_threshold is not None
                                     and isinstance(trigger_threshold, (int, float))
