@@ -53,6 +53,7 @@ def apply_editor_value(app, row_id, col_name, raw, editable_cols, get_rule_key, 
             qty = int(float(raw))
             app._set_effective_order_qty(item, qty, manual_override=True)
             app._recalculate_item(item, annotate_release=not defer_save)
+            item.pop("_text_haystack", None)
             write_debug(
                 "bulk_apply_editor_value.final_qty",
                 row_id=row_id,
@@ -72,6 +73,7 @@ def apply_editor_value(app, row_id, col_name, raw, editable_cols, get_rule_key, 
                 if key in app.inventory_lookup:
                     app.inventory_lookup[key]["qoh"] = new_qoh
                 app._recalculate_item(item, annotate_release=not defer_save)
+                item.pop("_text_haystack", None)
             write_debug(
                 "bulk_apply_editor_value.qoh",
                 row_id=row_id,
@@ -99,6 +101,7 @@ def apply_editor_value(app, row_id, col_name, raw, editable_cols, get_rule_key, 
             else:
                 app.inventory_lookup[key]["max"] = parsed
             app._recalculate_item(item, annotate_release=not defer_save)
+            item.pop("_text_haystack", None)
             write_debug(
                 "bulk_apply_editor_value.minmax",
                 row_id=row_id,
@@ -121,6 +124,8 @@ def apply_editor_value(app, row_id, col_name, raw, editable_cols, get_rule_key, 
                 app._save_order_rules()
             app._clear_manual_override(item)
             app._recalculate_item(item, annotate_release=not defer_save)
+            # Clear stale caches on the item itself
+            item.pop("_text_haystack", None)
             write_debug(
                 "bulk_apply_editor_value.pack_size",
                 row_id=row_id,
@@ -139,6 +144,9 @@ def apply_editor_value(app, row_id, col_name, raw, editable_cols, get_rule_key, 
             )
         except ValueError:
             write_debug("bulk_apply_editor_value.error", row_id=row_id, col_name=col_name, raw=str(raw), reason="value_error")
+    # Evict render cache for this item so the grid recomputes all columns
+    cache = ui_bulk._bulk_row_render_cache(app)
+    cache.pop(ui_bulk.bulk_row_id(item), None)
     ui_bulk.adjust_bulk_summary_for_item_change(
         app,
         before_summary_item,
