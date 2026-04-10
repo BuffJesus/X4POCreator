@@ -435,39 +435,43 @@ def build_bulk_tab(app, editable_cols):
     workspace = ttk.Frame(frame)
     workspace.pack(fill=tk.BOTH, expand=True, pady=4)
 
-    # Vendor worksheet tabs at top of workspace
-    app._vendor_tabs = ttk.Notebook(workspace)
-    app._vendor_tabs.pack(fill=tk.X, side=tk.TOP)
-    app._vendor_tab_overview = ttk.Frame(app._vendor_tabs)
-    app._vendor_tabs.add(app._vendor_tab_overview, text="  Overview  ")
-    app._vendor_tab_frames = {}
-    app._active_vendor_tab = "Overview"
+    # Vendor worksheet selector — combobox instead of tabs (scales to 178+ vendors)
+    vendor_bar = ttk.Frame(workspace)
+    vendor_bar.pack(fill=tk.X, side=tk.TOP, pady=(0, 4))
+    ttk.Label(vendor_bar, text="View:", style="Info.TLabel").pack(side=tk.LEFT, padx=(0, 4))
+    app.var_vendor_worksheet = tk.StringVar(value="All Items")
+    app._vendor_worksheet_combo = ttk.Combobox(
+        vendor_bar, textvariable=app.var_vendor_worksheet,
+        state="readonly", width=28, font=("Segoe UI", 10),
+    )
+    app._vendor_worksheet_combo.pack(side=tk.LEFT, padx=(0, 8))
+    app._vendor_worksheet_values = ["All Items", "Overview", "Unassigned", "Exceptions"]
+    app._vendor_worksheet_combo["values"] = app._vendor_worksheet_values
 
-    def _on_vendor_tab_changed(_event=None):
-        try:
-            tab_id = app._vendor_tabs.select()
-            tab_text = app._vendor_tabs.tab(tab_id, "text").strip()
-        except Exception:
+    def _on_vendor_worksheet_changed(_event=None):
+        choice = app.var_vendor_worksheet.get().strip()
+        # Extract vendor from "VENDOR1 (234)" format
+        vendor = choice.split(" (")[0].strip() if " (" in choice else choice
+        if choice == "Overview":
+            _show_overview_panel(app)
             return
-        if tab_text == app._active_vendor_tab:
-            return
-        app._active_vendor_tab = tab_text
-        if tab_text == "Overview":
-            _refresh_overview_cards(app)
-            return
-        # Extract vendor name (strip count badge)
-        vendor = tab_text.split("(")[0].strip() if "(" in tab_text else tab_text
-        if vendor == "Unassigned":
+        _hide_overview_panel(app)
+        app.var_bulk_vendor_filter_internal = ""
+        if vendor == "All Items":
+            try:
+                app.var_bulk_status_filter.set("ALL")
+                app.var_bulk_item_status.set("ALL")
+            except Exception:
+                pass
+        elif vendor == "Unassigned":
             try:
                 app.var_bulk_status_filter.set("Unassigned")
-                app.var_bulk_vendor_filter_internal = ""
             except Exception:
                 pass
         elif vendor == "Exceptions":
             try:
                 app.var_bulk_status_filter.set("ALL")
                 app.var_bulk_item_status.set("Review")
-                app.var_bulk_vendor_filter_internal = ""
             except Exception:
                 pass
         else:
@@ -479,11 +483,16 @@ def build_bulk_tab(app, editable_cols):
                 pass
         app._apply_bulk_filter()
 
-    app._vendor_tabs.bind("<<NotebookTabChanged>>", _on_vendor_tab_changed)
+    app._vendor_worksheet_combo.bind("<<ComboboxSelected>>", _on_vendor_worksheet_changed)
     app.var_bulk_vendor_filter_internal = ""
+
+    # Overview panel (hidden by default, shown when "Overview" is selected)
+    app._overview_panel = ttk.Frame(workspace)
+    app._overview_visible = False
 
     tree_frame = ttk.Frame(workspace)
     tree_frame.pack(fill=tk.BOTH, expand=True)
+    app._bulk_grid_tree_frame = tree_frame
 
     columns = (
         "vendor", "line_code", "item_code", "description", "source",
@@ -1838,13 +1847,32 @@ def autosize_bulk_tree(app):
     return
 
 
+def _show_overview_panel(app):
+    """Show the overview cards, hide the grid."""
+    panel = getattr(app, "_overview_panel", None)
+    if panel is None or getattr(app, "_overview_visible", False):
+        return
+    panel.pack(fill=tk.BOTH, expand=True, before=getattr(app, "_bulk_grid_tree_frame", None))
+    app._overview_visible = True
+    _refresh_overview_cards(app)
+
+
+def _hide_overview_panel(app):
+    """Hide the overview cards, show the grid."""
+    panel = getattr(app, "_overview_panel", None)
+    if panel is None or not getattr(app, "_overview_visible", False):
+        return
+    panel.pack_forget()
+    app._overview_visible = False
+
+
 def refresh_vendor_worksheet_tabs(app):
-    """Rebuild the vendor worksheet tabs based on current filtered_items."""
-    tabs_nb = getattr(app, "_vendor_tabs", None)
-    if tabs_nb is None:
+    """Rebuild the vendor worksheet combobox values."""
+    combo = getattr(app, "_vendor_worksheet_combo", None)
+    if combo is None:
         return
     perf_trace.stamp("vendor_tabs.refresh_start", items=len(getattr(app, "filtered_items", []) or []))
-    # Count items per vendor
+
     vendor_counts = {}
     unassigned = 0
     exceptions = 0
@@ -1857,40 +1885,22 @@ def refresh_vendor_worksheet_tabs(app):
         if item.get("status") == "review":
             exceptions += 1
 
-    # Remove old vendor tabs (keep Overview at index 0)
-    existing = list(tabs_nb.tabs())
-    for tab_id in existing[1:]:
-        try:
-            tabs_nb.forget(tab_id)
-        except Exception:
-            pass
-    app._vendor_tab_frames.clear()
-
-    # Add vendor tabs sorted by count
+    values = ["All Items", "Overview"]
     for vendor, count in sorted(vendor_counts.items(), key=lambda kv: -kv[1]):
-        f = ttk.Frame(tabs_nb)
-        tabs_nb.add(f, text=f"  {vendor} ({count})  ")
-        app._vendor_tab_frames[vendor] = f
-
-    # Add Unassigned and Exceptions tabs
+        values.append(f"{vendor} ({count})")
     if unassigned > 0:
-        f = ttk.Frame(tabs_nb)
-        tabs_nb.add(f, text=f"  Unassigned ({unassigned})  ")
-        app._vendor_tab_frames["Unassigned"] = f
+        values.append(f"Unassigned ({unassigned})")
     if exceptions > 0:
-        f = ttk.Frame(tabs_nb)
-        tabs_nb.add(f, text=f"  Exceptions ({exceptions})  ")
-        app._vendor_tab_frames["Exceptions"] = f
+        values.append(f"Exceptions ({exceptions})")
 
-    perf_trace.stamp("vendor_tabs.tabs_built", vendor_count=len(vendor_counts))
-    # Refresh overview
-    _refresh_overview_cards(app)
-    perf_trace.stamp("vendor_tabs.refresh_done")
+    app._vendor_worksheet_values = values
+    combo["values"] = values
+    perf_trace.stamp("vendor_tabs.refresh_done", vendor_count=len(vendor_counts))
 
 
 def _refresh_overview_cards(app):
-    """Build vendor summary cards in the Overview tab."""
-    overview = getattr(app, "_vendor_tab_overview", None)
+    """Build vendor summary cards in the Overview panel."""
+    overview = getattr(app, "_overview_panel", None)
     if overview is None:
         return
     for child in overview.winfo_children():
