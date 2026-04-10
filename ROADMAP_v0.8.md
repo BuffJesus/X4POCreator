@@ -2,7 +2,7 @@
 
 Status: In progress (v0.8.0 → v0.8.12 shipped)
 
-Current app version: `0.8.14`
+Current app version: `0.9.0`
 
 ## Live confirmation (2026-04-08 22:10 operator run)
 
