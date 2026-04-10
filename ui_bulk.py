@@ -406,6 +406,27 @@ def build_bulk_tab(app, editable_cols):
     app.lbl_bulk_cell_status = ttk.Label(frame, text=status_text, style="Info.TLabel")
     app.lbl_bulk_cell_status.pack(anchor="w", pady=(0, 4))
 
+    # ── Inline tips bar (dismissible, persisted) ──
+    tips_dismissed = app.app_settings.get("bulk_tips_dismissed", False) if hasattr(app, "app_settings") else False
+    if not tips_dismissed:
+        tips_frame = ttk.Frame(frame)
+        tips_frame.pack(fill=tk.X, pady=(0, 4))
+        tk.Label(
+            tips_frame,
+            text="💡  Click column headers to sort  ·  Right-click headers to show/hide columns  ·  F2 to edit  ·  Press ? for all shortcuts",
+            font=("Segoe UI", 9), bg="#2a2a40", fg="#8898b0",
+            padx=10, pady=5, anchor="w",
+        ).pack(side=tk.LEFT, fill=tk.X, expand=True)
+
+        def _dismiss_tips():
+            tips_frame.pack_forget()
+            if hasattr(app, "app_settings"):
+                app.app_settings["bulk_tips_dismissed"] = True
+                if hasattr(app, "_save_app_settings"):
+                    app._save_app_settings()
+
+        ttk.Button(tips_frame, text="✕", command=_dismiss_tips, width=3).pack(side=tk.RIGHT, padx=4)
+
     tree_frame = ttk.Frame(frame)
     tree_frame.pack(fill=tk.BOTH, expand=True, pady=4)
 
@@ -497,6 +518,8 @@ def build_bulk_tab(app, editable_cols):
         app.bulk_sheet.sheet.bind("<Control-Down>", app._bulk_jump_ctrl_down)
         app.bulk_sheet.sheet.bind("<Double-Button-1>", app._bulk_begin_edit)
         app.bulk_sheet.sheet.bind("<Escape>", app._bulk_clear_selection)
+        app.bulk_sheet.sheet.bind("?", lambda e: _show_shortcut_overlay(app))
+        app.bulk_sheet.sheet.bind("<question>", lambda e: _show_shortcut_overlay(app))
         app.bulk_sheet.sheet.bind("<Button-3>", app.bulk_sheet.handle_right_click, add="+")
         app.bulk_sheet.sheet.bind("<Shift-space>", app._bulk_select_current_row)
         app.bulk_sheet.sheet.bind("<Control-space>", app._bulk_select_current_column)
@@ -1711,6 +1734,15 @@ def autosize_bulk_tree(app):
     if not getattr(app, "bulk_sheet", None):
         return
     return
+
+
+def _show_shortcut_overlay(app):
+    """Show the keyboard shortcut overlay."""
+    try:
+        import ui_shortcut_overlay
+        ui_shortcut_overlay.show_shortcut_overlay(app)
+    except Exception:
+        pass
 
 
 def _header_right_click_columns(app, event):

@@ -476,6 +476,45 @@ Undo or redo did not restore what you expected
 - If the current filter hides restored rows, switch filters back to ALL before assuming data was lost.
 """,
     ),
+    (
+        "Shortcuts",
+        "Every keyboard shortcut on the bulk assignment grid. Press ? on the grid for a quick overlay.",
+        """Navigation
+- `Enter` — View item details for the selected row
+- `F2` or `Double-click` — Edit the selected cell
+- `Tab` / `Shift+Tab` — Move to the next / previous editable column
+- `Home` / `End` — Jump to the first / last column
+- `Ctrl+Arrow` — Jump to the edge of the data in that direction
+- `Shift+Arrow` — Extend the current selection
+
+Editing
+- `Ctrl+Z` — Undo the last edit or removal
+- `Ctrl+Y` — Redo
+- `Ctrl+D` — Fill down: copy the top cell's value to all selected cells in the column
+- `Ctrl+R` — Fill right
+- `Ctrl+Enter` — Apply the current cell's value to the entire selection
+- `Delete` or `Backspace` — Remove the selected rows
+
+Selection
+- `Ctrl+A` — Select all visible cells
+- `Ctrl+Shift+A` — Select all rows (for row-header operations)
+- `Shift+Space` — Select the current row
+- `Ctrl+Space` — Select the current column
+- `Escape` — Clear the selection
+
+Grid & Columns
+- `Click column header` — Sort by that column (click again to reverse)
+- `Double-click column header` — Auto-size all columns to fit the window
+- `Right-click column header` — Show/hide columns
+- `Ctrl+F` — Focus the text search box
+- `Ctrl+C` / `Ctrl+V` — Copy / Paste cell data
+- `?` — Show the keyboard shortcut overlay
+
+Quick Filters
+- Use the pill buttons above the filter panel for one-click presets: All, Unassigned, Needs Review, Warnings, High Risk.
+- Combine with the detailed filter dropdowns below for precise filtering.
+""",
+    ),
 ]
 
 
