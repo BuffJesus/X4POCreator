@@ -1927,12 +1927,17 @@ def _refresh_overview_cards(app):
     col_idx = 0
     max_cols = 4
 
+    # Precompute exceptions per vendor in one pass (avoids O(n × vendors))
+    vendor_exceptions = {}
+    for item in getattr(app, "filtered_items", []) or []:
+        if item.get("status") == "review":
+            v = str(item.get("vendor", "") or "").strip().upper()
+            if v:
+                vendor_exceptions[v] = vendor_exceptions.get(v, 0) + 1
+
     for vendor, count in sorted(vendor_counts.items(), key=lambda kv: -kv[1]):
         value = vendor_values.get(vendor, 0)
-        has_exceptions = any(
-            item.get("status") == "review" and str(item.get("vendor", "")).strip().upper() == vendor
-            for item in getattr(app, "filtered_items", []) or []
-        )
+        has_exceptions = vendor_exceptions.get(vendor, 0) > 0
         _build_vendor_card(cards_frame, app, vendor, count, value, has_exceptions, row_idx, col_idx)
         col_idx += 1
         if col_idx >= max_cols:

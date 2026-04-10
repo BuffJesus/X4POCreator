@@ -120,13 +120,20 @@ def build_load_tab(app):
     scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
     attach_vertical_mousewheel(canvas, canvas, content)
 
-    ttk.Label(content, text="Load Data Files", style="Header.TLabel").pack(anchor="w")
-    ttk.Label(
-        content,
-        text="Point to a folder of X4 report CSVs to auto-detect, or select files individually below.",
-        style="SubHeader.TLabel",
-        wraplength=900,
-    ).pack(anchor="w", pady=(2, 12))
+    # ── Welcome hero section ──
+    hero = ttk.Frame(content)
+    hero.pack(fill=tk.X, pady=(0, 16))
+    tk.Label(
+        hero, text="PO Builder",
+        font=("Segoe UI", 22, "bold"), bg="#222222", fg="#4c9be8",
+        anchor="w",
+    ).pack(anchor="w")
+    tk.Label(
+        hero, text="Generate vendor purchase orders from X4 report exports",
+        font=("Segoe UI", 11), bg="#222222", fg="#8898a8",
+        anchor="w",
+    ).pack(anchor="w", pady=(2, 0))
+    ttk.Separator(hero, orient="horizontal").pack(fill=tk.X, pady=(12, 0))
 
     data_frame = ttk.LabelFrame(content, text="Shared Data Folder", padding=10)
     data_frame.pack(fill=tk.X, pady=(0, 8))
@@ -158,13 +165,18 @@ def build_load_tab(app):
     # ── Quick Load (one-click reload from last folder) ──
     last_folder = app.app_settings.get("last_scan_folder", "") if hasattr(app, "app_settings") else ""
     if last_folder:
-        quick_frame = ttk.LabelFrame(content, text="Quick Load", padding=10)
-        quick_frame.pack(fill=tk.X, pady=(0, 8))
-        ttk.Label(
-            quick_frame,
-            text=f"Last folder: {last_folder}",
-            style="Info.TLabel",
+        quick_frame = tk.Frame(content, bg="#1a2a3a", padx=16, pady=14, relief="ridge", bd=1)
+        quick_frame.pack(fill=tk.X, pady=(0, 12))
+        tk.Label(
+            quick_frame, text="Quick Start",
+            font=("Segoe UI", 13, "bold"), bg="#1a2a3a", fg="#4c9be8",
+            anchor="w",
         ).pack(anchor="w")
+        tk.Label(
+            quick_frame, text=f"Load from: {last_folder}",
+            font=("Segoe UI", 9), bg="#1a2a3a", fg="#7898b0",
+            anchor="w",
+        ).pack(anchor="w", pady=(4, 8))
 
         def _quick_load():
             app.var_scan_dir.set(last_folder)
@@ -172,9 +184,9 @@ def build_load_tab(app):
             app.root.after(200, app._do_load)
 
         ttk.Button(
-            quick_frame, text="Scan & Load Now",
+            quick_frame, text="  Scan & Load Now  ",
             style="Big.TButton", command=_quick_load,
-        ).pack(anchor="w", pady=(8, 0))
+        ).pack(anchor="w")
 
     scan_frame = ttk.LabelFrame(content, text="Auto-Detect from Folder", padding=10)
     scan_frame.pack(fill=tk.X, pady=(0, 8))

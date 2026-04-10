@@ -1476,7 +1476,9 @@ class POBuilderApp:
 
     def _populate_bulk_tree(self):
         ui_bulk.populate_bulk_tree(self)
-        ui_bulk.refresh_vendor_worksheet_tabs(self)
+        # Defer vendor tab refresh to after the UI is painted so
+        # "Crunching numbers" doesn't block on tab creation.
+        self.root.after(100, lambda: ui_bulk.refresh_vendor_worksheet_tabs(self))
 
     def _get_cycle_weeks(self):
         """Return the number of weeks for the selected reorder cycle."""
