@@ -210,6 +210,13 @@ def determine_reorder_trigger_threshold(item):
     return threshold
 
 
+# Minimum annualized demand to justify auto-ordering.  Items below this
+# threshold with no explicit trigger rules are routed to skip/review
+# instead of generating orders.  Prevents 8-year-old single-sale items
+# from producing purchase orders.
+MIN_ANNUALIZED_DEMAND_FOR_AUTO_ORDER = 1.0
+
+
 def evaluate_reorder_trigger(item):
     """Return whether the current inventory position warrants a reorder suggestion."""
     inv = item.get("inventory", {}) or {}
@@ -233,13 +240,24 @@ def evaluate_reorder_trigger(item):
         if isinstance(current_min, (int, float)) and inventory_position < current_min:
             target_stock = max(value for value in (target_stock, current_min) if isinstance(value, (int, float)))
             item["target_stock"] = target_stock
-            # Flag that this reorder is driven by min-protection with zero
-            # demand, so the operator can review whether the min is still
-            # appropriate.  Without this flag, zero-demand items silently
-            # get ordered to a min that may be years out of date.
             item["zero_demand_min_protection"] = True
             return True
         return False
+
+    # Stale demand check: if the annualized demand is below 1 unit/year
+    # AND there's no explicit trigger rule, don't auto-order.  This
+    # prevents items sold once in 8 years from generating POs.
+    sales_span_days = item.get("sales_span_days") or item.get("reorder_cycle_weeks", 1) * 7
+    if isinstance(sales_span_days, (int, float)) and sales_span_days > 90:
+        annualized = (demand_signal / sales_span_days) * 365
+        if annualized < MIN_ANNUALIZED_DEMAND_FOR_AUTO_ORDER:
+            has_explicit_trigger = (trigger_threshold is not None
+                                    and isinstance(trigger_threshold, (int, float))
+                                    and trigger_threshold > 0)
+            if not has_explicit_trigger:
+                item["stale_demand_below_threshold"] = True
+                item["annualized_demand"] = round(annualized, 2)
+                return False
 
     if isinstance(trigger_threshold, (int, float)) and trigger_threshold > 0:
         return inventory_position < trigger_threshold

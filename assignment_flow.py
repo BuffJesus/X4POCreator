@@ -228,6 +228,7 @@ def prepare_assignment_session(
         candidate["pack_size"] = pack_size
         candidate["pack_size_source"] = pack_source
         candidate["reorder_cycle_weeks"] = cycle_weeks_now
+        candidate["sales_span_days"] = span_days
         local_append(filtered_items, candidate, key)
         cb_other_time += _perf_counter() - _t0 - (
             _t_suspense_end - _t_suspense_start
@@ -273,6 +274,7 @@ def prepare_assignment_session(
             "pack_size": pack_size,
             "pack_size_source": pack_source,
             "reorder_cycle_weeks": cycle_weeks_now,
+            "sales_span_days": span_days,
         }, key)
 
     local_order_rules = session.order_rules
@@ -309,6 +311,7 @@ def prepare_assignment_session(
             "pack_size": pack_size,
             "pack_size_source": pack_source,
             "reorder_cycle_weeks": cycle_weeks_now,
+            "sales_span_days": span_days,
             "candidate_preserved": True,
             "candidate_preserved_source": "inventory_protection",
             "candidate_preserved_reason": preserved_reason,

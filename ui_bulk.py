@@ -818,6 +818,9 @@ def _short_why(item):
     position = item.get("inventory_position", 0) or 0
 
     if status == "skip" or (raw <= 0 and final <= 0):
+        if item.get("stale_demand_below_threshold"):
+            ann = item.get("annualized_demand", 0)
+            return f"Very low demand ({ann:.1f}/yr) — not worth ordering"
         if position >= target and target > 0:
             return f"Stock OK ({int(position)} on hand, target {int(target)})"
         return "No order needed"

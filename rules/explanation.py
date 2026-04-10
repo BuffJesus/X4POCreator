@@ -37,6 +37,8 @@ def build_reason_codes(item, *, raw_need, pack_qty, policy, suggested, acceptabl
         reason_codes.append("trigger_high_vs_max")
     if item.get("zero_demand_min_protection"):
         reason_codes.append("zero_demand_min_protection")
+    if item.get("stale_demand_below_threshold"):
+        reason_codes.append("stale_demand_below_threshold")
     if item.get("effective_qty_suspended", 0):
         reason_codes.append("suspense_included")
     if item.get("suspense_carry_qty", 0):
