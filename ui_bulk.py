@@ -1821,6 +1821,7 @@ def apply_bulk_filter(app):
         items_total=len(getattr(app, "filtered_items", []) or []),
     ):
         _apply_bulk_filter_inner(app)
+    _refresh_filter_dropdown_values(app)
     badge_fn = getattr(app, "_update_filter_badge", None)
     if callable(badge_fn):
         try:
@@ -2038,6 +2039,81 @@ def _build_summary_card(parent, app, title, count, subtitle, bg, row, col):
     card.bind("<Button-1>", lambda e: _click())
     for child in card.winfo_children():
         child.bind("<Button-1>", lambda e: _click())
+
+
+def _refresh_filter_dropdown_values(app):
+    """Update filter dropdowns to only show values that have matching items.
+
+    Reduces cognitive load: if there are no "Warning" items, the
+    operator doesn't see "Warning" in the dropdown.  Scans filtered_items
+    once and rebuilds all dropdown value lists.
+    """
+    items = getattr(app, "filtered_items", []) or []
+    if not items:
+        return
+
+    # Collect active values in one pass
+    line_codes = set()
+    statuses_assigned = set()  # Assigned/Unassigned
+    item_statuses = set()
+    performances = set()
+    sales_healths = set()
+    attentions = set()
+
+    for item in items:
+        lc = item.get("line_code", "")
+        if lc:
+            line_codes.add(lc)
+        if item.get("vendor"):
+            statuses_assigned.add("Assigned")
+        else:
+            statuses_assigned.add("Unassigned")
+        st = item.get("status", "ok")
+        if st == "ok":
+            if "missing_pack" in (item.get("data_flags") or []):
+                item_statuses.add("No Pack")
+            item_statuses.add("OK")
+        elif st == "review":
+            item_statuses.add("Review")
+        elif st == "warning":
+            item_statuses.add("Warning")
+        elif st == "skip":
+            item_statuses.add("Skip")
+        if item.get("dead_stock"):
+            item_statuses.add("Dead Stock")
+        perf = (item.get("performance_profile", "") or "").lower()
+        perf_map = {"top_performer": "Top", "steady": "Steady", "intermittent": "Intermittent", "legacy": "Legacy"}
+        if perf in perf_map:
+            performances.add(perf_map[perf])
+        sh = (item.get("sales_health_signal", "") or "").lower()
+        sh_map = {"active": "Active", "cooling": "Cooling", "dormant": "Dormant", "stale": "Stale", "unknown": "Unknown"}
+        if sh in sh_map:
+            sales_healths.add(sh_map[sh])
+        risk = item.get("stockout_risk_score", 0) or 0
+        if risk >= 0.6:
+            attentions.add("High Risk")
+        att = (item.get("reorder_attention_signal", "") or "").lower()
+        if att == "review_missed_reorder":
+            attentions.add("Missed Reorder")
+        if att == "normal" or not att:
+            attentions.add("Normal")
+
+    # Update each dropdown — "ALL" always first
+    _update_combo(app, "combo_bulk_lc", sorted(line_codes))
+    _update_combo(app, "combo_bulk_status", sorted(statuses_assigned))
+    _update_combo(app, "combo_bulk_item_status", sorted(item_statuses))
+    _update_combo(app, "combo_bulk_performance", sorted(performances))
+    _update_combo(app, "combo_bulk_sales_health", sorted(sales_healths))
+    _update_combo(app, "combo_bulk_attention", sorted(attentions))
+
+
+def _update_combo(app, attr_name, active_values):
+    """Update a combobox to show only ALL + values that have items."""
+    combo = getattr(app, attr_name, None)
+    if combo is None:
+        return
+    new_values = ["ALL"] + list(active_values)
+    set_combobox_values_if_changed(combo, new_values)
 
 
 def _show_shortcut_overlay(app):
