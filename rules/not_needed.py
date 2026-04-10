@@ -4,6 +4,8 @@ Extracted from ui_bulk_dialogs.py to avoid duplicating rules.py logic
 in a UI module.
 """
 
+import math
+
 from rules.calc import determine_acceptable_overstock_qty
 
 

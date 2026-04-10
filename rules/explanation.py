@@ -33,6 +33,10 @@ def build_reason_codes(item, *, raw_need, pack_qty, policy, suggested, acceptabl
     trigger_threshold = item.get("reorder_trigger_threshold")
     if isinstance(trigger_threshold, (int, float)) and trigger_threshold > 0:
         reason_codes.append(f"trigger_{trigger_basis or 'configured'}")
+    if item.get("reorder_trigger_high_vs_max"):
+        reason_codes.append("trigger_high_vs_max")
+    if item.get("zero_demand_min_protection"):
+        reason_codes.append("zero_demand_min_protection")
     if item.get("effective_qty_suspended", 0):
         reason_codes.append("suspense_included")
     if item.get("suspense_carry_qty", 0):
@@ -154,6 +158,10 @@ def build_detail_parts(item, *, why, pack_qty, policy, acceptable_overstock,
         detail_parts.append(f"Already on PO: {item.get('qty_on_po', 0):g}")
     if isinstance(trigger_threshold, (int, float)) and trigger_threshold > 0:
         detail_parts.append(f"Reorder trigger: {trigger_threshold:g}")
+    if item.get("reorder_trigger_high_vs_max"):
+        detail_parts.append(f"Review: trigger threshold ({trigger_threshold:g}) is 5× or more above the stock target — verify rule settings are intentional")
+    if item.get("zero_demand_min_protection"):
+        detail_parts.append("Review: ordering to current min despite zero loaded demand — verify min is still appropriate")
     if item.get("confirmed_stocking"):
         sessions_without = item.get("confirmed_stocking_sessions_without_evidence", 0) or 0
         if item.get("confirmed_stocking_expired"):

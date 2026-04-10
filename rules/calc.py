@@ -65,8 +65,18 @@ def determine_target_stock(item):
         gap = abs(float(target_stock) - float(previous_target_stock))
         max_target = max(float(target_stock), float(previous_target_stock))
         if gap <= 1.0 or (max_target > 0 and (gap / max_target) <= 0.15):
-            target_stock = previous_target_stock
-            hysteresis_applied = True
+            # Decay: if the computed target is lower than the held target,
+            # move 25% of the way toward it each session.  This prevents
+            # hysteresis from holding a stale high target indefinitely
+            # when demand is gradually declining.
+            if target_stock < previous_target_stock:
+                decayed = previous_target_stock - (previous_target_stock - target_stock) * 0.25
+                target_stock = max(target_stock, int(round(decayed)))
+                hysteresis_applied = True
+                item["target_stock_hysteresis_decayed"] = True
+            else:
+                target_stock = previous_target_stock
+                hysteresis_applied = True
 
     item["target_stock"] = target_stock if target_stock else 0
     item["target_stock_hysteresis_applied"] = hysteresis_applied
@@ -188,6 +198,13 @@ def determine_reorder_trigger_threshold(item):
     else:
         basis = "configured_trigger"
 
+    # Sanity cap: flag (but don't override) when the trigger threshold
+    # is extremely high relative to the stock target.  The operator set
+    # these rules deliberately, so we warn rather than silently cap.
+    inv = item.get("inventory", {}) or {}
+    cap_ref = max((v for v in (inv.get("max"), inv.get("min"), item.get("target_stock")) if isinstance(v, (int, float)) and v > 0), default=0)
+    if cap_ref > 0 and threshold > cap_ref * 5:
+        item["reorder_trigger_high_vs_max"] = True
     item["reorder_trigger_threshold"] = threshold
     item["reorder_trigger_basis"] = basis
     return threshold
@@ -216,6 +233,11 @@ def evaluate_reorder_trigger(item):
         if isinstance(current_min, (int, float)) and inventory_position < current_min:
             target_stock = max(value for value in (target_stock, current_min) if isinstance(value, (int, float)))
             item["target_stock"] = target_stock
+            # Flag that this reorder is driven by min-protection with zero
+            # demand, so the operator can review whether the min is still
+            # appropriate.  Without this flag, zero-demand items silently
+            # get ordered to a min that may be years out of date.
+            item["zero_demand_min_protection"] = True
             return True
         return False
 
@@ -337,6 +359,13 @@ def calculate_suggested_qty(raw_need, pack_qty, policy, rule, inv):
 
     if pack_qty and pack_qty > 0:
         rounded = max(pack_qty, math.ceil(raw_need / pack_qty) * pack_qty)
+        # Near-boundary tolerance: if the round-up adds less than 5% to
+        # the order, it's genuine pack rounding.  But if raw_need is very
+        # close to a pack multiple from below (within 5%), use exact qty
+        # to avoid unnecessary overstock across thousands of SKUs.
+        waste = rounded - raw_need
+        if waste > 0 and pack_qty > 1 and (waste / pack_qty) > 0.95:
+            return raw_need, f"Near-pack boundary: {raw_need} is within 5% of pack {pack_qty}, using exact qty"
         return rounded, f"Rounded up to pack of {pack_qty}"
 
     return raw_need, "Standard (no pack)"
