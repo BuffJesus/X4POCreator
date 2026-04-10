@@ -1476,6 +1476,7 @@ class POBuilderApp:
 
     def _populate_bulk_tree(self):
         ui_bulk.populate_bulk_tree(self)
+        ui_bulk.refresh_vendor_worksheet_tabs(self)
 
     def _get_cycle_weeks(self):
         """Return the number of weeks for the selected reorder cycle."""

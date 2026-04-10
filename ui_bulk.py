@@ -431,8 +431,59 @@ def build_bulk_tab(app, editable_cols):
 
         ttk.Button(tips_frame, text="✕", command=_dismiss_tips, width=3).pack(side=tk.RIGHT, padx=4)
 
-    tree_frame = ttk.Frame(frame)
-    tree_frame.pack(fill=tk.BOTH, expand=True, pady=4)
+    # ── Vendor worksheet tabs + grid area ──
+    workspace = ttk.Frame(frame)
+    workspace.pack(fill=tk.BOTH, expand=True, pady=4)
+
+    # Vendor worksheet tabs at top of workspace
+    app._vendor_tabs = ttk.Notebook(workspace)
+    app._vendor_tabs.pack(fill=tk.X, side=tk.TOP)
+    app._vendor_tab_overview = ttk.Frame(app._vendor_tabs)
+    app._vendor_tabs.add(app._vendor_tab_overview, text="  Overview  ")
+    app._vendor_tab_frames = {}
+    app._active_vendor_tab = "Overview"
+
+    def _on_vendor_tab_changed(_event=None):
+        try:
+            tab_id = app._vendor_tabs.select()
+            tab_text = app._vendor_tabs.tab(tab_id, "text").strip()
+        except Exception:
+            return
+        if tab_text == app._active_vendor_tab:
+            return
+        app._active_vendor_tab = tab_text
+        if tab_text == "Overview":
+            _refresh_overview_cards(app)
+            return
+        # Extract vendor name (strip count badge)
+        vendor = tab_text.split("(")[0].strip() if "(" in tab_text else tab_text
+        if vendor == "Unassigned":
+            try:
+                app.var_bulk_status_filter.set("Unassigned")
+                app.var_bulk_vendor_filter_internal = ""
+            except Exception:
+                pass
+        elif vendor == "Exceptions":
+            try:
+                app.var_bulk_status_filter.set("ALL")
+                app.var_bulk_item_status.set("Review")
+                app.var_bulk_vendor_filter_internal = ""
+            except Exception:
+                pass
+        else:
+            try:
+                app.var_bulk_status_filter.set("ALL")
+                app.var_bulk_item_status.set("ALL")
+                app.var_bulk_vendor_filter_internal = vendor
+            except Exception:
+                pass
+        app._apply_bulk_filter()
+
+    app._vendor_tabs.bind("<<NotebookTabChanged>>", _on_vendor_tab_changed)
+    app.var_bulk_vendor_filter_internal = ""
+
+    tree_frame = ttk.Frame(workspace)
+    tree_frame.pack(fill=tk.BOTH, expand=True)
 
     columns = (
         "vendor", "line_code", "item_code", "description", "source",
@@ -460,6 +511,10 @@ def build_bulk_tab(app, editable_cols):
     app.bulk_tree_columns = columns
     if HAS_TKSHEET:
         app.bulk_sheet = BulkSheetView(app, tree_frame, columns, labels, widths, editable_cols)
+        # Default hidden columns — reduce visual clutter for ADHD-friendly view.
+        # Operator can show them via right-click on column headers.
+        app._hidden_columns = {"raw_need", "sug_min", "sug_max", "source", "supplier", "risk", "buy_rule", "cur_min", "cur_max"}
+        _apply_column_visibility(app)
         tree_frame.bind(
             "<Configure>",
             lambda e: app.bulk_sheet.resize_to_container(width=e.width, height=e.height) if app.bulk_sheet else None,
@@ -734,6 +789,41 @@ def bulk_row_render_signature(app, item):
 _EMPTY_INV: dict = {}
 
 
+def _short_why(item):
+    """Build a concise why summary for the grid. Full why stays in tooltip."""
+    raw = item.get("raw_need", 0) or 0
+    suggested = item.get("suggested_qty", 0) or 0
+    final = item.get("final_qty", 0) or 0
+    pack = item.get("pack_size")
+    policy = item.get("order_policy", "")
+    status = item.get("status", "")
+
+    if status == "skip" or (raw <= 0 and final <= 0):
+        return "No order needed"
+    if policy == "manual_only":
+        return "Manual review required"
+    if policy in ("reel_review", "large_pack_review"):
+        return f"Review: pack {pack or '?'}, need {raw}"
+
+    parts = []
+    if raw > 0:
+        parts.append(f"Need {raw}")
+    if suggested != raw and suggested > 0:
+        if pack:
+            parts.append(f"order {suggested} (pk {pack})")
+        else:
+            parts.append(f"order {suggested}")
+    elif suggested > 0 and not parts:
+        parts.append(f"Order {suggested}")
+
+    if item.get("zero_demand_min_protection"):
+        parts.append("min-protect")
+    if item.get("reorder_trigger_high_vs_max"):
+        parts.append("trigger high")
+
+    return ", ".join(parts) if parts else item.get("why", "")[:60]
+
+
 def bulk_row_values(app, item):
     line_code = item["line_code"]
     item_code = item["item_code"]
@@ -758,7 +848,7 @@ def bulk_row_values(app, item):
     final_qty = item.get("final_qty", item.get("order_qty", 0))
     rule = app.order_rules.get(f"{line_code}:{item_code}")
     buy_rule = get_buy_rule_summary(item, rule)
-    why = item.get("why", "")
+    why = _short_why(item)
     notes = item.get("notes", "")
     risk_score = item.get("stockout_risk_score")
     risk_display = f"{int(round(risk_score * 100))}%" if isinstance(risk_score, float) else ""
@@ -1375,6 +1465,7 @@ def bulk_filter_state(app):
             text_value = str(text_var.get() or "").strip()
         except Exception:
             text_value = ""
+    vendor_tab = getattr(app, "var_bulk_vendor_filter_internal", "") or ""
     return {
         "lc": _filter_value(app, "var_bulk_lc_filter"),
         "status": _filter_value(app, "var_bulk_status_filter"),
@@ -1384,6 +1475,7 @@ def bulk_filter_state(app):
         "sales_health": _filter_value(app, "var_bulk_sales_health_filter"),
         "attention": _filter_value(app, "var_bulk_attention_filter"),
         "text": text_value,
+        "vendor_tab": vendor_tab,
     }
 
 
@@ -1430,6 +1522,12 @@ def item_matches_text_filter(item, text):
 
 
 def item_matches_bulk_filter(item, filter_state):
+    # Vendor worksheet tab filter (from vendor sub-tabs)
+    vendor_tab = filter_state.get("vendor_tab", "")
+    if vendor_tab:
+        item_vendor = str(item.get("vendor", "") or "").strip().upper()
+        if item_vendor != vendor_tab.upper():
+            return False
     text_value = filter_state.get("text", "")
     if text_value and not item_matches_text_filter(item, text_value):
         return False
@@ -1738,6 +1836,169 @@ def autosize_bulk_tree(app):
     if not getattr(app, "bulk_sheet", None):
         return
     return
+
+
+def refresh_vendor_worksheet_tabs(app):
+    """Rebuild the vendor worksheet tabs based on current filtered_items."""
+    tabs_nb = getattr(app, "_vendor_tabs", None)
+    if tabs_nb is None:
+        return
+    # Count items per vendor
+    vendor_counts = {}
+    unassigned = 0
+    exceptions = 0
+    for item in getattr(app, "filtered_items", []) or []:
+        vendor = str(item.get("vendor", "") or "").strip().upper()
+        if vendor:
+            vendor_counts[vendor] = vendor_counts.get(vendor, 0) + 1
+        else:
+            unassigned += 1
+        if item.get("status") == "review":
+            exceptions += 1
+
+    # Remove old vendor tabs (keep Overview at index 0)
+    existing = list(tabs_nb.tabs())
+    for tab_id in existing[1:]:
+        try:
+            tabs_nb.forget(tab_id)
+        except Exception:
+            pass
+    app._vendor_tab_frames.clear()
+
+    # Add vendor tabs sorted by count
+    for vendor, count in sorted(vendor_counts.items(), key=lambda kv: -kv[1]):
+        f = ttk.Frame(tabs_nb)
+        tabs_nb.add(f, text=f"  {vendor} ({count})  ")
+        app._vendor_tab_frames[vendor] = f
+
+    # Add Unassigned and Exceptions tabs
+    if unassigned > 0:
+        f = ttk.Frame(tabs_nb)
+        tabs_nb.add(f, text=f"  Unassigned ({unassigned})  ")
+        app._vendor_tab_frames["Unassigned"] = f
+    if exceptions > 0:
+        f = ttk.Frame(tabs_nb)
+        tabs_nb.add(f, text=f"  Exceptions ({exceptions})  ")
+        app._vendor_tab_frames["Exceptions"] = f
+
+    # Refresh overview
+    _refresh_overview_cards(app)
+
+
+def _refresh_overview_cards(app):
+    """Build vendor summary cards in the Overview tab."""
+    overview = getattr(app, "_vendor_tab_overview", None)
+    if overview is None:
+        return
+    for child in overview.winfo_children():
+        try:
+            child.destroy()
+        except Exception:
+            pass
+
+    vendor_counts = {}
+    vendor_values = {}
+    unassigned = 0
+    exceptions = 0
+    for item in getattr(app, "filtered_items", []) or []:
+        vendor = str(item.get("vendor", "") or "").strip().upper()
+        if vendor:
+            vendor_counts[vendor] = vendor_counts.get(vendor, 0) + 1
+            inv = (item.get("inventory") or {})
+            cost = inv.get("repl_cost", 0) or 0
+            qty = item.get("final_qty", item.get("order_qty", 0)) or 0
+            vendor_values[vendor] = vendor_values.get(vendor, 0) + cost * qty
+        else:
+            unassigned += 1
+        if item.get("status") == "review":
+            exceptions += 1
+
+    if not vendor_counts and unassigned == 0:
+        tk.Label(
+            overview, text="No items loaded yet",
+            font=("Segoe UI", 11), bg="#222222", fg="#666666",
+        ).pack(pady=20)
+        return
+
+    cards_frame = ttk.Frame(overview)
+    cards_frame.pack(fill=tk.BOTH, expand=True, padx=8, pady=8)
+
+    row_idx = 0
+    col_idx = 0
+    max_cols = 4
+
+    for vendor, count in sorted(vendor_counts.items(), key=lambda kv: -kv[1]):
+        value = vendor_values.get(vendor, 0)
+        has_exceptions = any(
+            item.get("status") == "review" and str(item.get("vendor", "")).strip().upper() == vendor
+            for item in getattr(app, "filtered_items", []) or []
+        )
+        _build_vendor_card(cards_frame, app, vendor, count, value, has_exceptions, row_idx, col_idx)
+        col_idx += 1
+        if col_idx >= max_cols:
+            col_idx = 0
+            row_idx += 1
+
+    # Unassigned card
+    if unassigned > 0:
+        _build_summary_card(cards_frame, app, "Unassigned", unassigned, "Need vendor assignment", "#3a2a1a", row_idx, col_idx)
+        col_idx += 1
+        if col_idx >= max_cols:
+            col_idx = 0
+            row_idx += 1
+
+    # Exceptions card
+    if exceptions > 0:
+        _build_summary_card(cards_frame, app, "Exceptions", exceptions, "Need review", "#3a1a1a", row_idx, col_idx)
+
+
+def _build_vendor_card(parent, app, vendor, count, value, has_exceptions, row, col):
+    bg = "#1a2a3a" if not has_exceptions else "#2a2a1a"
+    card = tk.Frame(parent, bg=bg, padx=12, pady=10, relief="ridge", bd=1)
+    card.grid(row=row, column=col, padx=4, pady=4, sticky="nsew")
+    parent.columnconfigure(col, weight=1)
+
+    status = "⚠ Needs attention" if has_exceptions else "✓ Ready"
+    status_fg = "#d0a040" if has_exceptions else "#60b060"
+
+    tk.Label(card, text=vendor, font=("Segoe UI", 12, "bold"), bg=bg, fg="#d0d8e0", anchor="w").pack(fill=tk.X)
+    tk.Label(card, text=f"{count} items  ·  ${value:,.0f} est.", font=("Segoe UI", 9), bg=bg, fg="#8898a8", anchor="w").pack(fill=tk.X)
+    tk.Label(card, text=status, font=("Segoe UI", 9), bg=bg, fg=status_fg, anchor="w").pack(fill=tk.X)
+
+    def _click(v=vendor):
+        # Find the tab for this vendor and select it
+        tabs_nb = getattr(app, "_vendor_tabs", None)
+        if tabs_nb:
+            for tab_id in tabs_nb.tabs():
+                text = tabs_nb.tab(tab_id, "text").strip()
+                if text.startswith(v):
+                    tabs_nb.select(tab_id)
+                    break
+    card.bind("<Button-1>", lambda e: _click())
+    for child in card.winfo_children():
+        child.bind("<Button-1>", lambda e: _click())
+
+
+def _build_summary_card(parent, app, title, count, subtitle, bg, row, col):
+    card = tk.Frame(parent, bg=bg, padx=12, pady=10, relief="ridge", bd=1)
+    card.grid(row=row, column=col, padx=4, pady=4, sticky="nsew")
+    parent.columnconfigure(col, weight=1)
+
+    tk.Label(card, text=title, font=("Segoe UI", 12, "bold"), bg=bg, fg="#d0d8e0", anchor="w").pack(fill=tk.X)
+    tk.Label(card, text=f"{count} items", font=("Segoe UI", 9), bg=bg, fg="#8898a8", anchor="w").pack(fill=tk.X)
+    tk.Label(card, text=subtitle, font=("Segoe UI", 9), bg=bg, fg="#a0a8b0", anchor="w").pack(fill=tk.X)
+
+    def _click(t=title):
+        tabs_nb = getattr(app, "_vendor_tabs", None)
+        if tabs_nb:
+            for tab_id in tabs_nb.tabs():
+                text = tabs_nb.tab(tab_id, "text").strip()
+                if text.startswith(t):
+                    tabs_nb.select(tab_id)
+                    break
+    card.bind("<Button-1>", lambda e: _click())
+    for child in card.winfo_children():
+        child.bind("<Button-1>", lambda e: _click())
 
 
 def _show_shortcut_overlay(app):
