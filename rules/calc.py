@@ -381,12 +381,11 @@ def calculate_suggested_qty(raw_need, pack_qty, policy, rule, inv):
 
     if pack_qty and pack_qty > 0:
         rounded = max(pack_qty, math.ceil(raw_need / pack_qty) * pack_qty)
-        # Near-boundary tolerance: if the round-up adds less than 5% to
-        # the order, it's genuine pack rounding.  But if raw_need is very
-        # close to a pack multiple from below (within 5%), use exact qty
-        # to avoid unnecessary overstock across thousands of SKUs.
+        # Near-boundary tolerance: if raw_need is within 5% BELOW a pack
+        # multiple (e.g. 99 need vs 100 pack), use exact qty instead of
+        # rounding up.  Only triggers when the waste from rounding is tiny.
         waste = rounded - raw_need
-        if waste > 0 and pack_qty > 1 and (waste / pack_qty) > 0.95:
+        if waste > 0 and rounded > pack_qty and (waste / pack_qty) < 0.05:
             return raw_need, f"Near-pack boundary: {raw_need} is within 5% of pack {pack_qty}, using exact qty"
         return rounded, f"Rounded up to pack of {pack_qty}"
 
