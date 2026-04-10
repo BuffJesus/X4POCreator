@@ -282,18 +282,19 @@ def bulk_remove_not_needed(app, scope, max_exceed_abs_buffer, *, include_assigne
         if idx is None or item is None:
             continue
         if not include_assigned and item.get("vendor"):
-            excluded_assigned += 1
-            # Track separately whether the excluded item *would have* been
-            # flagged not-needed — that's the count the operator is most
-            # likely to ask about ("I have N skip items, why do I only see
-            # M in the dialog?").
-            try:
-                reason, _ = not_needed_reason(app, item, max_exceed_abs_buffer)
-            except Exception:
-                reason = ""
-            if reason:
-                excluded_assigned_with_reason += 1
-            continue
+            # Items with status=skip or final_qty=0 are removable even
+            # if they have a vendor — the vendor was assigned (possibly
+            # auto-assigned) but the item doesn't actually need ordering.
+            item_needs_order = (item.get("final_qty") or 0) > 0 and item.get("status") != "skip"
+            if item_needs_order:
+                excluded_assigned += 1
+                try:
+                    reason, _ = not_needed_reason(app, item, max_exceed_abs_buffer)
+                except Exception:
+                    reason = ""
+                if reason:
+                    excluded_assigned_with_reason += 1
+                continue
         reason, auto_remove = not_needed_reason(app, item, max_exceed_abs_buffer)
         if reason:
             candidates.append((idx, item, reason, auto_remove))
