@@ -39,12 +39,30 @@ Build installs dependencies, runs the full test suite (must pass), then bundles 
 ### Module Layers
 
 **1. Core Logic** — pure business rules, no UI dependencies:
-- `rules.py` (~1,670 lines) — ordering logic, quantity calculations, pack/trigger evaluation, the `enrich_item` orchestrator
-- `parsers.py` (~1,220 lines) — CSV parsing, X4 report auto-detection, header normalization, per-row builders, streamed aggregation
+- `rules/` package (7 modules, was single 1,670-line file):
+  - `__init__.py` — `enrich_item` orchestrator (~110 lines, was 380)
+  - `calc.py` — inventory position, target stock, raw need, suggested qty, overstock
+  - `policy.py` — order policy determination, recency, dead stock, package classification
+  - `explanation.py` — `build_reason_codes`, `build_detail_parts`
+  - `status.py` — `evaluate_item_status`
+  - `not_needed.py` — `not_needed_reason` (moved from UI layer)
+  - `_constants.py`, `_helpers.py` — shared constants and rule accessors
+- `parsers/` package (5 modules, was single 1,220-line file):
+  - `csv_io.py` — header matching, layout detection, row iterators, dedup
+  - `x4_dialect.py` — X4 row checkers/builders, line code splitting
+  - `aggregators.py` — pair aggregates, receipt history, sales stats
+  - `dates.py` — `parse_x4_date` + memoization cache
+  - `normalize.py` — `_safe_cell`, `_coerce_int`, header normalization
+- `models/` package:
+  - `__init__.py` — `ItemKey`, `AppSessionState` (with sub-state forwarding), `SessionSnapshot`
+  - `session_bundle.py` — `LoadedData`, `DerivedAnalysis`, `UserDecisions`, `SessionMetadata`
+  - `schemas.py` — TypedDict definitions for `BulkItem`, `InventoryEntry`, etc.
 - `reorder_flow.py` — reorder trigger evaluation, cached description/sales indexes, `suggest_min_max`
-- `models.py` — data classes: `ItemKey`, `SourceItemState`, `SessionItemState`, `SuggestedItemState`, `AppSessionState`, `SessionSnapshot`
 - `storage.py` — atomic JSON/text file I/O, lock handling, shared-folder merge logic
 - `perf_trace.py` — opt-in timing harness (see Performance Notes)
+- `auto_assign_flow.py` — auto-assign vendors from receipt history
+- `item_notes_flow.py` — per-item notes persistence
+- `bulk_cache.py` — consolidated `BulkCacheState` object
 
 **2. Flow Modules** — discrete, testable workflow controllers (no direct UI):
 - `load_flow.py` — CSV loading, pickle-based parse caching (invalidated by file signature + schema version), line-code resolution, data-quality warnings
@@ -62,16 +80,20 @@ Build installs dependencies, runs the full test suite (must pass), then bundles 
 - `vendor_summary_flow.py` — per-vendor activity summaries
 - `persistent_state_flow.py` — load/save `order_rules.json`, `vendor_codes.txt`, etc.
 
-**3. UI Modules** — all `ui_*.py` + `bulk_sheet.py`, built on tkinter + tksheet:
-- `ui_bulk.py` (~1,600 lines) — bulk grid tab: filter state, bucket index, render cache, row builder
-- `bulk_sheet.py` (~1,100 lines) — tksheet wrapper, Delete key interceptor via bindtag manipulation, context menu
-- `ui_bulk_dialogs.py` (~1,330 lines) — Remove-not-needed, stock warnings, finish_bulk_final, buy rule editor, **custom Toplevels with `_force_dialog_foreground` for Windows z-order fix**
+**3. UI Modules** — all `ui_*.py` + `bulk_sheet.py`, built on tkinter + ttkbootstrap + tksheet:
+- `ui_bulk.py` — bulk grid tab: vendor worksheet dropdown, two-tier action bar, quick filter pills, filter state, bucket index, render cache, row builder, dynamic dropdown refresh
+- `bulk_sheet.py` — tksheet wrapper, Delete key interceptor, context menu, row coloring, cell hover tooltips, column visibility toggle
+- `ui_bulk_dialogs.py` — Remove-not-needed, stock warnings, finish_bulk_final, buy rule editor, **custom Toplevels with `_force_dialog_foreground` for Windows z-order fix**
 - `ui_review.py` — exception review before export
-- `ui_help.py` — Help tab with live search, tagged rendering, contextual-help API (`open_help_for`, `focus_help_section`)
+- `ui_help.py` — Help tab with live search, tagged rendering, contextual-help API, Shortcuts page
+- `ui_shortcut_overlay.py` — keyboard shortcut overlay (press ? on bulk grid)
+- `ui_load.py` — Load tab with Quick Start card
 - `ui_session_diff.py`, `ui_vendor_review.py`, `ui_supplier_map.py`, `ui_qoh_review.py`, `ui_skip_actions.py` — feature dialogs
 
-**4. Entry Point:**
-- `po_builder.py` (~2,100 lines) — `POBuilderApp` class, tab layout, delegates to flow/UI modules. Exposes session fields via property accessors that delegate to `AppSessionState`. Hosts the cached `_suggest_min_max`, `_resolve_pack_size_with_source`, and other memoized helpers.
+**4. App Package + Entry Point:**
+- `app/bootstrap.py` — `apply_dark_theme` (ttkbootstrap detection + fallback)
+- `app/session_controller.py` — non-Tk `SessionController` with `_recalculate_item`, `_suggest_min_max`
+- `po_builder.py` — `POBuilderApp` class, tab layout, workflow stepper, loading overlay with progress text. Uses ttkbootstrap `Window` with darkly theme.
 
 ### Session Lifecycle (Data Flow)
 
@@ -80,11 +102,12 @@ Load CSVs → Parse & cache → Build AppSessionState → Apply rules → Filter
 → Bulk/Individual assignment → Review exceptions → Export per-vendor .xlsx → Save session snapshot
 ```
 
-### Key Data Structures (`models.py`)
+### Key Data Structures (`models/`)
 
 - `ItemKey`: `(line_code, item_code)` tuple — primary key throughout
-- `AppSessionState`: central mutable state passed through all flows; holds all lookups and assigned items. ~30 fields spanning raw loads, derived lookups, user decisions, and session metadata. **Known god-object**; planned for sub-state split in a future release (see `ROADMAP_v0.8.md` Phase 3.3).
+- `AppSessionState`: central mutable state with four sub-state dataclasses (`LoadedData`, `DerivedAnalysis`, `UserDecisions`, `SessionMetadata`). Forwarding properties provide backward compat: `state.sales_items` → `state.loaded.sales_items`.
 - `SessionSnapshot`: written to `sessions/` on export — full audit record
+- `BulkItem`, `InventoryEntry`, `ExportItem` (TypedDict in `schemas.py`) — field documentation for editor autocompletion
 
 ### Persistence
 
@@ -104,6 +127,7 @@ Load CSVs → Parse & cache → Build AppSessionState → Apply rules → Filter
 | `ignored_items.txt` | `line_code:item_code` pairs to skip |
 | `suspense_carry.json` | Suspense items carried between sessions |
 | `supplier_vendor_map.json` | Supplier → vendor auto-mapping |
+| `item_notes.json` | Per-item notes keyed by `LC:IC` |
 | `sessions/` | Timestamped JSON snapshots for audit trail |
 
 ### Rule Key Format
@@ -158,7 +182,9 @@ Notable releases in chronological order — see corresponding `RELEASE_v0.8.*.md
 - **v0.8.10** — `normalize_items_to_cycle` eliminated as redundant pass (−23 s); generation-counter row render cache; memoized `_suggest_min_max`
 - **v0.8.11** — Crunching-numbers instrumentation release: full span coverage of `_do_load` / `_proceed_to_assign` / `populate_bulk_tree` with per-loop breakdown stamps
 - **v0.8.12** — **Eliminated O(n²) linear scan** in `_description_for_key`: `prepare_assignment_session` 34.5 s → 5.6 s (6.2× faster); `sales_history_for_key` also indexed; short-circuit in `receipt_pack_size_for_key`
-- **v0.8.13** — **Fixed cell editing regression** (tksheet binding name change broke all grid edits); Ctrl+F global shortcut; perf substep stamps on `bulk_remove_flow` and `finish_bulk_final`
+- **v0.8.13** — **Fixed cell editing regression** (tksheet binding name change broke all grid edits); 5 bug fixes, 6 UX features, bulk edit 7.5×, `rules/` + `parsers/` + `models/` package split
+- **v0.8.14** — ttkbootstrap darkly theme, row coloring, workflow stepper, column visibility toggle, TypedDict schemas, `parsers/` split complete
+- **v0.9.0** — **ADHD-friendly workflow overhaul**: auto-assign vendors, quick load, vendor worksheet dropdown, two-tier action bar, quick filter pills, simplified why text, stale demand threshold (<1/yr skips ordering), pack rounding fix, dynamic dropdowns, shortcut overlay
 
 ## Lessons from the v0.8.x debugging arc (for future sessions)
 
@@ -168,10 +194,15 @@ Notable releases in chronological order — see corresponding `RELEASE_v0.8.*.md
 4. **The operator workflow is exception-heavy.** `check_stock_warnings` was designed for "5-10 exceptions"; on the real data it had to handle 1,099. Always consider "what if this has 1000× the expected input?"
 5. **Match the operator's mental model over Excel convention.** Delete key = remove row (not clear cell) on this app. Audit: whose workflow are you optimizing for?
 6. **O(n²) hides in innocent-looking helpers.** `_description_for_key` looked like a one-off fallback lookup. It was the single biggest perf bug in the entire codebase. Always ask "is this O(1)?" when it's called per-item in a 60K-item loop.
+7. **Design for the operator, not the developer.** The ADHD-friendly v0.9.0 redesign reduced the operator's work from 4,000+ manual assignments to ~150 exceptions. Auto-assign, quick filters, and reduced columns matter more than code elegance.
+8. **Render caches need aggressive eviction.** Three separate caches (render, visible-rows, filter-result) caused stale display bugs. Evict all caches at the edit site, not just in the refresh path.
+9. **Demand normalization over long windows needs an annualized floor.** Items with <1 sale/year over 8 years should skip ordering. The MIN_ANNUALIZED_DEMAND_FOR_AUTO_ORDER threshold (1.0/yr) prevents stale one-off sales from generating POs.
+10. **Near-pack tolerance must be directional.** Round UP for the first pack, tolerance only for multi-pack boundaries. `need=1, pack=40` → must order 40, not 1.
 
 ## Known Open Items (see ROADMAP_v0.8.md for full plan)
 
-- `build_bulk_sheet_rows` still takes ~8.9 s on first paint — next perf target after v0.8.12
-- `rules.py` / `parsers.py` structural refactors from the audit are still open (Phase 3)
-- `AppSessionState` sub-state split is still open (Phase 3.3)
-- Phase 5 manual QA pass against real data
+- Phase 4 native acceleration — deferred pending operator field time
+- `SessionController` delegation from `POBuilderApp` — final separation step
+- `test_parse_golden.py` — needs real 293 MB dataset
+- Shift+click secondary sort — optional
+- `items_by_status` collapse — speculative Phase 5
