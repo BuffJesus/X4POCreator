@@ -16,21 +16,31 @@ def _remove_filtered_rows_inner(app, remove_indices, deepcopy, *, history_label=
     unique_indices = sorted({int(idx) for idx in remove_indices if idx is not None}, reverse=True)
     if not unique_indices:
         return []
-    # Pass the indices being removed so capture_bulk_history_state only
-    # deepcopies those rows instead of all 59K filtered_items.  On the
-    # real dataset this dropped undo-snapshot time from ~6.5 s to < 50 ms.
+    # When removing a small subset, pass indices so only those rows are
+    # deepcopied (~50ms for 300 rows).  When removing nearly everything
+    # (e.g. "Remove Not Needed Filtered" on 57K items), skip the per-row
+    # capture entirely — deepcopying 57K rows is slower than useful, and
+    # undo for a mass removal is impractical anyway.
+    total_items = len(getattr(app, "filtered_items", ()) or ())
+    # Skip expensive per-row capture for mass removals (>10K items).
+    # Small removals always capture for undo; mass removals (like
+    # "Remove Not Needed Filtered" on 57K rows) skip it since the
+    # deepcopy cost (~3.6s) isn't worth it for an impractical undo.
+    use_per_row = len(unique_indices) <= 10000
     capture_spec = session_state_flow.bulk_history_capture_spec(
         last_removed_bulk_items=True,
-        filtered_items_row_ids=unique_indices,
+        filtered_items_row_ids=unique_indices if use_per_row else (),
     )
     before_state = None
     capture = getattr(app, "_capture_bulk_history_state", None)
-    if callable(capture):
+    if callable(capture) and use_per_row:
         with perf_trace.span("bulk_remove_flow.capture_history", items=len(unique_indices)):
             try:
                 before_state = capture(capture_spec=capture_spec)
             except TypeError:
                 before_state = capture()
+    elif callable(capture) and not use_per_row:
+        perf_trace.stamp("bulk_remove_flow.capture_history.skipped_mass_removal", items=len(unique_indices))
     filtered_items = list(getattr(app, "filtered_items", ()) or ())
     removed_payload = []
     protected_payload = []
