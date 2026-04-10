@@ -134,72 +134,115 @@ def build_bulk_tab(app, editable_cols):
     controls_frame = ttk.Frame(frame)
     controls_frame.pack(fill=tk.X, pady=(0, 8))
 
-    action_frame = ttk.LabelFrame(controls_frame, text="Bulk Actions", padding=8)
+    action_frame = ttk.LabelFrame(controls_frame, text="Actions", padding=8)
     action_frame.pack(side=tk.LEFT, anchor="nw")
 
-    vendor_row = ttk.Frame(action_frame)
-    vendor_row.pack(fill=tk.X, pady=2)
-    ttk.Label(vendor_row, text="Assign vendor to selected rows:").pack(side=tk.LEFT, padx=4)
+    # ── Primary actions (always visible) ──
+    primary_row = ttk.Frame(action_frame)
+    primary_row.pack(fill=tk.X, pady=2)
+    ttk.Label(primary_row, text="Vendor:").pack(side=tk.LEFT, padx=(0, 4))
     app.var_bulk_vendor = tk.StringVar()
-    app.combo_bulk_vendor = ttk.Combobox(vendor_row, textvariable=app.var_bulk_vendor, width=20, font=("Segoe UI", 10))
-    app.combo_bulk_vendor.pack(side=tk.LEFT, padx=4)
+    app.combo_bulk_vendor = ttk.Combobox(primary_row, textvariable=app.var_bulk_vendor, width=16, font=("Segoe UI", 10))
+    app.combo_bulk_vendor.pack(side=tk.LEFT, padx=(0, 4))
     app.combo_bulk_vendor.bind("<KeyRelease>", app._bulk_vendor_autocomplete)
-    vendor_buttons = [
-        ttk.Button(vendor_row, text="Apply to Selected", command=app._bulk_apply_selected),
-        ttk.Button(vendor_row, text="Apply to All Visible", command=app._bulk_apply_visible),
-        ttk.Button(vendor_row, text="Manage Vendors...", command=app._open_vendor_manager),
-        ttk.Button(vendor_row, text="Vendor Review...", command=app._open_vendor_review),
-        ttk.Button(vendor_row, text="Supplier Map...", command=app._open_supplier_map),
-    ]
-    vendor_buttons[0].pack(side=tk.LEFT, padx=8)
-    vendor_buttons[1].pack(side=tk.LEFT, padx=4)
-    vendor_buttons[2].pack(side=tk.LEFT, padx=8)
-    vendor_buttons[3].pack(side=tk.LEFT, padx=4)
-    vendor_buttons[4].pack(side=tk.LEFT, padx=4)
+    ttk.Button(primary_row, text="Apply to Selected", command=app._bulk_apply_selected).pack(side=tk.LEFT, padx=4)
+    ttk.Button(primary_row, text="Apply to All Visible", command=app._bulk_apply_visible).pack(side=tk.LEFT, padx=4)
+    ttk.Separator(primary_row, orient="vertical").pack(side=tk.LEFT, fill=tk.Y, padx=8)
+    ttk.Button(primary_row, text="Remove Not Needed", command=app._bulk_remove_not_needed_filtered).pack(side=tk.LEFT, padx=4)
+    ttk.Button(primary_row, text="Undo Remove", command=app._undo_last_bulk_removal).pack(side=tk.LEFT, padx=4)
+    ttk.Separator(primary_row, orient="vertical").pack(side=tk.LEFT, fill=tk.Y, padx=8)
+    ttk.Button(primary_row, text="Undo", command=app._bulk_undo).pack(side=tk.LEFT, padx=2)
+    ttk.Button(primary_row, text="Redo", command=app._bulk_redo).pack(side=tk.LEFT, padx=2)
 
-    edit_row = ttk.Frame(action_frame)
-    edit_row.pack(fill=tk.X, pady=2)
-    bulk_buttons = [
-        ttk.Button(edit_row, text="Undo", command=app._bulk_undo),
-        ttk.Button(edit_row, text="Redo", command=app._bulk_redo),
-        ttk.Button(edit_row, text="Fill Selected Cells", command=app._bulk_fill_selected_cells),
-        ttk.Button(edit_row, text="Clear Selected Cells", command=app._bulk_clear_selected_cells),
-        ttk.Button(edit_row, text="Bulk Shortcuts...", command=app._show_bulk_shortcuts),
-        ttk.Button(edit_row, text="Fit Columns To Window", command=app._bulk_fit_columns),
-        ttk.Button(edit_row, text="Export Rules CSV", command=app._export_order_rules_csv),
-        ttk.Button(edit_row, text="Import Rules CSV", command=app._import_order_rules_csv),
-    ]
-    for idx, button in enumerate(bulk_buttons):
-        button.pack(side=tk.LEFT, padx=(8 if idx == 0 else 4, 0))
+    # ── Expandable advanced actions ──
+    app._more_actions_visible = False
+    _more_frame = ttk.Frame(action_frame)
 
-    removal_row = ttk.Frame(action_frame)
-    removal_row.pack(fill=tk.X, pady=2)
-    removal_buttons = [
-        ttk.Button(removal_row, text="Remove Not Needed (On Screen)", command=app._bulk_remove_not_needed_visible),
-        ttk.Button(removal_row, text="Remove Not Needed (Filtered)", command=app._bulk_remove_not_needed_filtered),
-        ttk.Button(
-            removal_row,
-            text="Remove Assigned Too (On Screen)",
-            command=lambda: app._bulk_remove_not_needed_visible(include_assigned=True),
-        ),
-        ttk.Button(
-            removal_row,
-            text="Remove Assigned Too (Filtered)",
-            command=lambda: app._bulk_remove_not_needed_filtered(include_assigned=True),
-        ),
-        ttk.Button(removal_row, text="Add to Ignore List", command=app._ignore_from_bulk),
-        ttk.Button(removal_row, text="Manage Ignored Items", command=app._open_ignored_items_manager),
-        ttk.Button(removal_row, text="Skip Cleanup...", command=app._open_skip_actions),
-        ttk.Button(removal_row, text="QOH Changes...", command=app._open_qoh_review),
-        ttk.Button(removal_row, text="Undo Last Remove", command=app._undo_last_bulk_removal),
-        ttk.Button(removal_row, text="Clear Notes", command=app._clear_notes_for_selected),
-    ]
-    for idx, button in enumerate(removal_buttons):
-        button.pack(side=tk.LEFT, padx=(8 if idx == 0 else 4, 0))
+    def _toggle_more_actions():
+        if app._more_actions_visible:
+            _more_frame.pack_forget()
+            _more_toggle.configure(text="▸ More Actions")
+        else:
+            _more_frame.pack(fill=tk.X, pady=(4, 0))
+            _more_toggle.configure(text="▾ More Actions")
+        app._more_actions_visible = not app._more_actions_visible
+
+    _more_toggle = ttk.Button(action_frame, text="▸ More Actions", command=_toggle_more_actions)
+    _more_toggle.pack(anchor="w", pady=(4, 0))
+
+    # Advanced row 1: vendor management
+    adv_row1 = ttk.Frame(_more_frame)
+    adv_row1.pack(fill=tk.X, pady=1)
+    for text, cmd in [
+        ("Manage Vendors...", app._open_vendor_manager),
+        ("Vendor Review...", app._open_vendor_review),
+        ("Supplier Map...", app._open_supplier_map),
+        ("Fill Selected", app._bulk_fill_selected_cells),
+        ("Clear Selected", app._bulk_clear_selected_cells),
+        ("Fit Columns", app._bulk_fit_columns),
+    ]:
+        ttk.Button(adv_row1, text=text, command=cmd).pack(side=tk.LEFT, padx=2)
+
+    # Advanced row 2: removal & maintenance
+    adv_row2 = ttk.Frame(_more_frame)
+    adv_row2.pack(fill=tk.X, pady=1)
+    for text, cmd in [
+        ("Remove Not Needed (On Screen)", app._bulk_remove_not_needed_visible),
+        ("Remove Assigned Too", lambda: app._bulk_remove_not_needed_filtered(include_assigned=True)),
+        ("Add to Ignore List", app._ignore_from_bulk),
+        ("Manage Ignored", app._open_ignored_items_manager),
+        ("Skip Cleanup...", app._open_skip_actions),
+        ("QOH Changes...", app._open_qoh_review),
+        ("Clear Notes", app._clear_notes_for_selected),
+    ]:
+        ttk.Button(adv_row2, text=text, command=cmd).pack(side=tk.LEFT, padx=2)
+
+    # Advanced row 3: rules
+    adv_row3 = ttk.Frame(_more_frame)
+    adv_row3.pack(fill=tk.X, pady=1)
+    for text, cmd in [
+        ("Export Rules CSV", app._export_order_rules_csv),
+        ("Import Rules CSV", app._import_order_rules_csv),
+        ("Bulk Shortcuts...", app._show_bulk_shortcuts),
+    ]:
+        ttk.Button(adv_row3, text=text, command=cmd).pack(side=tk.LEFT, padx=2)
+
+    # ── Quick filter presets (pill buttons) ──
+    filter_outer = ttk.Frame(controls_frame)
+    filter_outer.pack(side=tk.LEFT, anchor="nw", padx=(16, 0))
+
+    quick_filter_row = ttk.Frame(filter_outer)
+    quick_filter_row.pack(fill=tk.X, pady=(0, 4))
+    ttk.Label(quick_filter_row, text="Quick:", style="Info.TLabel").pack(side=tk.LEFT, padx=(0, 4))
+
+    def _quick_filter(status="ALL", item_status="ALL", attention="ALL"):
+        """Apply a quick filter preset."""
+        try:
+            app.var_bulk_status_filter.set(status)
+        except Exception:
+            pass
+        try:
+            app.var_bulk_item_status.set(item_status)
+        except Exception:
+            pass
+        try:
+            app.var_bulk_attention_filter.set(attention)
+        except Exception:
+            pass
+        app._apply_bulk_filter()
+
+    for label, kwargs in [
+        ("All", {}),
+        ("Unassigned", {"status": "Unassigned"}),
+        ("Needs Review", {"item_status": "Review"}),
+        ("Warnings", {"item_status": "Warning"}),
+        ("High Risk", {"attention": "High Risk"}),
+    ]:
+        ttk.Button(quick_filter_row, text=label, command=lambda kw=kwargs: _quick_filter(**kw)).pack(side=tk.LEFT, padx=2)
 
     app._filter_badge_var = tk.StringVar(value="Filters")
-    filter_frame = ttk.LabelFrame(controls_frame, text="Filters", padding=8)
-    filter_frame.pack(side=tk.LEFT, anchor="nw", padx=(16, 0))
+    filter_frame = ttk.LabelFrame(filter_outer, text="Filters", padding=8)
+    filter_frame.pack(fill=tk.X)
 
     def _update_filter_badge():
         """Update the Filters label to show active filter count."""
@@ -1160,6 +1203,31 @@ def update_bulk_summary(app, counts=None):
         pct = int(100 * assigned / total) if total > 0 else 0
         try:
             pbar.configure(value=pct)
+        except Exception:
+            pass
+    # Empty state guidance
+    _empty_state = getattr(app, "_bulk_empty_state_label", None)
+    _parent = getattr(app, "root", None)
+    if total > 0 and unassigned == 0 and assigned > 0 and _parent is not None:
+        if _empty_state is None:
+            try:
+                _empty_state = ttk.Label(
+                    _parent,
+                    text="✓  All items assigned!  Click the Review & Export tab to continue.",
+                    style="Header.TLabel",
+                    anchor="center",
+                )
+                app._bulk_empty_state_label = _empty_state
+            except Exception:
+                _empty_state = None
+        if _empty_state is not None:
+            try:
+                _empty_state.pack(side=tk.BOTTOM, pady=8)
+            except Exception:
+                pass
+    elif _empty_state is not None:
+        try:
+            _empty_state.pack_forget()
         except Exception:
             pass
     if plabel is not None:

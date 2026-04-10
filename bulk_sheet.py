@@ -119,6 +119,7 @@ class BulkSheetView:
         self._build_context_menu()
         self._bind_text_editor_shortcuts()
         self._bind_row_delete_keys()
+        self._setup_cell_tooltip()
 
     @staticmethod
     def _split_clipboard_matrix(text):
@@ -304,6 +305,86 @@ class BulkSheetView:
                     target.bind(sequence, _on_delete, add="+")
                 except Exception:
                     continue
+
+    def _setup_cell_tooltip(self):
+        """Show a floating tooltip on hover for long-text columns (why, notes)."""
+        self._tooltip_win = None
+        self._tooltip_after_id = None
+        tooltip_cols = {"why", "notes", "description"}
+        tooltip_col_indices = {self.col_index[c] for c in tooltip_cols if c in self.col_index}
+
+        mt = getattr(self.sheet, "MT", None)
+        if mt is None:
+            return
+
+        def _on_motion(event):
+            _hide_tooltip()
+            if self._tooltip_after_id is not None:
+                try:
+                    mt.after_cancel(self._tooltip_after_id)
+                except Exception:
+                    pass
+            self._tooltip_after_id = mt.after(400, lambda: _show_tooltip(event))
+
+        def _on_leave(event):
+            _hide_tooltip()
+            if self._tooltip_after_id is not None:
+                try:
+                    mt.after_cancel(self._tooltip_after_id)
+                except Exception:
+                    pass
+                self._tooltip_after_id = None
+
+        def _show_tooltip(event):
+            try:
+                row = self.sheet.identify_row(event, allow_end=False)
+                col = self.sheet.identify_column(event, allow_end=False)
+            except Exception:
+                return
+            if row is None or col is None or col not in tooltip_col_indices:
+                return
+            try:
+                text = str(self.sheet.get_cell_data(row, col) or "").strip()
+            except Exception:
+                return
+            if not text or len(text) < 20:
+                return
+            # Wrap long text
+            lines = []
+            for i in range(0, len(text), 80):
+                lines.append(text[i:i + 80])
+            wrapped = "\n".join(lines[:12])
+            if len(lines) > 12:
+                wrapped += "\n..."
+
+            _hide_tooltip()
+            tw = tk.Toplevel(self.sheet)
+            tw.wm_overrideredirect(True)
+            tw.wm_attributes("-topmost", True)
+            tw.configure(bg="#333348")
+            lbl = tk.Label(
+                tw, text=wrapped, justify="left",
+                bg="#333348", fg="#e0e0e8",
+                font=("Segoe UI", 9), padx=8, pady=6,
+                wraplength=600,
+            )
+            lbl.pack()
+            x = event.x_root + 12
+            y = event.y_root + 12
+            tw.wm_geometry(f"+{x}+{y}")
+            self._tooltip_win = tw
+
+        def _hide_tooltip():
+            tw = self._tooltip_win
+            if tw is not None:
+                try:
+                    tw.destroy()
+                except Exception:
+                    pass
+                self._tooltip_win = None
+
+        mt.bind("<Motion>", _on_motion, add="+")
+        mt.bind("<Leave>", _on_leave, add="+")
 
     def _bind_text_editor_shortcuts(self):
         bindings = {
