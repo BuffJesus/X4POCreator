@@ -203,10 +203,11 @@ def build_bulk_tab(app, editable_cols):
     ]:
         ttk.Button(adv_row2, text=text, command=cmd).pack(side=tk.LEFT, padx=2)
 
-    # Advanced row 3: rules
+    # Advanced row 3: rules + review printouts
     adv_row3 = ttk.Frame(_more_frame)
     adv_row3.pack(fill=tk.X, pady=1)
     for text, cmd in [
+        ("Draft Review (Print)", app._export_draft_review),
         ("Export Rules CSV", app._export_order_rules_csv),
         ("Import Rules CSV", app._import_order_rules_csv),
         ("Bulk Shortcuts...", app._show_bulk_shortcuts),

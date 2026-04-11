@@ -1561,6 +1561,59 @@ class POBuilderApp:
     def _save_order_rules(self):
         persistent_state_flow.save_order_rules(self)
 
+    def _export_draft_review(self):
+        import draft_report_flow
+        import export_flow
+
+        items = getattr(self.session, "filtered_items", None) or []
+        eligible = draft_report_flow.eligible_items(items)
+        if not eligible:
+            messagebox.showinfo(
+                "Draft Review",
+                "No items with a draft qty and vendor are currently in the bulk grid.\n\n"
+                "Assign vendors and set quantities first, then try again.",
+            )
+            return
+
+        output_dir = export_flow.choose_output_dir(self)
+        if not output_dir:
+            return
+
+        self._show_loading("Writing draft review files...")
+        self.root.update()
+        try:
+            created = draft_report_flow.export_draft_review_files(
+                items,
+                self.inventory_lookup,
+                output_dir,
+            )
+        except Exception as exc:
+            self._hide_loading()
+            messagebox.showerror(
+                "Draft Review Failed",
+                f"Could not write draft review files:\n{exc}",
+            )
+            return
+        self._hide_loading()
+
+        if not created:
+            messagebox.showinfo(
+                "Draft Review",
+                "No vendor files were created. Every eligible item was filtered out.",
+            )
+            return
+
+        file_list = "\n".join(f"  - {os.path.basename(p)}" for _vendor, p in created)
+        messagebox.showinfo(
+            "Draft Review Ready",
+            (
+                f"Wrote {len(created)} vendor review file(s) to:\n{output_dir}\n\n"
+                f"{file_list}\n\n"
+                "Each file is print-formatted (landscape letter, header repeats). "
+                "Open the folder in File Explorer and Print each vendor you want to verify."
+            ),
+        )
+
     def _export_order_rules_csv(self):
         from tkinter import filedialog
         import rules_csv_flow
