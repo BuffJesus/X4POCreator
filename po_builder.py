@@ -126,6 +126,14 @@ REVIEW_EXPORT_FOCUS_OPTIONS = ("all_items", "exceptions_only")
 DEFAULT_REMOVE_NOT_NEEDED_SCOPE = "unassigned_only"
 REMOVE_NOT_NEEDED_SCOPE_OPTIONS = ("unassigned_only", "include_assigned")
 DEFAULT_VENDOR_POLICY_PRESET = ""
+# v0.9.1: X4's "auto max quantity PO" writes draft lines into the PO Part
+# Listing CSV tagged po_type="Draft PO".  Counting those as already-committed
+# silently suppresses the same items from PO Builder's reorder trigger, which
+# is exactly the opposite of what the operator wants when they run both tools
+# side-by-side.  Default to excluding draft POs from the committed qty; the
+# operator can opt back in via po_builder_settings.json if needed.
+DEFAULT_EXCLUDE_DRAFT_POS_FROM_COMMITTED = True
+DRAFT_PO_TYPE_LABEL = "Draft PO"
 BULK_SHORTCUTS_TEXT = """Current bulk-sheet shortcuts
 
 Supported now
@@ -637,6 +645,19 @@ class POBuilderApp:
         if session is not None:
             session.default_vendor_policy_preset = normalized
         self._save_app_settings()
+
+    def _get_exclude_draft_pos_from_committed(self):
+        value = self.app_settings.get(
+            "exclude_draft_pos_from_committed",
+            DEFAULT_EXCLUDE_DRAFT_POS_FROM_COMMITTED,
+        )
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, (int, float)):
+            return bool(value)
+        if isinstance(value, str):
+            return value.strip().lower() not in ("", "0", "false", "no", "off")
+        return DEFAULT_EXCLUDE_DRAFT_POS_FROM_COMMITTED
 
     def _start_update_check(self):
         app_runtime_flow.start_update_check(self, APP_VERSION, is_release_version, threading.Thread)
@@ -1361,6 +1382,7 @@ class POBuilderApp:
                 get_cycle_weeks=self._get_cycle_weeks,
                 get_rule_key=get_rule_key,
                 default_vendor_policy_preset=self._get_default_vendor_policy_preset(),
+                exclude_draft_pos_from_committed=self._get_exclude_draft_pos_from_committed(),
             )
         except Exception as exc:
             self._hide_loading()

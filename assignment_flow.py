@@ -53,6 +53,7 @@ def prepare_assignment_session(
     get_cycle_weeks,
     get_rule_key,
     default_vendor_policy_preset="",
+    exclude_draft_pos_from_committed=True,
 ):
     """Apply filters, merge source data, and prepare the session for assignment."""
     session.suspended_lookup = defaultdict(list)
@@ -77,8 +78,23 @@ def prepare_assignment_session(
         key = (suspended_item["line_code"], suspended_item["item_code"])
         suspended_qty[key] += suspended_item.get("qty_ordered", 0)
 
+    # v0.9.1: X4's "auto max quantity PO" draft lines land in the PO Part
+    # Listing export tagged po_type="Draft PO".  Including them in the
+    # committed qty inflates the reorder-trigger's inventory position and
+    # silently suppresses the same items from PO Builder's suggestion list.
+    # Filter them out by default; the operator can opt in via settings.
     session.on_po_qty = defaultdict(float)
+    session.draft_po_excluded_count = 0
+    session.draft_po_excluded_qty = 0.0
     for po_item in session.po_items:
+        po_type = str(po_item.get("po_type", "") or "").strip()
+        if exclude_draft_pos_from_committed and po_type.lower() == "draft po":
+            session.draft_po_excluded_count += 1
+            try:
+                session.draft_po_excluded_qty += float(po_item.get("qty", 0) or 0)
+            except (TypeError, ValueError):
+                pass
+            continue
         key = (po_item["line_code"], po_item["item_code"])
         session.on_po_qty[key] += po_item["qty"]
 

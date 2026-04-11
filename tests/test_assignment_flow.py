@@ -541,6 +541,110 @@ class AssignmentFlowTests(unittest.TestCase):
         self.assertIn("candidate_preserved_below_rule_trigger", item["reason_codes"])
         self.assertIn("Candidate preserved: inventory is below an explicit rule-based trigger", item["why"])
 
+    def test_prepare_assignment_session_excludes_draft_pos_by_default(self):
+        # X4's "auto max quantity PO" writes draft lines into the PO Part
+        # Listing tagged po_type="Draft PO".  A Draft PO must not count as
+        # committed; otherwise the same item would be silently filtered out
+        # of the reorder trigger.  A real "PR" row on the same key still
+        # counts.
+        session = AppSessionState(
+            sales_items=[{
+                "line_code": "AER-",
+                "item_code": "GH781-4",
+                "description": "HOSE",
+                "qty_received": 0,
+                "qty_sold": 9,
+            }, {
+                "line_code": "AER-",
+                "item_code": "BOLT1",
+                "description": "BOLT",
+                "qty_received": 0,
+                "qty_sold": 5,
+            }],
+            po_items=[
+                {"line_code": "AER-", "item_code": "GH781-4", "qty": 10, "po_type": "Draft PO"},
+                {"line_code": "AER-", "item_code": "BOLT1", "qty": 4, "po_type": "PR"},
+            ],
+            inventory_lookup={
+                ("AER-", "GH781-4"): {"qoh": 0, "max": 10},
+                ("AER-", "BOLT1"): {"qoh": 0, "max": 10},
+            },
+            order_rules={},
+        )
+
+        with patch("assignment_flow.storage.get_recent_orders", return_value={}), \
+             patch("assignment_flow.storage.load_vendor_codes", return_value=["MOTION"]):
+            result = assignment_flow.prepare_assignment_session(
+                session,
+                excluded_line_codes=set(),
+                excluded_customers=set(),
+                dup_whitelist=set(),
+                ignored_keys=set(),
+                lookback_days=14,
+                order_history_path=str(ROOT / "test_order_history.json"),
+                vendor_codes_path=str(ROOT / "test_vendor_codes.txt"),
+                known_vendors=["MOTION"],
+                get_suspense_carry_qty=lambda key: 0,
+                default_vendor_for_key=lambda key: "MOTION",
+                resolve_pack_size=lambda key: 1,
+                suggest_min_max=lambda key: (None, None),
+                get_cycle_weeks=lambda: 2,
+                get_rule_key=lambda lc, ic: f"{lc}:{ic}",
+            )
+
+        self.assertTrue(result)
+        self.assertEqual(session.on_po_qty[("AER-", "GH781-4")], 0)
+        self.assertEqual(session.on_po_qty[("AER-", "BOLT1")], 4)
+        self.assertEqual(session.draft_po_excluded_count, 1)
+        self.assertEqual(session.draft_po_excluded_qty, 10)
+
+        by_key = {(item["line_code"], item["item_code"]): item for item in session.filtered_items}
+        self.assertEqual(by_key[("AER-", "GH781-4")]["qty_on_po"], 0)
+        self.assertEqual(by_key[("AER-", "BOLT1")]["qty_on_po"], 4)
+
+    def test_prepare_assignment_session_includes_draft_pos_when_disabled(self):
+        # Operator can opt back in to the legacy behavior by passing the
+        # flag explicitly.  When false, Draft PO lines count toward
+        # on_po_qty just like PR lines.
+        session = AppSessionState(
+            sales_items=[{
+                "line_code": "AER-",
+                "item_code": "GH781-4",
+                "description": "HOSE",
+                "qty_received": 0,
+                "qty_sold": 9,
+            }],
+            po_items=[
+                {"line_code": "AER-", "item_code": "GH781-4", "qty": 7, "po_type": "Draft PO"},
+            ],
+            inventory_lookup={("AER-", "GH781-4"): {"qoh": 0, "max": 10}},
+            order_rules={},
+        )
+
+        with patch("assignment_flow.storage.get_recent_orders", return_value={}), \
+             patch("assignment_flow.storage.load_vendor_codes", return_value=["MOTION"]):
+            assignment_flow.prepare_assignment_session(
+                session,
+                excluded_line_codes=set(),
+                excluded_customers=set(),
+                dup_whitelist=set(),
+                ignored_keys=set(),
+                lookback_days=14,
+                order_history_path=str(ROOT / "test_order_history.json"),
+                vendor_codes_path=str(ROOT / "test_vendor_codes.txt"),
+                known_vendors=["MOTION"],
+                get_suspense_carry_qty=lambda key: 0,
+                default_vendor_for_key=lambda key: "MOTION",
+                resolve_pack_size=lambda key: 1,
+                suggest_min_max=lambda key: (None, None),
+                get_cycle_weeks=lambda: 2,
+                get_rule_key=lambda lc, ic: f"{lc}:{ic}",
+                exclude_draft_pos_from_committed=False,
+            )
+
+        self.assertEqual(session.on_po_qty[("AER-", "GH781-4")], 7)
+        self.assertEqual(session.draft_po_excluded_count, 0)
+
 
 if __name__ == "__main__":
     unittest.main()

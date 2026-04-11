@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What This App Does
 
-**PO Builder** is a Windows desktop application (**v0.9.0**) that converts X4 ERP report exports (CSV) into vendor-specific purchase order Excel files. It merges sales, receipts, inventory, open PO, and suspended-item reports, calculates order quantities, and lets the user assign vendors before exporting per-vendor `.xlsx` files in X4 import format.
+**PO Builder** is a Windows desktop application (**v0.9.1**) that converts X4 ERP report exports (CSV) into vendor-specific purchase order Excel files. It merges sales, receipts, inventory, open PO, and suspended-item reports, calculates order quantities, and lets the user assign vendors before exporting per-vendor `.xlsx` files in X4 import format.
 
 The operator runs it weekly against a large production dataset (~63K candidate items, 8 years of history, ~293 MB Detailed Part Sales CSV). **Session load perf on that dataset is a first-class concern** — see the Performance Notes section below.
 
@@ -20,7 +20,7 @@ python po_builder.py
 ```bash
 python -m unittest discover -s tests -q
 ```
-As of v0.9.0: **1,149 tests**.
+As of v0.9.1: **1,151 tests**.
 
 **Run a single test file:**
 ```bash
@@ -185,6 +185,7 @@ Notable releases in chronological order — see corresponding `RELEASE_v0.8.*.md
 - **v0.8.13** — **Fixed cell editing regression** (tksheet binding name change broke all grid edits); 5 bug fixes, 6 UX features, bulk edit 7.5×, `rules/` + `parsers/` + `models/` package split
 - **v0.8.14** — ttkbootstrap darkly theme, row coloring, workflow stepper, column visibility toggle, TypedDict schemas, `parsers/` split complete
 - **v0.9.0** — **ADHD-friendly workflow overhaul**: auto-assign vendors, quick load, vendor worksheet dropdown, two-tier action bar, quick filter pills, simplified why text, stale demand threshold (<1/yr skips ordering), pack rounding fix, dynamic dropdowns, shortcut overlay
+- **v0.9.1** — **Draft PO filter fix**: X4 "auto max quantity PO" draft lines are no longer counted as already-committed; PO Builder's reorder trigger now correctly re-evaluates items that X4 drafted. Adds load-time "Draft PO Detected" warning. Setting `exclude_draft_pos_from_committed` (default true) in `po_builder_settings.json` controls behavior.
 
 ## Lessons from the v0.8.x debugging arc (for future sessions)
 
