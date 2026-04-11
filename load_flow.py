@@ -365,8 +365,26 @@ def _normalize_inventory_min_max(inventory_lookup):
 
 
 @perf_trace.timed("load_flow.parse_all_files")
-def parse_all_files(paths, *, old_po_warning_days, short_sales_window_days, now=None, progress_callback=None):
-    """Parse the selected input files into a single workflow result."""
+def parse_all_files(
+    paths,
+    *,
+    old_po_warning_days,
+    short_sales_window_days,
+    now=None,
+    progress_callback=None,
+    stored_schema_hashes=None,
+):
+    """Parse the selected input files into a single workflow result.
+
+    ``stored_schema_hashes`` is an optional dict of per-file header hashes
+    from the previous successful load.  When supplied, any file whose header
+    hash has changed since is flagged in a startup warning so the operator
+    can verify the column layout before trusting downstream output.  The
+    fresh hashes are always returned in ``result["csv_schema_hashes"]`` so
+    the caller can persist them.
+    """
+    import schema_drift
+
     cache_signature = _build_parse_cache_signature(
         paths,
         old_po_warning_days=old_po_warning_days,
@@ -376,11 +394,47 @@ def parse_all_files(paths, *, old_po_warning_days, short_sales_window_days, now=
     if cached is not None:
         if callable(progress_callback):
             progress_callback("Using cached parse result...")
+        # Schema hashes are still computed on a cache hit so drift still
+        # fires even when the cache short-circuits the parse work.
+        cached["csv_schema_hashes"] = schema_drift.compute_schema_hashes(paths)
         return cached
 
     warnings = []
     startup_warning_rows = []
     result = {"warnings": warnings, "startup_warning_rows": startup_warning_rows}
+
+    # Schema drift check — runs before parsing so the warning lands near the
+    # top of the startup warnings queue.  Hashes are recomputed here from
+    # scratch rather than pulled from any cache: we want to know what the
+    # operator is parsing right now, not what was parsed last week.
+    current_schema_hashes = schema_drift.compute_schema_hashes(paths)
+    result["csv_schema_hashes"] = current_schema_hashes
+    drifted_keys = schema_drift.detect_drift(current_schema_hashes, stored_schema_hashes or {})
+    if drifted_keys:
+        labels = [schema_drift.friendly_label(k) for k in drifted_keys]
+        sample = "\n".join(f"  - {label}" for label in labels)
+        warnings.append((
+            "CSV Schema Changed",
+            (
+                f"{len(drifted_keys)} source report(s) have a different "
+                f"column layout than the last successful load:\n\n{sample}\n\n"
+                "PO Builder parsed the file(s) with the current column mapping, "
+                "but if the export template changed you should spot-check a few "
+                "items against X4 before trusting the output."
+            ),
+        ))
+        for key in drifted_keys:
+            startup_warning_rows.append({
+                "warning_type": "CSV Schema Changed",
+                "severity": "warning",
+                "line_code": "",
+                "item_code": "",
+                "description": schema_drift.friendly_label(key),
+                "reference_date": "",
+                "qty": "",
+                "po_reference": "Header row hash differs from last load",
+                "details": "Verify column mapping before trusting parsed values.",
+            })
 
     if callable(progress_callback):
         progress_callback("Starting file load...")

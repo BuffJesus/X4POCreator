@@ -486,6 +486,13 @@ class POBuilderApp:
         except Exception as exc:
             write_debug("po_builder.ctrl_f_bind.error", error=str(exc))
 
+        # Ctrl+K opens the command palette from any tab.
+        try:
+            self.root.bind_all("<Control-k>", self._global_ctrl_k_handler)
+            self.root.bind_all("<Control-K>", self._global_ctrl_k_handler)
+        except Exception as exc:
+            write_debug("po_builder.ctrl_k_bind.error", error=str(exc))
+
         # Loading overlay
         self._loading_overlay = None
         self._loading_frames = []
@@ -873,6 +880,15 @@ class POBuilderApp:
             pass
         return "break"
 
+    def _global_ctrl_k_handler(self, event=None):
+        """Open the command palette from any tab."""
+        try:
+            import ui_command_palette
+            ui_command_palette.open_command_palette(self)
+        except Exception as exc:
+            write_debug("po_builder.ctrl_k.error", error=str(exc))
+        return "break"
+
     def _toggle_perf_trace(self):
         """Enable or disable the perf trace harness from the Help menu."""
         if perf_trace.is_enabled():
@@ -1228,12 +1244,29 @@ class POBuilderApp:
 
     def _parse_all_files(self, paths, progress_callback=None):
         """Parse all CSV files (runs in background thread)."""
-        return load_flow.parse_all_files(
+        stored_schema_hashes = {}
+        raw_hashes = self.app_settings.get("csv_schema_hashes", {})
+        if isinstance(raw_hashes, dict):
+            stored_schema_hashes = {str(k): str(v) for k, v in raw_hashes.items() if v}
+        result = load_flow.parse_all_files(
             paths,
             old_po_warning_days=OLD_PO_WARNING_DAYS,
             short_sales_window_days=SHORT_SALES_WINDOW_DAYS,
             progress_callback=progress_callback,
+            stored_schema_hashes=stored_schema_hashes,
         )
+        # Persist the fresh hashes so the next load has a baseline to
+        # compare against.  Written even on drift — after the operator has
+        # verified the new layout, subsequent loads should not keep firing
+        # the same warning.
+        fresh_hashes = result.get("csv_schema_hashes") if isinstance(result, dict) else None
+        if isinstance(fresh_hashes, dict) and fresh_hashes:
+            self.app_settings["csv_schema_hashes"] = dict(fresh_hashes)
+            try:
+                self._save_app_settings()
+            except Exception as exc:
+                write_debug("po_builder.schema_hash_persist.error", error=str(exc))
+        return result
 
     # ── Tab 2: Exclude Line Codes ────────────────────────────────────────
 
