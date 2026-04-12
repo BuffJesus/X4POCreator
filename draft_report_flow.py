@@ -39,21 +39,20 @@ except ImportError as exc:  # pragma: no cover - import guard
 # Widths are in Excel character units; tuned empirically for fit-to-width=1
 # landscape printing without truncating the description column too far.
 _COLUMNS = [
-    ("item_code",   "Item Code",    14, "left"),
-    ("description", "Description",  30, "left"),
-    ("qoh",         "QOH",           6, "right"),
-    ("cur_min",     "Min",           5, "right"),
-    ("cur_max",     "Max",           5, "right"),
-    ("qty_on_po",   "On PO",         6, "right"),
-    ("pack_size",   "Pack",          5, "right"),
-    ("draft_qty",   "Draft Qty",     9, "right"),
-    ("unit_cost",   "Unit $",        8, "right"),
-    ("ext_cost",    "Ext $",        10, "right"),
-    ("why",         "Why",          28, "left"),
+    ("item_code",   "Item Code",    16, "left"),
+    ("description", "Description",  48, "left"),
+    ("qoh",         "QOH",           7, "right"),
+    ("cur_min",     "Min",           6, "right"),
+    ("cur_max",     "Max",           6, "right"),
+    ("qty_on_po",   "On PO",         7, "right"),
+    ("pack_size",   "Pack",          6, "right"),
+    ("draft_qty",   "Draft Qty",    10, "right"),
+    ("unit_cost",   "Unit $",        9, "right"),
+    ("ext_cost",    "Ext $",        11, "right"),
     # Blank columns for hand-written markup during physical verification
-    ("_check",      "\u2713",        4, "center"),
-    ("_adj_qty",    "Adj Qty",       8, "right"),
-    ("_notes",      "Notes",        16, "left"),
+    ("_check",      "\u2713",        5, "center"),
+    ("_adj_qty",    "Adj Qty",       9, "right"),
+    ("_notes",      "Notes",        20, "left"),
 ]
 
 
