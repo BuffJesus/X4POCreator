@@ -32,9 +32,12 @@ them themselves.  Keep the shell UI-only so it's trivial to test.
 
 from __future__ import annotations
 
+import os
+
 from PySide6.QtCore import Qt, QSize, QThread
 from PySide6.QtGui import QAction, QKeySequence
 from PySide6.QtWidgets import (
+    QFileDialog,
     QHBoxLayout,
     QLabel,
     QListWidget,
@@ -168,6 +171,8 @@ class POBuilderShell(QMainWindow):
                 self.bulk_tab.remove_not_needed.connect(self._on_remove_not_needed)
                 self.bulk_tab.ignore_item.connect(self._on_ignore_item)
                 self.bulk_tab.edit_committed.connect(self._on_edit_committed)
+                self.bulk_tab.cycle_changed.connect(self._on_cycle_changed)
+                self.bulk_tab.draft_review_requested.connect(self._on_draft_review)
                 self.bulk_tab.undo_requested.connect(self._on_undo)
                 self.bulk_tab.redo_requested.connect(self._on_redo)
                 self.bulk_tab.model.edit_callback = self._on_cell_edit
@@ -588,6 +593,78 @@ class POBuilderShell(QMainWindow):
                 write_debug("qt.cell_edit.pack_size.error", line_code=lc, item_code=ic, error=str(exc))
                 return
 
+    def _on_cycle_changed(self, weeks: int):
+        """Re-enrich all items when the reorder cycle changes."""
+        write_debug("qt.cycle_changed", weeks=weeks)
+        ctrl = self.controller
+        ctrl._cycle_weeks = weeks
+        ctrl._suggest_min_max_cache = {}
+
+        if not self.bulk_tab or not ctrl.session.filtered_items:
+            return
+
+        import time
+        t0 = time.perf_counter()
+        # Re-normalize and re-enrich all items
+        reorder_flow = __import__("reorder_flow")
+        reorder_flow.normalize_items_to_cycle(ctrl)
+        elapsed = (time.perf_counter() - t0) * 1000
+        write_debug("qt.cycle_changed.renormalize", elapsed_ms=round(elapsed, 1),
+                     items=len(ctrl.session.filtered_items))
+
+        self.bulk_tab.model.bump_generation()
+        self.bulk_tab.model.set_data(
+            ctrl.session.filtered_items,
+            ctrl.session.inventory_lookup,
+            ctrl.order_rules,
+            ctrl._suggest_min_max,
+        )
+        self.bulk_tab._update_summary()
+        self.status.showMessage(f"Recalculated for {weeks}-week cycle", 5000)
+
+    def _on_draft_review(self):
+        """Export draft review print files — per-vendor landscape xlsx for physical verification."""
+        write_debug("qt.draft_review.begin")
+        ctrl = self.controller
+        model = self.bulk_tab.model if self.bulk_tab else None
+        if not model or not model.items:
+            QMessageBox.information(self, "No Data", "Load data and assign vendors first.")
+            return
+
+        output_dir = QFileDialog.getExistingDirectory(
+            self, "Select Folder for Draft Review Files",
+        )
+        if not output_dir:
+            return
+
+        try:
+            import draft_report_flow
+            created = draft_report_flow.export_draft_review_files(
+                model.items,
+                ctrl.session.inventory_lookup,
+                output_dir,
+            )
+            if created:
+                file_list = "\n".join(f"  \u2022 {vendor}: {os.path.basename(path)}"
+                                      for vendor, path in created[:10])
+                if len(created) > 10:
+                    file_list += f"\n  \u2026 and {len(created) - 10} more"
+                QMessageBox.information(
+                    self, "Draft Review Complete",
+                    f"Created {len(created)} draft review file(s) in:\n{output_dir}\n\n{file_list}",
+                )
+                write_debug("qt.draft_review.done", files=len(created))
+            else:
+                QMessageBox.information(
+                    self, "No Vendors",
+                    "No assigned items with order quantities to review.",
+                )
+        except Exception as exc:
+            write_debug("qt.draft_review.error", error=str(exc))
+            QMessageBox.critical(
+                self, "Draft Review Error", f"Failed to generate draft review:\n{exc}",
+            )
+
     def _on_before_cell_edit(self, row: int, col_name: str):
         """Capture before-state for undo on cell edits."""
         write_debug("qt.before_cell_edit", row=row, col_name=col_name)
@@ -744,6 +821,14 @@ class POBuilderShell(QMainWindow):
                 self, "Export Error", f"Failed to export:\n{exc}",
             )
             return
+
+        # Append to order history so the next session has recent order context
+        try:
+            import storage as _storage
+            _storage.append_order_history(ctrl._data_path("order_history"), assigned)
+            write_debug("qt.export.order_history_appended", items=len(assigned))
+        except Exception as exc:
+            write_debug("qt.export.order_history_error", error=str(exc))
 
         # Save session snapshot for audit trail
         try:

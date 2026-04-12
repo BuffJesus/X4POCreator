@@ -70,6 +70,8 @@ class BulkTab(QWidget):
     remove_not_needed = Signal()
     ignore_item = Signal(str, str)  # (line_code, item_code)
     edit_committed = Signal(int, str, str)
+    cycle_changed = Signal(int)  # cycle_weeks
+    draft_review_requested = Signal()
     undo_requested = Signal()
     redo_requested = Signal()
 
@@ -145,6 +147,19 @@ class BulkTab(QWidget):
         self._vendor_ws_combo.currentTextChanged.connect(self._on_vendor_worksheet_changed)
         pills_row.addWidget(self._vendor_ws_combo)
 
+        pills_row.addSpacing(t.SPACE_LG)
+
+        # Reorder cycle dropdown
+        cycle_label = QLabel("Cycle:")
+        cycle_label.setStyleSheet(f"color: {t.TEXT_DIM}; font-size: {t.FONT_SMALL}px;")
+        pills_row.addWidget(cycle_label)
+        self._cycle_combo = QComboBox()
+        self._cycle_combo.setFixedWidth(110)
+        self._cycle_combo.addItems(["Weekly", "Biweekly", "Monthly"])
+        self._cycle_combo.setCurrentText("Biweekly")
+        self._cycle_combo.currentTextChanged.connect(self._on_cycle_changed)
+        pills_row.addWidget(self._cycle_combo)
+
         pills_row.addStretch(1)
         layout.addLayout(pills_row)
 
@@ -198,6 +213,7 @@ class BulkTab(QWidget):
         )
         for text, handler in [
             ("Remove Not Needed", self._on_remove_not_needed),
+            ("Draft Review", self._on_draft_review),
             ("Undo", self._on_undo),
             ("Redo", self._on_redo),
         ]:
@@ -416,6 +432,11 @@ class BulkTab(QWidget):
                 COL_INDEX.get("risk", 0), Qt.DescendingOrder
             )
 
+    def _on_cycle_changed(self, text: str):
+        weeks = {"Weekly": 1, "Biweekly": 2, "Monthly": 4}.get(text, 2)
+        write_debug("qt.bulk_tab.cycle_changed", cycle=text, weeks=weeks)
+        self.cycle_changed.emit(weeks)
+
     def _on_vendor_worksheet_changed(self, text: str):
         write_debug("qt.bulk_tab.vendor_worksheet", vendor=text)
         self._model.apply_filters(vendor_ws=text)
@@ -504,6 +525,10 @@ class BulkTab(QWidget):
 
     def _on_remove_not_needed(self):
         self.remove_not_needed.emit()
+
+    def _on_draft_review(self):
+        write_debug("qt.bulk_tab.draft_review")
+        self.draft_review_requested.emit()
 
     def _on_undo(self):
         self.undo_requested.emit()

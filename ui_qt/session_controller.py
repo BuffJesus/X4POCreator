@@ -240,9 +240,7 @@ class QtSessionController:
         return int(entry) if entry else 0
 
     def _get_cycle_weeks(self) -> int:
-        # Default to Biweekly (2) to match tkinter build's default.
-        # TODO: wire a cycle dropdown in the Qt UI.
-        return 2
+        return getattr(self, "_cycle_weeks", 2)  # Default Biweekly
 
     def _suggest_min_max(self, key):
         cache = self._suggest_min_max_cache
