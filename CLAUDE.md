@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What This App Does
 
-**PO Builder** is a Windows desktop application (**v0.9.3**) that converts X4 ERP report exports (CSV) into vendor-specific purchase order Excel files. It merges sales, receipts, inventory, open PO, and suspended-item reports, calculates order quantities, and lets the user assign vendors before exporting per-vendor `.xlsx` files in X4 import format.
+**PO Builder** is a Windows desktop application (**v0.10.0-alpha1**, migrating from tkinter to PySide6 during the 0.10.x cycle) that converts X4 ERP report exports (CSV) into vendor-specific purchase order Excel files. It merges sales, receipts, inventory, open PO, and suspended-item reports, calculates order quantities, and lets the user assign vendors before exporting per-vendor `.xlsx` files in X4 import format.
 
 The operator runs it weekly against a large production dataset (~63K candidate items, 8 years of history, ~293 MB Detailed Part Sales CSV). **Session load perf on that dataset is a first-class concern** — see the Performance Notes section below.
 
@@ -20,7 +20,7 @@ python po_builder.py
 ```bash
 python -m unittest discover -s tests -q
 ```
-As of v0.9.3: **1,191 tests**.
+As of v0.10.0-alpha1: **1,231 tests** (tkinter + Qt combined).
 
 **Run a single test file:**
 ```bash
@@ -170,6 +170,44 @@ The operator runs this against a large production dataset. The performance profi
 - **Headless tk tests** (`tests/test_ui_help.py`, some UI tests) skip gracefully when `tk.Tk()` can't instantiate
 - **Perf baseline test** in `tests/test_bulk_perf_baseline.py` uses an 8K synthetic fixture to catch catastrophic regressions in the bulk grid hot paths — budgets are deliberately loose (5-10× measured time)
 
+## v0.10.x — PySide6 migration (in progress)
+
+The app is migrating from tkinter + ttkbootstrap + tksheet to PySide6.  The
+migration uses a strangler pattern: both UI stacks coexist until the Qt
+surfaces reach parity, then tkinter gets deleted.
+
+- `po_builder.py` + `ui_*.py` + `bulk_sheet.py` — **tkinter stack** (primary,
+  weekly-run target until Qt parity)
+- `po_builder_qt.py` + `ui_qt/` — **Qt stack** (alpha, grows each release)
+- `theme.py` — framework-independent design tokens (5 bg × 5 text × 5 accent
+  palette ported from the Tuner app's `theme.hpp`)
+- `theme_qt.py` — Qt stylesheet helpers consuming `theme.py` tokens
+- Flow modules (`load_flow`, `assignment_flow`, `export_flow`,
+  `draft_report_flow`, `schema_drift`, `reorder_flow`, `rules/`, `parsers/`,
+  `models/`, `storage.py`) are **UI-agnostic** and called from both stacks.
+
+Build targets:
+- `build.bat` → `dist/POBuilder.exe` (tkinter, 30 MB)
+- `build.bat qt` → `dist/POBuilder_Qt.exe` (Qt, ~90 MB)
+- `build.bat debug` → `dist/PO Builder Debug.exe` (tkinter with console)
+
+Migration phases (each is a release):
+
+| Phase | Surfaces | Status |
+|-------|----------|--------|
+| alpha1 | Shell, sidebar, theme | **current** |
+| alpha2 | Load tab + Help tab | pending |
+| alpha3 | Bulk grid (QTableView + model + delegate) | pending |
+| alpha4 | Review, Export, dialogs | pending |
+| beta1 | Command palette, shortcuts, polish | pending |
+| release | Delete tk, rename `po_builder_qt.py` → `po_builder.py` | pending |
+
+**Discipline rules** (every alpha commit must satisfy):
+1. Both tkinter and Qt builds succeed.
+2. Full test suite passes.
+3. No feature additions in either stack during migration — parity first.
+4. Flow modules stay UI-agnostic (no tkinter or Qt imports).
+
 ## Recent History (v0.8.x — perf + UX modernization)
 
 Notable releases in chronological order — see corresponding `RELEASE_v0.8.*.md` files for details:
@@ -188,6 +226,7 @@ Notable releases in chronological order — see corresponding `RELEASE_v0.8.*.md
 - **v0.9.1** — **Draft PO filter fix**: X4 "auto max quantity PO" draft lines are no longer counted as already-committed; PO Builder's reorder trigger now correctly re-evaluates items that X4 drafted. Adds load-time "Draft PO Detected" warning. Setting `exclude_draft_pos_from_committed` (default true) in `po_builder_settings.json` controls behavior.
 - **v0.9.2** — **Draft Review printout**: new per-vendor print-formatted xlsx export (`draft_report_flow.py`) triggered from the bulk grid's More Actions row. Landscape letter, fit-to-width, header repeats, bold yellow Draft Qty column, totals row with units + extended cost, cost coverage note. One file per vendor for physical verification.
 - **v0.9.3** — **Ctrl+K command palette** (`ui_command_palette.py`) for keystroke-first navigation: type to jump to any item, vendor, or action across the whole app. **CSV schema drift detection** (`schema_drift.py`): hashes the header row of each source CSV on load and warns if any differs from last run, catching silent ERP export template changes before they corrupt output.
+- **v0.10.0-alpha1** — **PySide6 migration kickoff**. New `po_builder_qt.py` entry point, `ui_qt/` package, `theme.py` (framework-independent tokens) + `theme_qt.py` (Qt stylesheet helpers) ported line-for-line from the Tuner app's `theme.hpp`. Empty shell with sidebar (Load/Filter/Bulk/Review/Help) + stacked pages; placeholders on every surface until subsequent alphas port each one. Tkinter build remains the weekly-run primary until parity.
 
 ## Lessons from the v0.8.x debugging arc (for future sessions)
 
