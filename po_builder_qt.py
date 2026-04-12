@@ -28,6 +28,7 @@ def main() -> int:
     from PySide6.QtGui import QFontDatabase
     from PySide6.QtWidgets import QApplication
 
+    import storage
     import theme_qt as tq
     from ui_qt.shell import POBuilderShell
 
@@ -48,7 +49,21 @@ def main() -> int:
     # the dark palette without per-widget styling.
     app.setStyleSheet(tq.app_stylesheet())
 
-    shell = POBuilderShell(app_version=APP_VERSION)
+    # Load shared app settings so the Load tab's Quick Start card and
+    # schema-drift baseline pick up the same values the tkinter build
+    # uses.  Both builds read/write the same po_builder_settings.json.
+    import os
+    import sys as _sys
+    if getattr(_sys, "frozen", False):
+        data_dir = os.path.dirname(_sys.executable)
+    else:
+        data_dir = os.path.dirname(os.path.abspath(__file__))
+    settings_path = os.path.join(data_dir, "po_builder_settings.json")
+    app_settings = storage.load_json_file(settings_path, {}) or {}
+    if not isinstance(app_settings, dict):
+        app_settings = {}
+
+    shell = POBuilderShell(app_version=APP_VERSION, app_settings=app_settings)
     shell.show()
 
     return app.exec()

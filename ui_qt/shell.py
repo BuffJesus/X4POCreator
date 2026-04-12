@@ -40,6 +40,7 @@ from PySide6.QtWidgets import (
     QListWidget,
     QListWidgetItem,
     QMainWindow,
+    QMessageBox,
     QStackedWidget,
     QStatusBar,
     QVBoxLayout,
@@ -48,6 +49,8 @@ from PySide6.QtWidgets import (
 
 import theme as t
 import theme_qt as tq
+from ui_qt.load_tab import LoadTab
+from ui_qt.help_tab import HelpTab
 
 
 # Sidebar nav items — matches the confirmed tkinter tab order for v0.10.0
@@ -102,12 +105,18 @@ def _placeholder_page(title: str, breadcrumb: str, phase: str) -> QWidget:
 class POBuilderShell(QMainWindow):
     """Top-level window: sidebar + stacked content + status bar."""
 
-    def __init__(self, app_version: str = "", parent=None):
+    def __init__(self, app_version: str = "", *, app_settings: dict | None = None, parent=None):
         super().__init__(parent)
         self.app_version = app_version
+        self.app_settings = app_settings if app_settings is not None else {}
         self.setWindowTitle(f"PO Builder (Qt) — v{app_version}" if app_version else "PO Builder (Qt)")
         self.resize(1280, 800)
         self.setMinimumSize(QSize(960, 600))
+
+        # Populated by _build_load_page; used by the finished handler to
+        # surface warnings even though the bulk tab is still a placeholder
+        # in alpha2.
+        self.load_tab: LoadTab | None = None
 
         central = QWidget()
         h = QHBoxLayout(central)
@@ -128,16 +137,24 @@ class POBuilderShell(QMainWindow):
         # ─── Stacked content ──────────────────────────────────────────
         self.stack = QStackedWidget()
         self.stack.setStyleSheet(f"background-color: {t.BG_BASE};")
+        # Each nav entry maps to either a real alpha2+ surface or a
+        # placeholder page that explains which phase will port it.
         for label, tooltip in NAV_ITEMS:
-            phase_map = {
-                "Load":   "alpha2",
-                "Filter": "alpha2",
-                "Bulk":   "alpha3",
-                "Review": "alpha4",
-                "Help":   "alpha2",
-            }
-            phase = phase_map.get(label, "a later alpha")
-            self.stack.addWidget(_placeholder_page(label, tooltip, phase))
+            if label == "Load":
+                self.load_tab = LoadTab(app_settings=self.app_settings)
+                self.load_tab.load_finished.connect(self._on_load_finished)
+                self.load_tab.load_failed.connect(self._on_load_failed)
+                self.stack.addWidget(self.load_tab)
+            elif label == "Help":
+                self.stack.addWidget(HelpTab())
+            else:
+                phase_map = {
+                    "Filter": "alpha2",
+                    "Bulk":   "alpha3",
+                    "Review": "alpha4",
+                }
+                phase = phase_map.get(label, "a later alpha")
+                self.stack.addWidget(_placeholder_page(label, tooltip, phase))
         h.addWidget(self.stack, stretch=1)
 
         self.setCentralWidget(central)
@@ -168,3 +185,53 @@ class POBuilderShell(QMainWindow):
             "Command palette lands in beta1 — use the sidebar for now.",
             4000,
         )
+
+    def _on_load_finished(self, result: dict):
+        """Handle a completed parse result from the Load tab.
+
+        In alpha2 the Bulk tab is still a placeholder, so we surface a
+        summary dialog + the list of warnings and leave it at that.
+        alpha3 will hand the result off to the bulk grid via
+        ``load_flow.apply_load_result``.
+        """
+        sales_items = result.get("sales_items") or []
+        warnings = result.get("warnings") or []
+        startup_rows = result.get("startup_warning_rows") or []
+
+        self.status.showMessage(
+            f"Loaded {len(sales_items)} sales item(s) — "
+            f"{len(warnings)} warning(s), {len(startup_rows)} startup row(s)",
+            10000,
+        )
+
+        if not sales_items:
+            QMessageBox.warning(
+                self,
+                "No Data",
+                "No items found in the loaded source files.  Check the file format.",
+            )
+            return
+
+        summary_lines = [
+            f"Loaded {len(sales_items)} sales items.",
+            f"Warnings: {len(warnings)}",
+            f"Startup warning rows: {len(startup_rows)}",
+        ]
+        if warnings:
+            summary_lines.append("")
+            summary_lines.append("Top warnings:")
+            for title, _body in warnings[:5]:
+                summary_lines.append(f"  \u2022 {title}")
+            if len(warnings) > 5:
+                summary_lines.append(f"  … and {len(warnings) - 5} more")
+
+        summary_lines.append("")
+        summary_lines.append(
+            "Bulk grid lands in alpha3 — for now, use POBuilder.exe "
+            "(tkinter) to continue the workflow."
+        )
+
+        QMessageBox.information(self, "Load Complete", "\n".join(summary_lines))
+
+    def _on_load_failed(self, error: str):
+        self.status.showMessage(f"Load failed: {error}", 15000)
