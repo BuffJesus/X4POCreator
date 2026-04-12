@@ -66,7 +66,7 @@ class POBuilderShellTests(unittest.TestCase):
     def test_sidebar_has_fixed_width(self):
         shell = self._build_shell()
         # Matches Tuner's 160px sidebar convention.
-        self.assertEqual(shell.sidebar.width(), 160)
+        self.assertEqual(shell.sidebar.width(), 170)
 
     def test_ctrl_k_action_registered(self):
         shell = self._build_shell()

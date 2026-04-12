@@ -26,6 +26,7 @@ from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QLabel,
+    QLineEdit,
     QListWidget,
     QListWidgetItem,
     QSplitter,
@@ -164,10 +165,23 @@ class HelpTab(QWidget):
         header.setTextFormat(Qt.RichText)
         header.setText(tq.tab_header_html(
             "Help",
-            "Documentation for reports, controls, and troubleshooting",
+            "Documentation, shortcuts, and troubleshooting",
         ))
         header.setStyleSheet(tq.tab_header_style())
         outer.addWidget(header)
+
+        # Search bar
+        search_row = QHBoxLayout()
+        search_row.setSpacing(t.SPACE_SM)
+        self._search_input = QLineEdit()
+        self._search_input.setPlaceholderText("\U0001F50D Search help topics\u2026")
+        self._search_input.setStyleSheet(
+            f"padding: 6px 10px; border-radius: {t.RADIUS_SM}px; "
+            f"font-size: {t.FONT_BODY}px;"
+        )
+        self._search_input.textChanged.connect(self._on_search)
+        search_row.addWidget(self._search_input)
+        outer.addLayout(search_row)
 
         # Split pane
         splitter = QSplitter(Qt.Horizontal)
@@ -191,9 +205,10 @@ class HelpTab(QWidget):
             f"  border-left: 3px solid {t.ACCENT_PRIMARY}; }}"
             f"QListWidget::item:hover:!selected {{ background: {t.BG_BASE}; }}"
         )
-        for title, intro, _body in HELP_SECTIONS:
+        for idx, (title, intro, _body) in enumerate(HELP_SECTIONS):
             item = QListWidgetItem(title)
             item.setToolTip(intro)
+            item.setData(Qt.UserRole, idx)
             self._sections.addItem(item)
         self._sections.setMinimumWidth(200)
         self._sections.setMaximumWidth(260)
@@ -224,5 +239,27 @@ class HelpTab(QWidget):
     def _on_section_changed(self, row: int):
         if row < 0 or row >= len(HELP_SECTIONS):
             return
-        title, _intro, body = HELP_SECTIONS[row]
+        # Map visible row back to HELP_SECTIONS index
+        item = self._sections.item(row)
+        if item is None:
+            return
+        section_idx = item.data(Qt.UserRole)
+        if section_idx is None or section_idx < 0 or section_idx >= len(HELP_SECTIONS):
+            return
+        title, _intro, body = HELP_SECTIONS[section_idx]
         self._body.setHtml(render_section_html(title, body))
+
+    def _on_search(self, query: str):
+        """Filter the section list by search query."""
+        query = query.strip().lower()
+        self._sections.clear()
+        for idx, (title, intro, body) in enumerate(HELP_SECTIONS):
+            haystack = f"{title} {intro} {body}".lower()
+            if query and query not in haystack:
+                continue
+            item = QListWidgetItem(title)
+            item.setSizeHint(item.sizeHint())
+            item.setData(Qt.UserRole, idx)
+            self._sections.addItem(item)
+        if self._sections.count() > 0:
+            self._sections.setCurrentRow(0)

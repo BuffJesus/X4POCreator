@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What This App Does
 
-**PO Builder** is a Windows desktop application (**v0.10.0-alpha2**, migrating from tkinter to PySide6 during the 0.10.x cycle) that converts X4 ERP report exports (CSV) into vendor-specific purchase order Excel files. It merges sales, receipts, inventory, open PO, and suspended-item reports, calculates order quantities, and lets the user assign vendors before exporting per-vendor `.xlsx` files in X4 import format.
+**PO Builder** is a Windows desktop application (**v0.10.0-alpha3**, migrating from tkinter to PySide6 during the 0.10.x cycle) that converts X4 ERP report exports (CSV) into vendor-specific purchase order Excel files. It merges sales, receipts, inventory, open PO, and suspended-item reports, calculates order quantities, and lets the user assign vendors before exporting per-vendor `.xlsx` files in X4 import format.
 
 The operator runs it weekly against a large production dataset (~63K candidate items, 8 years of history, ~293 MB Detailed Part Sales CSV). **Session load perf on that dataset is a first-class concern** — see the Performance Notes section below.
 
@@ -20,7 +20,7 @@ python po_builder.py
 ```bash
 python -m unittest discover -s tests -q
 ```
-As of v0.10.0-alpha2: **1,252 tests** (tkinter + Qt combined).
+As of v0.10.0-alpha3: **1,340 tests** (tkinter + Qt combined).
 
 **Run a single test file:**
 ```bash
@@ -196,10 +196,9 @@ Migration phases (each is a release):
 | Phase | Surfaces | Status |
 |-------|----------|--------|
 | alpha1 | Shell, sidebar, theme | done |
-| alpha2 | Load tab + Help tab | **current** |
-| alpha3 | Bulk grid (QTableView + model + delegate) | pending |
-| alpha4 | Review, Export, dialogs | pending |
-| beta1 | Command palette, shortcuts, polish | pending |
+| alpha2 | Load tab + Help tab | done |
+| alpha3 | Bulk grid, session controller, undo/redo, review/export, filter, command palette, shortcuts, dialogs | done |
+| beta1 | QThread pipeline, number cards, session snapshots, editor styling, data labels | **current** |
 | release | Delete tk, rename `po_builder_qt.py` → `po_builder.py` | pending |
 
 **Discipline rules** (every alpha commit must satisfy):
@@ -228,6 +227,7 @@ Notable releases in chronological order — see corresponding `RELEASE_v0.8.*.md
 - **v0.9.3** — **Ctrl+K command palette** (`ui_command_palette.py`) for keystroke-first navigation: type to jump to any item, vendor, or action across the whole app. **CSV schema drift detection** (`schema_drift.py`): hashes the header row of each source CSV on load and warns if any differs from last run, catching silent ERP export template changes before they corrupt output.
 - **v0.10.0-alpha1** — **PySide6 migration kickoff**. New `po_builder_qt.py` entry point, `ui_qt/` package, `theme.py` (framework-independent tokens) + `theme_qt.py` (Qt stylesheet helpers) ported line-for-line from the Tuner app's `theme.hpp`. Empty shell with sidebar (Load/Filter/Bulk/Review/Help) + stacked pages; placeholders on every surface until subsequent alphas port each one. Tkinter build remains the weekly-run primary until parity.
 - **v0.10.0-alpha2** — **Load tab + Help tab in Qt**. `ui_qt/load_tab.py` with hero banner, folder scan, per-file pickers (reuses tkinter's `LOAD_FILE_SECTIONS` data structure so both tabs stay in sync), `QThread`-based parse worker wrapping `load_flow.parse_all_files`, quick-start card when `last_scan_folder` is set, busy progress bar, schema drift hashes persisted via `app_settings`. `ui_qt/help_tab.py` with `QListWidget` section list + `QTextBrowser` body rendering the same `ui_help.HELP_SECTIONS` data through a markdown→HTML translator that respects theme tokens.
+- **v0.10.0-alpha3** — **Bulk grid + session controller + undo/redo + review/export in Qt**. `ui_qt/bulk_model.py` with `BulkTableModel` + `BulkFilterProxyModel` (6-axis filtering). `ui_qt/bulk_delegate.py` with row tinting + combo/spinbox editors. `ui_qt/bulk_tab.py` — full working surface with QTableView, filters, toolbar, column visibility, shortcuts. `ui_qt/session_controller.py` — non-UI controller running full load→assign→enrich→auto-assign pipeline. `ui_qt/undo_stack.py` — snapshot-based undo/redo (edit, vendor apply, row removal) with Ctrl+Z/Y. `ui_qt/review_tab.py` — exception review with vendor/status filters + export button. Shell fully wired: load→enrich→bulk→review→export end-to-end. 56 new headless tests (1,308 total).
 
 ## Lessons from the v0.8.x debugging arc (for future sessions)
 

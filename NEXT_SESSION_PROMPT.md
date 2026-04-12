@@ -8,11 +8,11 @@ We're continuing PO Builder development. **Active work: PySide6 migration (v0.10
 
 ## Current state
 
-- **Version:** v0.10.0-alpha2
-- **Tests:** 1,252 passing (tkinter + Qt combined)
+- **Version:** v0.10.0-alpha3
+- **Tests:** 1,308 passing (tkinter + Qt combined)
 - **Two builds coexist:**
   - `build.bat` → `dist/POBuilder.exe` (30 MB, tkinter, weekly-run primary)
-  - `build.bat qt` → `dist/POBuilder_Qt.exe` (61 MB, PySide6, alpha)
+  - `build.bat qt` → `dist/POBuilder_Qt.exe` (~90 MB, PySide6, alpha)
 - **Tkinter build is unchanged and ships every Monday.** Qt build is additive until parity.
 
 ## Read first (in this order)
@@ -23,62 +23,63 @@ We're continuing PO Builder development. **Active work: PySide6 migration (v0.10
 4. `ui_qt/shell.py` — POBuilderShell (QMainWindow + sidebar + QStackedWidget)
 5. `ui_qt/load_tab.py` — Qt Load tab (folder scan, file pickers, QThread parse worker)
 6. `ui_qt/help_tab.py` — Qt Help tab (section list + QTextBrowser body renderer)
+7. `ui_qt/bulk_model.py` — BulkTableModel + BulkFilterProxyModel + row value builder
+8. `ui_qt/bulk_delegate.py` — BulkDelegate (row tinting + cell editors)
+9. `ui_qt/bulk_tab.py` — BulkTab (QTableView + toolbar + filters + summary)
 
-## What shipped this session (v0.9.1 through v0.10.0-alpha2)
+## What shipped this session (v0.10.0-alpha3)
 
-| Release | Feature |
-|---------|---------|
-| v0.9.1 | **Draft PO filter fix** — X4 "Draft PO" lines excluded from committed qty; load-time warning; `exclude_draft_pos_from_committed` setting |
-| v0.9.2 | **Draft Review (Print)** — per-vendor print-formatted xlsx; `draft_report_flow.py`; landscape letter, bold yellow Draft Qty column, totals row |
-| v0.9.3 | **Ctrl+K command palette** (`ui_command_palette.py`) — type to jump to items/vendors/actions; **CSV schema drift detection** (`schema_drift.py`) |
-| v0.10.0-alpha1 | **PySide6 migration kickoff** — shell, sidebar, `theme.py`, `theme_qt.py`, `po_builder_qt.py` entry point, `PO_Builder_Qt.spec`, `build.bat qt` |
-| v0.10.0-alpha2 | **Load tab + Help tab in Qt** — file pickers, QThread parse worker, Quick Start card, schema drift baseline, Help section browser with markdown→HTML |
-| (bugfix) | Extract `ui_load_data.py` / `ui_help_data.py` to break tkinter transitive import in Qt build |
+| Component | What |
+|-----------|------|
+| `ui_qt/bulk_model.py` | `BulkTableModel` with `setData` edit callbacks, generation cache, `BulkFilterProxyModel` (6 filter axes) |
+| `ui_qt/bulk_delegate.py` | Row tinting via `ROW_TINT_ROLE` + `theme.zone_fill()`, combo/spinbox editors |
+| `ui_qt/bulk_tab.py` | QTableView, vendor worksheet, quick filter pills, action bar, filter row, summary strip, column visibility, Delete key, context menu |
+| `ui_qt/session_controller.py` | Non-UI controller: full load→assign→enrich→auto-assign pipeline without tkinter dependency |
+| `ui_qt/shell.py` | BulkTab wired; load_finished runs full pipeline; cell edits persist; vendor apply + row removal functional |
+| `tests/test_qt_bulk_model.py` | 22 tests (model, proxy, row helpers) |
+| `tests/test_qt_session_controller.py` | 18 tests (controller, setData, shell integration) |
 
 ## Migration phase table
 
 | Phase | Surfaces | Status |
 |-------|----------|--------|
 | alpha1 | Shell, sidebar, theme | done |
-| alpha2 | Load tab + Help tab | **done** |
-| **alpha3** | **Bulk grid (QTableView + model + delegate)** | **next** |
-| alpha4 | Review, Export, dialogs | pending |
+| alpha2 | Load tab + Help tab | done |
+| alpha3 | Bulk grid (QTableView + model + delegate) | **done** |
+| **alpha4** | **Review, Export, dialogs, session controller** | **next** |
 | beta1 | Command palette, shortcuts, polish | pending |
 | release | Delete tk, rename `po_builder_qt.py` → `po_builder.py` | pending |
 
-## What to build next: v0.10.0-alpha3 (Bulk grid)
-
-This is the hardest and most important phase. The bulk grid is PO Builder's primary working surface — 63K items, vendor assignment, qty editing, pack rounding, row coloring, context menus, filtering, undo/redo.
+## What to build next: v0.10.0-alpha4 (Review + Export + Controller)
 
 ### Plan
 
-1. **`ui_qt/bulk_tab.py`** — `QTableView` + custom `QAbstractTableModel` backed by `session.filtered_items`
-2. **`QSortFilterProxyModel`** for vendor/status/text filtering (replaces the tkinter filter chain)
-3. **Custom `QStyledItemDelegate`** for row tints using `theme.zone_fill()` and bold yellow Draft Qty column
-4. **Cell editing** — `QComboBox` delegate for vendor column (populated from KNOWN_VENDORS), `QSpinBox` or direct text for qty/pack/min/max, plain text for notes
-5. **Delete key dispatch** via `keyPressEvent` on the table view (rows selected → remove, cells selected → clear)
-6. **Right-click context menu** via `contextMenuEvent` (Remove Selected, View Details, Edit Buy Rule, etc.)
-7. **Column visibility** toggle via header context menu
-8. **Quick filter pills** — row of `QPushButton` above the table (All, Unassigned, Review, Warnings, High Risk)
-9. **Vendor worksheet dropdown** — `QComboBox` in the toolbar switching `var_bulk_vendor_filter_internal`
-10. **Undo/redo** plumbing via `QUndoStack` (or manual stack mirroring the tkinter approach)
-11. **Wire `assignment_flow.prepare_assignment_session`** and `load_flow.apply_load_result` so Load → Bulk flow works end-to-end in the Qt build
-12. **Performance target:** 63K items must load in <10s and scroll at 60fps on the operator's machine
+1. **Session controller (`ui_qt/session_controller.py`)** — non-UI controller that wires `load_flow.apply_load_result` → `assignment_flow.prepare_assignment_session` → `auto_assign_flow` → bulk grid population.  Currently `_on_load_finished` in shell.py just dumps raw sales items into the grid; alpha4 runs the full pipeline so enrich_item, reorder triggers, suggested qty, and auto-assign all fire.
+
+2. **Wire bulk grid editing** — connect `BulkTab.edit_committed` signal through `bulk_edit_flow.apply_editor_value` so vendor/qty/pack/notes edits actually mutate `filtered_items` and recalculate.  The delegate already creates the right editors; alpha4 hooks up `setData()` on the model to call the flow module.
+
+3. **Wire vendor apply + row removal** — connect `BulkTab.vendor_applied` and `BulkTab.rows_removed` signals to `assignment_flow` and `bulk_remove_flow`.
+
+4. **Review tab (`ui_qt/review_tab.py`)** — exception review before export.  Port `ui_review.py` surface: list of items with review flags, resolve/skip/override actions, "Finish & Export" button.
+
+5. **Export flow wiring** — connect the Review tab's export button to `export_flow.export_vendor_files`.
+
+6. **Dialogs** — port the key dialogs to Qt: stock warnings, remove-not-needed confirmation, buy rule editor, vendor manager, item details.
+
+7. **Undo/redo** — wire `BulkTab._on_undo` / `_on_redo` to either `QUndoStack` or the existing `session_state_flow` history mechanism.
 
 ### Key files to study
 
-- `bulk_sheet.py` — tkinter BulkSheetView wrapper; column definitions, row_ids, render cache, row coloring, edit dispatch
-- `ui_bulk.py` — tkinter bulk tab builder; action bars, filter dropdowns, vendor worksheet, quick filter pills
-- `assignment_flow.py:prepare_assignment_session` — the core per-item loop that builds `session.filtered_items`
-- `bulk_edit_flow.py` — per-cell editor handling (vendor, qty, pack, min, max, qoh, notes)
-- `bulk_sheet_actions_flow.py` — Delete-key dispatch, undo/redo plumbing
-- `bulk_remove_flow.py` — bulk row removal with per-row diagnostic logging
-- `rules/__init__.py:enrich_item` — called per-item to stamp order_qty, why, status
+- `app/session_controller.py` — non-Tk SessionController with `_recalculate_item`, `_suggest_min_max`
+- `po_builder.py` — `POBuilderApp` class, especially `_proceed_to_assign_inner`, `_do_load`, `_finish_bulk`
+- `ui_review.py` — tkinter review tab
+- `export_flow.py` — export grouping, per-vendor xlsx writing
+- `ui_bulk_dialogs.py` — stock warnings, finish_bulk_final, buy rule editor
 
 ### Discipline rules (must hold for every commit)
 
 1. Both tkinter and Qt builds succeed
-2. Full test suite passes (1,252+ tests)
+2. Full test suite passes (1,308+ tests)
 3. No feature additions in either stack — parity first
 4. Flow modules stay UI-agnostic (no tkinter or Qt imports)
 5. Theme tokens from `theme.py` for all colors; `theme_qt.py` helpers for all stylesheets
@@ -90,12 +91,16 @@ This is the hardest and most important phase. The bulk grid is PO Builder's prim
 - **Session state:** `AppSessionState` in `models/__init__.py` holds everything; `session.filtered_items` is the bulk grid data source
 - **Row ID format:** `json.dumps([line_code, item_code], separators=(",", ":"))` — used for lookup/selection
 - **Performance invariant:** never put O(n) scans inside per-item hot loops; use lazy per-session indexes
+- **Bulk model cache:** generation-keyed (same pattern as tkinter `_bulk_row_render_cache`); bump via `model.bump_generation()` after edits
+- **Filter proxy:** `BulkFilterProxyModel.filterAcceptsRow` reads item dicts directly — O(1) per row, uses pre-built `_text_haystack`
 
-## Also deferred from this session
+## Deferred from this session
 
-- Tuner visual style port to tkinter (abandoned in favor of PySide6 migration)
-- `theme.py` was written but never applied to the tkinter build; it's used only by the Qt build now
-- Cost-coverage badge on the bulk grid status line (can wire during alpha3)
+- Undo/redo stack — alpha4
+- Cost-coverage badge on summary strip — alpha4
+- Attention filter ("High Risk" quick pill) — not yet wired to a field
+- Review tab + Export flow — alpha4
+- Dialogs (buy rule editor, stock warnings, vendor manager) — alpha4
 
 ## Key invariants to preserve (from previous sessions)
 
@@ -105,4 +110,4 @@ This is the hardest and most important phase. The bulk grid is PO Builder's prim
 - Schema drift hashes persist in `po_builder_settings.json` under `csv_schema_hashes`
 - Render cache eviction: must evict in apply_editor_value AND refresh_bulk_view_after_edit
 - _hide_loading() must be called on ALL exit paths from _proceed_to_assign_inner
-- 1,252+ tests must pass. Build script runs them before bundling.
+- 1,308+ tests must pass. Build script runs them before bundling.

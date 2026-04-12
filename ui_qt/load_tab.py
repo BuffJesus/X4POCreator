@@ -158,11 +158,19 @@ class FilePickerRow(QWidget):
 
     path_changed = Signal()
 
-    def __init__(self, label: str, hint: str, parent=None):
+    def __init__(self, label: str, hint: str, required: bool = False, parent=None):
         super().__init__(parent)
+        self._required = required
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(t.SPACE_SM)
+
+        # Status badge
+        self._badge = QLabel("\u25CB")  # empty circle
+        self._badge.setFixedWidth(18)
+        self._badge.setAlignment(Qt.AlignCenter)
+        self._badge.setStyleSheet(f"color: {t.TEXT_DIM}; font-size: {t.FONT_MEDIUM}px;")
+        layout.addWidget(self._badge)
 
         label_col = QVBoxLayout()
         label_col.setContentsMargins(0, 0, 0, 0)
@@ -183,18 +191,37 @@ class FilePickerRow(QWidget):
 
         label_wrap = QWidget()
         label_wrap.setLayout(label_col)
-        label_wrap.setFixedWidth(260)
+        label_wrap.setFixedWidth(250)
         layout.addWidget(label_wrap)
 
         self._entry = QLineEdit()
-        self._entry.setPlaceholderText("Path to CSV…")
-        self._entry.textChanged.connect(lambda *_: self.path_changed.emit())
+        self._entry.setPlaceholderText("Path to CSV\u2026")
+        self._entry.textChanged.connect(self._on_text_changed)
         layout.addWidget(self._entry, stretch=1)
 
-        browse_btn = QPushButton("Browse…")
+        browse_btn = QPushButton("Browse\u2026")
         browse_btn.setFixedWidth(100)
         browse_btn.clicked.connect(self._on_browse)
         layout.addWidget(browse_btn)
+
+    def _on_text_changed(self):
+        self._update_badge()
+        self.path_changed.emit()
+
+    def _update_badge(self):
+        path = self._entry.text().strip()
+        if path and os.path.isfile(path):
+            self._badge.setText("\u2713")  # checkmark
+            self._badge.setStyleSheet(f"color: {t.ACCENT_OK}; font-size: {t.FONT_MEDIUM}px; font-weight: bold;")
+        elif path:
+            self._badge.setText("\u2717")  # X mark — path set but file not found
+            self._badge.setStyleSheet(f"color: {t.ACCENT_DANGER}; font-size: {t.FONT_MEDIUM}px; font-weight: bold;")
+        elif self._required:
+            self._badge.setText("\u25CF")  # filled circle — required, empty
+            self._badge.setStyleSheet(f"color: {t.ACCENT_WARNING}; font-size: {t.FONT_MEDIUM}px;")
+        else:
+            self._badge.setText("\u25CB")  # empty circle — optional, empty
+            self._badge.setStyleSheet(f"color: {t.TEXT_DIM}; font-size: {t.FONT_MEDIUM}px;")
 
     def _on_browse(self):
         start_dir = os.path.dirname(self._entry.text()) if self._entry.text() else ""
@@ -217,10 +244,12 @@ class FilePickerRow(QWidget):
 class FileSection(QFrame):
     """Card container for a related group of FilePickerRows."""
 
-    def __init__(self, title: str, summary: str, rows: list[tuple[str, str, str]], parent=None):
+    def __init__(self, title: str, summary: str, rows: list[tuple[str, str, str]],
+                 required_keys: set | None = None, parent=None):
         """rows is a list of (label, browse_key, hint) tuples."""
         super().__init__(parent)
         self.setStyleSheet(tq.card_style(t.ACCENT_PRIMARY))
+        _required = required_keys or set()
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(t.SPACE_MD, t.SPACE_MD, t.SPACE_MD, t.SPACE_MD)
@@ -247,7 +276,7 @@ class FileSection(QFrame):
 
         self.pickers: dict[str, FilePickerRow] = {}
         for label, browse_key, hint in rows:
-            picker = FilePickerRow(label, hint)
+            picker = FilePickerRow(label, hint, required=browse_key in _required)
             layout.addWidget(picker)
             self.pickers[browse_key] = picker
 
@@ -323,7 +352,10 @@ class LoadTab(QWidget):
                 (row["label"], row["browse_key"], row["hint"])
                 for row in section["rows"]
             ]
-            section_card = FileSection(section["title"], section["summary"], rows)
+            section_card = FileSection(
+                section["title"], section["summary"], rows,
+                required_keys=set(REQUIRED_BROWSE_KEYS),
+            )
             content_layout.addWidget(section_card)
             for key, picker in section_card.pickers.items():
                 self._pickers[key] = picker
