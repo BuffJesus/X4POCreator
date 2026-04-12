@@ -599,6 +599,20 @@ class ParserSmokeTests(unittest.TestCase):
             self.assertIsNone(lookup[("AER-", "GH781-4")]["qoh"])
             self.assertIsNone(lookup[("AER-", "GH781-4")]["repl_cost"])
 
+    def test_parse_on_hand_min_max_preserves_description(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "minmax_desc.csv"
+            with open(path, "w", newline="", encoding="utf-8-sig") as f:
+                writer = csv.writer(f)
+                writer.writerow([
+                    "hdr", "LIN-", "5010", "GREASE FITTING 1/4", "12", "0.46", "x", "1", "4",
+                    "76", "76", "APPIND", "23-Feb-2010", "30-Oct-2025",
+                ])
+
+            lookup = parsers.parse_on_hand_min_max(str(path))
+
+            self.assertEqual(lookup[("LIN-", "5010")]["description"], "GREASE FITTING 1/4")
+
 
     def test_parse_x4_date_handles_both_formats(self):
         self.assertEqual(

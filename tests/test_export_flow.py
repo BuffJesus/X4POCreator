@@ -183,6 +183,26 @@ class ExportFlowTests(unittest.TestCase):
         self.assertEqual(output_dir, "C:\\Exports\\Next")
         self.assertEqual(saved["path"], "C:\\Exports\\Next")
 
+    def test_choose_output_dir_uses_app_hook_when_available(self):
+        app = SimpleNamespace(_choose_output_dir=lambda: "D:\\POs")
+
+        output_dir = export_flow.choose_output_dir(app)
+
+        self.assertEqual(output_dir, "D:\\POs")
+
+    def test_loaded_report_paths_prefers_app_hook(self):
+        app = SimpleNamespace(
+            _loaded_report_paths_for_snapshot=lambda: {
+                "sales": "D:\\Reports\\sales.csv",
+                "po": "D:\\Reports\\po.csv",
+            }
+        )
+
+        paths = export_flow.loaded_report_paths_from_app(app)
+
+        self.assertEqual(paths["sales"], "D:\\Reports\\sales.csv")
+        self.assertEqual(paths["po"], "D:\\Reports\\po.csv")
+
     def test_build_session_snapshot_captures_expected_fields(self):
         app = SimpleNamespace(
             var_sales_path=SimpleNamespace(get=lambda: "C:\\Reports\\sales.csv"),
@@ -626,6 +646,40 @@ class ExportFlowTests(unittest.TestCase):
         mocked_history.assert_called_once()
         exported_items = mocked_history.call_args.args[1]
         self.assertEqual([item["item_code"] for item in exported_items], ["GH781-4"])
+
+    def test_do_export_uses_app_preview_hook_when_available(self):
+        session = AppSessionState(
+            assigned_items=[
+                {"vendor": "MOTION", "line_code": "AER-", "item_code": "GH781-4", "order_qty": 2, "release_decision": "release_now"},
+            ],
+            startup_warning_rows=[],
+            qoh_adjustments={},
+            order_rules={},
+        )
+        preview_calls = []
+        app = SimpleNamespace(
+            session=session,
+            _choose_output_dir=lambda: "C:\\Exports",
+            _show_export_preview_dialog=lambda preview: preview_calls.append(preview) or True,
+            _show_loading=lambda message: None,
+            _hide_loading=lambda: None,
+            _build_maintenance_report=lambda: [],
+            _show_maintenance_report=lambda output_dir, issues: None,
+            _loaded_report_paths_for_snapshot=lambda: {},
+        )
+
+        with patch("export_flow.storage.append_order_history"), \
+             patch("export_flow.storage.save_session_snapshot"), \
+             patch("export_flow.messagebox.showinfo"):
+            export_flow.do_export(
+                app,
+                lambda vendor, items, output_dir: str(Path(output_dir) / f"{vendor}.xlsx"),
+                "order_history.json",
+                "sessions",
+            )
+
+        self.assertEqual(len(preview_calls), 1)
+        self.assertEqual(preview_calls[0]["total_item_count"], 1)
 
 
 class ExportPreviewTests(unittest.TestCase):

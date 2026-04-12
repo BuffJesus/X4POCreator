@@ -1237,6 +1237,7 @@ def parse_on_hand_min_max(filepath):
             min_val = _safe(row, lc_col + 7)
             max_val = _safe(row, lc_col + 8)
             lookup[(lc, ic)] = {
+                "description": _safe(row, lc_col + 2),
                 "qoh": _optional_float(_safe(row, lc_col + 3)),
                 "repl_cost": _optional_float(_safe(row, lc_col + 4)),
                 "min": _int(min_val) if min_val else None,

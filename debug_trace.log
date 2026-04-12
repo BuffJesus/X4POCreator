@@ -735,3 +735,302 @@
 2026-04-12 11:25:47.104 | qt.bulk_tab.draft_review
 2026-04-12 11:25:47.104 | qt.draft_review.begin
 2026-04-12 11:25:56.521 | qt.draft_review.done | files=29
+2026-04-12 11:58:24.176 | qt.controller.load_persistent_state.begin | data_dir=C:\Users\Cornelio\Desktop\POCreator
+2026-04-12 11:58:24.179 | qt.controller.load_persistent_state.done | ignored=8 | notes=4 | rules=41 | vendors=1
+2026-04-12 11:58:24.458 | qt.bulk_tab.set_data | inventory=0 | items=20 | rules=0
+2026-04-12 11:58:24.459 | qt.model.set_data | generation=1 | items=20
+2026-04-12 11:58:24.460 | qt.update_summary | assigned=10 | elapsed_ms=0.3 | total=20 | visible=20
+2026-04-12 11:58:24.460 | qt.update_summary | assigned=10 | elapsed_ms=0.3 | total=20 | visible=0
+2026-04-12 11:58:24.461 | qt.filter.applied | elapsed_ms=1.0 | item_status=ALL | lc= | source=ALL | status=ALL | text= | total=20 | vendor_ws= | visible=0
+2026-04-12 11:58:24.462 | qt.update_summary | assigned=10 | elapsed_ms=0.0 | total=20 | visible=20
+2026-04-12 11:58:24.462 | qt.filter.applied | elapsed_ms=0.5 | item_status=ALL | lc=ALL | source=ALL | status=ALL | text= | total=20 | vendor_ws= | visible=20
+2026-04-12 11:58:24.463 | qt.update_summary | assigned=10 | elapsed_ms=0.0 | total=20 | visible=20
+2026-04-12 11:58:24.469 | qt.controller.load_persistent_state.begin | data_dir=C:\Users\Cornelio\Desktop\POCreator
+2026-04-12 11:58:24.471 | qt.controller.load_persistent_state.done | ignored=8 | notes=4 | rules=41 | vendors=1
+2026-04-12 11:58:24.601 | qt.controller.load_persistent_state.begin | data_dir=C:\Users\Cornelio\Desktop\POCreator
+2026-04-12 11:58:24.603 | qt.controller.load_persistent_state.done | ignored=8 | notes=4 | rules=41 | vendors=1
+2026-04-12 11:58:24.616 | qt.bulk_tab.set_data | inventory=0 | items=20 | rules=0
+2026-04-12 11:58:24.616 | qt.model.set_data | generation=1 | items=20
+2026-04-12 11:58:24.617 | qt.update_summary | assigned=10 | elapsed_ms=0.3 | total=20 | visible=20
+2026-04-12 11:58:24.617 | qt.update_summary | assigned=10 | elapsed_ms=0.2 | total=20 | visible=0
+2026-04-12 11:58:24.618 | qt.filter.applied | elapsed_ms=0.7 | item_status=ALL | lc= | source=ALL | status=ALL | text= | total=20 | vendor_ws= | visible=0
+2026-04-12 11:58:24.618 | qt.update_summary | assigned=10 | elapsed_ms=0.0 | total=20 | visible=20
+2026-04-12 11:58:24.619 | qt.filter.applied | elapsed_ms=0.4 | item_status=ALL | lc=ALL | source=ALL | status=ALL | text= | total=20 | vendor_ws= | visible=20
+2026-04-12 11:58:24.619 | qt.update_summary | assigned=10 | elapsed_ms=0.0 | total=20 | visible=20
+2026-04-12 11:58:24.621 | qt.controller.load_persistent_state.begin | data_dir=C:\Users\Cornelio\Desktop\POCreator
+2026-04-12 11:58:24.622 | qt.controller.load_persistent_state.done | ignored=8 | notes=4 | rules=41 | vendors=1
+2026-04-12 11:58:24.731 | qt.bulk_tab.set_data | inventory=0 | items=3 | rules=0
+2026-04-12 11:58:24.732 | qt.model.set_data | generation=1 | items=3
+2026-04-12 11:58:24.732 | qt.update_summary | assigned=2 | elapsed_ms=0.2 | total=3 | visible=3
+2026-04-12 11:58:24.733 | qt.update_summary | assigned=2 | elapsed_ms=0.2 | total=3 | visible=0
+2026-04-12 11:58:24.733 | qt.filter.applied | elapsed_ms=0.5 | item_status=ALL | lc= | source=ALL | status=ALL | text= | total=3 | vendor_ws= | visible=0
+2026-04-12 11:58:24.734 | qt.update_summary | assigned=2 | elapsed_ms=0.0 | total=3 | visible=3
+2026-04-12 11:58:24.734 | qt.filter.applied | elapsed_ms=0.3 | item_status=ALL | lc=ALL | source=ALL | status=ALL | text= | total=3 | vendor_ws= | visible=3
+2026-04-12 11:58:24.734 | qt.update_summary | assigned=2 | elapsed_ms=0.0 | total=3 | visible=3
+2026-04-12 11:58:24.738 | qt.controller.load_persistent_state.begin | data_dir=C:\Users\Cornelio\Desktop\POCreator
+2026-04-12 11:58:24.740 | qt.controller.load_persistent_state.done | ignored=8 | notes=4 | rules=41 | vendors=1
+2026-04-12 11:58:24.741 | qt.bulk_tab.set_data | inventory=0 | items=20 | rules=0
+2026-04-12 11:58:24.742 | qt.model.set_data | generation=1 | items=20
+2026-04-12 11:58:24.743 | qt.update_summary | assigned=10 | elapsed_ms=0.4 | total=20 | visible=20
+2026-04-12 11:58:24.744 | qt.update_summary | assigned=10 | elapsed_ms=0.3 | total=20 | visible=0
+2026-04-12 11:58:24.744 | qt.filter.applied | elapsed_ms=0.8 | item_status=ALL | lc= | source=ALL | status=ALL | text= | total=20 | vendor_ws= | visible=0
+2026-04-12 11:58:24.745 | qt.update_summary | assigned=10 | elapsed_ms=0.0 | total=20 | visible=20
+2026-04-12 11:58:24.745 | qt.filter.applied | elapsed_ms=0.3 | item_status=ALL | lc=ALL | source=ALL | status=ALL | text= | total=20 | vendor_ws= | visible=20
+2026-04-12 11:58:24.745 | qt.update_summary | assigned=10 | elapsed_ms=0.0 | total=20 | visible=20
+2026-04-12 11:58:24.749 | qt.controller.load_persistent_state.begin | data_dir=C:\Users\Cornelio\Desktop\POCreator
+2026-04-12 11:58:24.750 | qt.controller.load_persistent_state.done | ignored=8 | notes=4 | rules=41 | vendors=1
+2026-04-12 11:58:24.882 | qt.bulk_tab.set_data | inventory=0 | items=20 | rules=0
+2026-04-12 11:58:24.883 | qt.model.set_data | generation=1 | items=20
+2026-04-12 11:58:24.883 | qt.update_summary | assigned=10 | elapsed_ms=0.2 | total=20 | visible=20
+2026-04-12 11:58:24.885 | qt.update_summary | assigned=10 | elapsed_ms=0.2 | total=20 | visible=0
+2026-04-12 11:58:24.885 | qt.filter.applied | elapsed_ms=0.7 | item_status=ALL | lc= | source=ALL | status=ALL | text= | total=20 | vendor_ws= | visible=0
+2026-04-12 11:58:24.886 | qt.update_summary | assigned=10 | elapsed_ms=0.0 | total=20 | visible=20
+2026-04-12 11:58:24.886 | qt.filter.applied | elapsed_ms=0.3 | item_status=ALL | lc=ALL | source=ALL | status=ALL | text= | total=20 | vendor_ws= | visible=20
+2026-04-12 11:58:24.886 | qt.update_summary | assigned=10 | elapsed_ms=0.0 | total=20 | visible=20
+2026-04-12 11:58:24.888 | qt.controller.load_persistent_state.begin | data_dir=C:\Users\Cornelio\Desktop\POCreator
+2026-04-12 11:58:24.889 | qt.controller.load_persistent_state.done | ignored=8 | notes=4 | rules=41 | vendors=1
+2026-04-12 11:58:25.008 | qt.bulk_tab.set_data | inventory=0 | items=20 | rules=0
+2026-04-12 11:58:25.009 | qt.model.set_data | generation=1 | items=20
+2026-04-12 11:58:25.009 | qt.update_summary | assigned=10 | elapsed_ms=0.2 | total=20 | visible=20
+2026-04-12 11:58:25.010 | qt.update_summary | assigned=10 | elapsed_ms=0.2 | total=20 | visible=0
+2026-04-12 11:58:25.010 | qt.filter.applied | elapsed_ms=0.7 | item_status=ALL | lc= | source=ALL | status=ALL | text= | total=20 | vendor_ws= | visible=0
+2026-04-12 11:58:25.011 | qt.update_summary | assigned=10 | elapsed_ms=0.0 | total=20 | visible=20
+2026-04-12 11:58:25.011 | qt.filter.applied | elapsed_ms=0.3 | item_status=ALL | lc=ALL | source=ALL | status=ALL | text= | total=20 | vendor_ws= | visible=20
+2026-04-12 11:58:25.011 | qt.update_summary | assigned=10 | elapsed_ms=0.1 | total=20 | visible=20
+2026-04-12 11:58:25.015 | qt.controller.load_persistent_state.begin | data_dir=C:\Users\Cornelio\Desktop\POCreator
+2026-04-12 11:58:25.017 | qt.controller.load_persistent_state.done | ignored=8 | notes=4 | rules=41 | vendors=1
+2026-04-12 11:58:25.137 | qt.controller.load_persistent_state.begin | data_dir=C:\Users\Cornelio\Desktop\POCreator
+2026-04-12 11:58:25.139 | qt.controller.load_persistent_state.done | ignored=8 | notes=4 | rules=41 | vendors=1
+2026-04-12 11:58:56.038 | qt.controller.load_persistent_state.begin | data_dir=C:\Users\Cornelio\Desktop\POCreator
+2026-04-12 11:58:56.040 | qt.controller.load_persistent_state.done | ignored=8 | notes=4 | rules=41 | vendors=1
+2026-04-12 11:58:56.163 | qt.bulk_tab.set_data | inventory=0 | items=3 | rules=0
+2026-04-12 11:58:56.163 | qt.model.set_data | generation=1 | items=3
+2026-04-12 11:58:56.164 | qt.update_summary | assigned=2 | elapsed_ms=0.2 | total=3 | visible=3
+2026-04-12 11:58:56.164 | qt.update_summary | assigned=2 | elapsed_ms=0.2 | total=3 | visible=0
+2026-04-12 11:58:56.165 | qt.filter.applied | elapsed_ms=0.6 | item_status=ALL | lc= | source=ALL | status=ALL | text= | total=3 | vendor_ws= | visible=0
+2026-04-12 11:58:56.165 | qt.update_summary | assigned=2 | elapsed_ms=0.0 | total=3 | visible=3
+2026-04-12 11:58:56.165 | qt.filter.applied | elapsed_ms=0.3 | item_status=ALL | lc=ALL | source=ALL | status=ALL | text= | total=3 | vendor_ws= | visible=3
+2026-04-12 11:58:56.166 | qt.update_summary | assigned=2 | elapsed_ms=0.0 | total=3 | visible=3
+2026-04-12 11:58:56.168 | qt.controller.load_persistent_state.begin | data_dir=C:\Users\Cornelio\Desktop\POCreator
+2026-04-12 11:58:56.169 | qt.controller.load_persistent_state.done | ignored=8 | notes=4 | rules=41 | vendors=1
+2026-04-12 12:02:03.585 | qt.controller.load_persistent_state.begin | data_dir=C:\Users\Cornelio\Desktop\POCreator
+2026-04-12 12:02:03.587 | qt.controller.load_persistent_state.done | ignored=8 | notes=4 | rules=41 | vendors=1
+2026-04-12 12:02:03.718 | qt.controller.load_persistent_state.begin | data_dir=C:\Users\Cornelio\Desktop\POCreator
+2026-04-12 12:02:03.719 | qt.controller.load_persistent_state.done | ignored=8 | notes=4 | rules=41 | vendors=1
+2026-04-12 12:02:03.843 | qt.bulk_tab.set_data | inventory=0 | items=3 | rules=0
+2026-04-12 12:02:03.843 | qt.model.set_data | generation=1 | items=3
+2026-04-12 12:02:03.844 | qt.update_summary | assigned=2 | elapsed_ms=0.2 | total=3 | visible=3
+2026-04-12 12:02:03.845 | qt.update_summary | assigned=2 | elapsed_ms=0.3 | total=3 | visible=0
+2026-04-12 12:02:03.845 | qt.filter.applied | elapsed_ms=0.6 | item_status=ALL | lc= | source=ALL | status=ALL | text= | total=3 | vendor_ws= | visible=0
+2026-04-12 12:02:03.845 | qt.update_summary | assigned=2 | elapsed_ms=0.0 | total=3 | visible=3
+2026-04-12 12:02:03.846 | qt.filter.applied | elapsed_ms=0.5 | item_status=ALL | lc=ALL | source=ALL | status=ALL | text= | total=3 | vendor_ws= | visible=3
+2026-04-12 12:02:03.846 | qt.update_summary | assigned=2 | elapsed_ms=0.0 | total=3 | visible=3
+2026-04-12 12:02:03.850 | qt.controller.load_persistent_state.begin | data_dir=C:\Users\Cornelio\Desktop\POCreator
+2026-04-12 12:02:03.851 | qt.controller.load_persistent_state.done | ignored=8 | notes=4 | rules=41 | vendors=1
+2026-04-12 12:10:10.405 | qt.controller.load_persistent_state.begin | data_dir=C:\Users\Cornelio\Desktop\POCreator
+2026-04-12 12:10:10.407 | qt.controller.load_persistent_state.done | ignored=8 | notes=4 | rules=41 | vendors=1
+2026-04-12 12:10:10.447 | qt.controller.load_persistent_state.begin | data_dir=C:\Users\Cornelio\Desktop\POCreator
+2026-04-12 12:10:10.448 | qt.controller.load_persistent_state.done | ignored=8 | notes=4 | rules=41 | vendors=1
+2026-04-12 12:10:10.541 | qt.bulk_tab.set_data | inventory=0 | items=20 | rules=0
+2026-04-12 12:10:10.542 | qt.model.set_data | generation=1 | items=20
+2026-04-12 12:10:10.542 | qt.update_summary | assigned=10 | elapsed_ms=0.1 | total=20 | visible=20
+2026-04-12 12:10:10.543 | qt.update_summary | assigned=10 | elapsed_ms=0.2 | total=20 | visible=0
+2026-04-12 12:10:10.543 | qt.filter.applied | elapsed_ms=0.6 | item_status=ALL | lc= | source=ALL | status=ALL | text= | total=20 | vendor_ws= | visible=0
+2026-04-12 12:10:10.543 | qt.update_summary | assigned=10 | elapsed_ms=0.0 | total=20 | visible=20
+2026-04-12 12:10:10.544 | qt.filter.applied | elapsed_ms=0.4 | item_status=ALL | lc=ALL | source=ALL | status=ALL | text= | total=20 | vendor_ws= | visible=20
+2026-04-12 12:10:10.544 | qt.update_summary | assigned=10 | elapsed_ms=0.0 | total=20 | visible=20
+2026-04-12 12:10:10.548 | qt.controller.load_persistent_state.begin | data_dir=C:\Users\Cornelio\Desktop\POCreator
+2026-04-12 12:10:10.549 | qt.controller.load_persistent_state.done | ignored=8 | notes=4 | rules=41 | vendors=1
+2026-04-12 12:10:10.567 | qt.controller.load_persistent_state.begin | data_dir=C:\Users\Cornelio\Desktop\POCreator
+2026-04-12 12:10:10.568 | qt.controller.load_persistent_state.done | ignored=8 | notes=4 | rules=41 | vendors=1
+2026-04-12 12:10:10.662 | qt.bulk_tab.set_data | inventory=0 | items=20 | rules=0
+2026-04-12 12:10:10.662 | qt.model.set_data | generation=1 | items=20
+2026-04-12 12:10:10.663 | qt.update_summary | assigned=10 | elapsed_ms=0.3 | total=20 | visible=20
+2026-04-12 12:10:10.664 | qt.update_summary | assigned=10 | elapsed_ms=0.2 | total=20 | visible=0
+2026-04-12 12:10:10.664 | qt.filter.applied | elapsed_ms=0.5 | item_status=ALL | lc= | source=ALL | status=ALL | text= | total=20 | vendor_ws= | visible=0
+2026-04-12 12:10:10.664 | qt.update_summary | assigned=10 | elapsed_ms=0.0 | total=20 | visible=20
+2026-04-12 12:10:10.664 | qt.filter.applied | elapsed_ms=0.3 | item_status=ALL | lc=ALL | source=ALL | status=ALL | text= | total=20 | vendor_ws= | visible=20
+2026-04-12 12:10:10.666 | qt.update_summary | assigned=10 | elapsed_ms=0.0 | total=20 | visible=20
+2026-04-12 12:10:10.668 | qt.controller.load_persistent_state.begin | data_dir=C:\Users\Cornelio\Desktop\POCreator
+2026-04-12 12:10:10.669 | qt.controller.load_persistent_state.done | ignored=8 | notes=4 | rules=41 | vendors=1
+2026-04-12 12:10:10.684 | qt.bulk_tab.set_data | inventory=0 | items=3 | rules=0
+2026-04-12 12:10:10.685 | qt.model.set_data | generation=1 | items=3
+2026-04-12 12:10:10.685 | qt.update_summary | assigned=2 | elapsed_ms=0.2 | total=3 | visible=3
+2026-04-12 12:10:10.686 | qt.update_summary | assigned=2 | elapsed_ms=0.2 | total=3 | visible=0
+2026-04-12 12:10:10.686 | qt.filter.applied | elapsed_ms=0.5 | item_status=ALL | lc= | source=ALL | status=ALL | text= | total=3 | vendor_ws= | visible=0
+2026-04-12 12:10:10.687 | qt.update_summary | assigned=2 | elapsed_ms=0.0 | total=3 | visible=3
+2026-04-12 12:10:10.687 | qt.filter.applied | elapsed_ms=0.4 | item_status=ALL | lc=ALL | source=ALL | status=ALL | text= | total=3 | vendor_ws= | visible=3
+2026-04-12 12:10:10.687 | qt.update_summary | assigned=2 | elapsed_ms=0.0 | total=3 | visible=3
+2026-04-12 12:10:10.695 | qt.controller.load_persistent_state.begin | data_dir=C:\Users\Cornelio\Desktop\POCreator
+2026-04-12 12:10:10.696 | qt.controller.load_persistent_state.done | ignored=8 | notes=4 | rules=41 | vendors=1
+2026-04-12 12:10:10.796 | qt.bulk_tab.set_data | inventory=0 | items=20 | rules=0
+2026-04-12 12:10:10.797 | qt.model.set_data | generation=1 | items=20
+2026-04-12 12:10:10.797 | qt.update_summary | assigned=10 | elapsed_ms=0.4 | total=20 | visible=20
+2026-04-12 12:10:10.799 | qt.update_summary | assigned=10 | elapsed_ms=0.3 | total=20 | visible=0
+2026-04-12 12:10:10.799 | qt.filter.applied | elapsed_ms=0.9 | item_status=ALL | lc= | source=ALL | status=ALL | text= | total=20 | vendor_ws= | visible=0
+2026-04-12 12:10:10.800 | qt.update_summary | assigned=10 | elapsed_ms=0.0 | total=20 | visible=20
+2026-04-12 12:10:10.800 | qt.filter.applied | elapsed_ms=0.6 | item_status=ALL | lc=ALL | source=ALL | status=ALL | text= | total=20 | vendor_ws= | visible=20
+2026-04-12 12:10:10.801 | qt.update_summary | assigned=10 | elapsed_ms=0.0 | total=20 | visible=20
+2026-04-12 12:10:10.804 | qt.controller.load_persistent_state.begin | data_dir=C:\Users\Cornelio\Desktop\POCreator
+2026-04-12 12:10:10.805 | qt.controller.load_persistent_state.done | ignored=8 | notes=4 | rules=41 | vendors=1
+2026-04-12 12:10:10.943 | qt.bulk_tab.set_data | inventory=0 | items=20 | rules=0
+2026-04-12 12:10:10.944 | qt.model.set_data | generation=1 | items=20
+2026-04-12 12:10:10.945 | qt.update_summary | assigned=10 | elapsed_ms=0.2 | total=20 | visible=20
+2026-04-12 12:10:10.945 | qt.update_summary | assigned=10 | elapsed_ms=0.2 | total=20 | visible=0
+2026-04-12 12:10:10.946 | qt.filter.applied | elapsed_ms=0.5 | item_status=ALL | lc= | source=ALL | status=ALL | text= | total=20 | vendor_ws= | visible=0
+2026-04-12 12:10:10.946 | qt.update_summary | assigned=10 | elapsed_ms=0.0 | total=20 | visible=20
+2026-04-12 12:10:10.946 | qt.filter.applied | elapsed_ms=0.3 | item_status=ALL | lc=ALL | source=ALL | status=ALL | text= | total=20 | vendor_ws= | visible=20
+2026-04-12 12:10:10.947 | qt.update_summary | assigned=10 | elapsed_ms=0.0 | total=20 | visible=20
+2026-04-12 12:10:10.949 | qt.controller.load_persistent_state.begin | data_dir=C:\Users\Cornelio\Desktop\POCreator
+2026-04-12 12:10:10.950 | qt.controller.load_persistent_state.done | ignored=8 | notes=4 | rules=41 | vendors=1
+2026-04-12 12:10:11.093 | qt.bulk_tab.set_data | inventory=0 | items=20 | rules=0
+2026-04-12 12:10:11.094 | qt.model.set_data | generation=1 | items=20
+2026-04-12 12:10:11.094 | qt.update_summary | assigned=10 | elapsed_ms=0.2 | total=20 | visible=20
+2026-04-12 12:10:11.095 | qt.update_summary | assigned=10 | elapsed_ms=0.2 | total=20 | visible=0
+2026-04-12 12:10:11.095 | qt.filter.applied | elapsed_ms=0.5 | item_status=ALL | lc= | source=ALL | status=ALL | text= | total=20 | vendor_ws= | visible=0
+2026-04-12 12:10:11.096 | qt.update_summary | assigned=10 | elapsed_ms=0.0 | total=20 | visible=20
+2026-04-12 12:10:11.096 | qt.filter.applied | elapsed_ms=0.4 | item_status=ALL | lc=ALL | source=ALL | status=ALL | text= | total=20 | vendor_ws= | visible=20
+2026-04-12 12:10:11.096 | qt.update_summary | assigned=10 | elapsed_ms=0.0 | total=20 | visible=20
+2026-04-12 12:10:11.099 | qt.controller.load_persistent_state.begin | data_dir=C:\Users\Cornelio\Desktop\POCreator
+2026-04-12 12:10:11.100 | qt.controller.load_persistent_state.done | ignored=8 | notes=4 | rules=41 | vendors=1
+2026-04-12 12:10:11.226 | qt.controller.load_persistent_state.begin | data_dir=C:\Users\Cornelio\Desktop\POCreator
+2026-04-12 12:10:11.228 | qt.controller.load_persistent_state.done | ignored=8 | notes=4 | rules=41 | vendors=1
+2026-04-12 12:13:56.575 | qt.controller.load_persistent_state.begin | data_dir=C:\Users\Cornelio\Desktop\POCreator
+2026-04-12 12:13:56.577 | qt.controller.load_persistent_state.done | ignored=8 | notes=4 | rules=41 | vendors=1
+2026-04-12 12:13:56.697 | qt.bulk_tab.set_data | inventory=0 | items=20 | rules=0
+2026-04-12 12:13:56.697 | qt.model.set_data | generation=1 | items=20
+2026-04-12 12:13:56.698 | qt.update_summary | assigned=10 | elapsed_ms=0.2 | total=20 | visible=20
+2026-04-12 12:13:56.698 | qt.update_summary | assigned=10 | elapsed_ms=0.2 | total=20 | visible=0
+2026-04-12 12:13:56.698 | qt.filter.applied | elapsed_ms=0.5 | item_status=ALL | lc= | source=ALL | status=ALL | text= | total=20 | vendor_ws= | visible=0
+2026-04-12 12:13:56.699 | qt.update_summary | assigned=10 | elapsed_ms=0.0 | total=20 | visible=20
+2026-04-12 12:13:56.699 | qt.filter.applied | elapsed_ms=0.3 | item_status=ALL | lc=ALL | source=ALL | status=ALL | text= | total=20 | vendor_ws= | visible=20
+2026-04-12 12:13:56.699 | qt.update_summary | assigned=10 | elapsed_ms=0.0 | total=20 | visible=20
+2026-04-12 12:13:56.702 | qt.controller.load_persistent_state.begin | data_dir=C:\Users\Cornelio\Desktop\POCreator
+2026-04-12 12:13:56.703 | qt.controller.load_persistent_state.done | ignored=8 | notes=4 | rules=41 | vendors=1
+2026-04-12 12:13:56.712 | qt.controller.load_persistent_state.begin | data_dir=C:\Users\Cornelio\Desktop\POCreator
+2026-04-12 12:13:56.713 | qt.controller.load_persistent_state.done | ignored=8 | notes=4 | rules=41 | vendors=1
+2026-04-12 12:13:56.808 | qt.bulk_tab.set_data | inventory=0 | items=20 | rules=0
+2026-04-12 12:13:56.809 | qt.model.set_data | generation=1 | items=20
+2026-04-12 12:13:56.810 | qt.update_summary | assigned=10 | elapsed_ms=0.3 | total=20 | visible=20
+2026-04-12 12:13:56.810 | qt.update_summary | assigned=10 | elapsed_ms=0.4 | total=20 | visible=0
+2026-04-12 12:13:56.811 | qt.filter.applied | elapsed_ms=0.8 | item_status=ALL | lc= | source=ALL | status=ALL | text= | total=20 | vendor_ws= | visible=0
+2026-04-12 12:13:56.811 | qt.controller.load_persistent_state.begin | data_dir=C:\Users\Cornelio\Desktop\POCreator
+2026-04-12 12:13:56.811 | qt.update_summary | assigned=10 | elapsed_ms=0.0 | total=20 | visible=20
+2026-04-12 12:13:56.812 | qt.filter.applied | elapsed_ms=0.4 | item_status=ALL | lc=ALL | source=ALL | status=ALL | text= | total=20 | vendor_ws= | visible=20
+2026-04-12 12:13:56.812 | qt.update_summary | assigned=10 | elapsed_ms=0.0 | total=20 | visible=20
+2026-04-12 12:13:56.812 | qt.controller.load_persistent_state.done | ignored=8 | notes=4 | rules=41 | vendors=1
+2026-04-12 12:13:56.814 | qt.controller.load_persistent_state.begin | data_dir=C:\Users\Cornelio\Desktop\POCreator
+2026-04-12 12:13:56.815 | qt.controller.load_persistent_state.done | ignored=8 | notes=4 | rules=41 | vendors=1
+2026-04-12 12:13:56.911 | qt.bulk_tab.set_data | inventory=0 | items=3 | rules=0
+2026-04-12 12:13:56.912 | qt.model.set_data | generation=1 | items=3
+2026-04-12 12:13:56.912 | qt.update_summary | assigned=2 | elapsed_ms=0.1 | total=3 | visible=3
+2026-04-12 12:13:56.913 | qt.update_summary | assigned=2 | elapsed_ms=0.2 | total=3 | visible=0
+2026-04-12 12:13:56.913 | qt.filter.applied | elapsed_ms=0.5 | item_status=ALL | lc= | source=ALL | status=ALL | text= | total=3 | vendor_ws= | visible=0
+2026-04-12 12:13:56.914 | qt.update_summary | assigned=2 | elapsed_ms=0.0 | total=3 | visible=3
+2026-04-12 12:13:56.914 | qt.filter.applied | elapsed_ms=0.3 | item_status=ALL | lc=ALL | source=ALL | status=ALL | text= | total=3 | vendor_ws= | visible=3
+2026-04-12 12:13:56.914 | qt.update_summary | assigned=2 | elapsed_ms=0.0 | total=3 | visible=3
+2026-04-12 12:13:56.923 | qt.controller.load_persistent_state.begin | data_dir=C:\Users\Cornelio\Desktop\POCreator
+2026-04-12 12:13:56.924 | qt.controller.load_persistent_state.done | ignored=8 | notes=4 | rules=41 | vendors=1
+2026-04-12 12:13:56.925 | qt.bulk_tab.set_data | inventory=0 | items=20 | rules=0
+2026-04-12 12:13:56.925 | qt.model.set_data | generation=1 | items=20
+2026-04-12 12:13:56.926 | qt.update_summary | assigned=10 | elapsed_ms=0.1 | total=20 | visible=20
+2026-04-12 12:13:56.926 | qt.update_summary | assigned=10 | elapsed_ms=0.2 | total=20 | visible=0
+2026-04-12 12:13:56.926 | qt.filter.applied | elapsed_ms=0.5 | item_status=ALL | lc= | source=ALL | status=ALL | text= | total=20 | vendor_ws= | visible=0
+2026-04-12 12:13:56.927 | qt.update_summary | assigned=10 | elapsed_ms=0.0 | total=20 | visible=20
+2026-04-12 12:13:56.927 | qt.filter.applied | elapsed_ms=0.3 | item_status=ALL | lc=ALL | source=ALL | status=ALL | text= | total=20 | vendor_ws= | visible=20
+2026-04-12 12:13:56.927 | qt.update_summary | assigned=10 | elapsed_ms=0.0 | total=20 | visible=20
+2026-04-12 12:13:56.929 | qt.controller.load_persistent_state.begin | data_dir=C:\Users\Cornelio\Desktop\POCreator
+2026-04-12 12:13:56.930 | qt.controller.load_persistent_state.done | ignored=8 | notes=4 | rules=41 | vendors=1
+2026-04-12 12:13:57.021 | qt.bulk_tab.set_data | inventory=0 | items=20 | rules=0
+2026-04-12 12:13:57.021 | qt.model.set_data | generation=1 | items=20
+2026-04-12 12:13:57.022 | qt.update_summary | assigned=10 | elapsed_ms=0.2 | total=20 | visible=20
+2026-04-12 12:13:57.022 | qt.update_summary | assigned=10 | elapsed_ms=0.2 | total=20 | visible=0
+2026-04-12 12:13:57.022 | qt.filter.applied | elapsed_ms=0.4 | item_status=ALL | lc= | source=ALL | status=ALL | text= | total=20 | vendor_ws= | visible=0
+2026-04-12 12:13:57.023 | qt.update_summary | assigned=10 | elapsed_ms=0.0 | total=20 | visible=20
+2026-04-12 12:13:57.023 | qt.filter.applied | elapsed_ms=0.3 | item_status=ALL | lc=ALL | source=ALL | status=ALL | text= | total=20 | vendor_ws= | visible=20
+2026-04-12 12:13:57.024 | qt.update_summary | assigned=10 | elapsed_ms=0.0 | total=20 | visible=20
+2026-04-12 12:13:57.026 | qt.controller.load_persistent_state.begin | data_dir=C:\Users\Cornelio\Desktop\POCreator
+2026-04-12 12:13:57.027 | qt.controller.load_persistent_state.done | ignored=8 | notes=4 | rules=41 | vendors=1
+2026-04-12 12:13:57.132 | qt.bulk_tab.set_data | inventory=0 | items=20 | rules=0
+2026-04-12 12:13:57.133 | qt.model.set_data | generation=1 | items=20
+2026-04-12 12:13:57.133 | qt.update_summary | assigned=10 | elapsed_ms=0.2 | total=20 | visible=20
+2026-04-12 12:13:57.134 | qt.update_summary | assigned=10 | elapsed_ms=0.2 | total=20 | visible=0
+2026-04-12 12:13:57.134 | qt.filter.applied | elapsed_ms=0.6 | item_status=ALL | lc= | source=ALL | status=ALL | text= | total=20 | vendor_ws= | visible=0
+2026-04-12 12:13:57.135 | qt.update_summary | assigned=10 | elapsed_ms=0.0 | total=20 | visible=20
+2026-04-12 12:13:57.135 | qt.filter.applied | elapsed_ms=0.3 | item_status=ALL | lc=ALL | source=ALL | status=ALL | text= | total=20 | vendor_ws= | visible=20
+2026-04-12 12:13:57.135 | qt.update_summary | assigned=10 | elapsed_ms=0.0 | total=20 | visible=20
+2026-04-12 12:13:57.137 | qt.controller.load_persistent_state.begin | data_dir=C:\Users\Cornelio\Desktop\POCreator
+2026-04-12 12:13:57.139 | qt.controller.load_persistent_state.done | ignored=8 | notes=4 | rules=41 | vendors=1
+2026-04-12 12:13:57.229 | qt.controller.load_persistent_state.begin | data_dir=C:\Users\Cornelio\Desktop\POCreator
+2026-04-12 12:13:57.230 | qt.controller.load_persistent_state.done | ignored=8 | notes=4 | rules=41 | vendors=1
+2026-04-12 12:14:30.590 | qt.controller.load_persistent_state.begin | data_dir=C:\Users\Cornelio\Desktop\POCreator
+2026-04-12 12:14:30.592 | qt.controller.load_persistent_state.done | ignored=8 | notes=4 | rules=41 | vendors=1
+2026-04-12 12:14:36.451 | qt.load_finished | sales_items=8979 | startup_rows=643 | warnings=7
+2026-04-12 12:14:36.452 | qt.controller.apply_load_result | po_items=449 | sales_items=8979 | suspended=763
+2026-04-12 12:14:45.744 | qt.filters_applied | excluded_cust=1 | excluded_lc=6 | lc_sample=XPA-,XPM-,XPR-,XPS-,XSA-
+2026-04-12 12:14:45.745 | qt.controller.prepare_assignment.begin | excluded_cust=1 | excluded_lc=6 | inventory=33481 | receipts=6228 | sales_items=8979
+2026-04-12 12:14:46.743 | qt.controller.prepare_assignment.session_done | elapsed_ms=998.0 | filtered=6670 | has_items=True
+2026-04-12 12:14:46.744 | qt.controller.prepare_assignment.sample_item | demand_signal=2 | final=0 | ic=103061 | lc=025- | raw_need=0 | receipt_confidence=high | receipt_vendor=GREGDIST | status=skip | suggested=0 | vendor=GREGDIST
+2026-04-12 12:14:46.744 | qt.controller.prepare_assignment.normalize | elapsed_ms=0.1
+2026-04-12 12:14:46.750 | auto_assign_from_receipts.done | assigned=0 | skipped=803 | vendors=0
+2026-04-12 12:14:46.750 | qt.controller.prepare_assignment.auto_assign | elapsed_ms=2.5 | result={'assigned_count': 0, 'skipped_count': 803, 'vendor_counts': {}}
+2026-04-12 12:14:46.759 | qt.controller.prepare_assignment.status_breakdown | st_ok=294 | st_review=160 | st_skip=6216
+2026-04-12 12:14:46.760 | qt.controller.prepare_assignment.done | auto_assigned=0 | filtered_items=6670 | has_suggested=450 | span_days=96 | vendors=78 | with_vendor=5867 | zero_demand=3853 | zero_final=6220
+2026-04-12 12:14:46.760 | qt.assignment_finished | filtered_count=6670 | has_items=True
+2026-04-12 12:14:46.760 | qt.bulk_tab.set_data | inventory=33481 | items=6670 | rules=41
+2026-04-12 12:14:46.761 | qt.model.set_data | generation=1 | items=6670
+2026-04-12 12:14:46.763 | qt.update_summary | assigned=5867 | elapsed_ms=1.0 | total=6670 | visible=6670
+2026-04-12 12:14:46.766 | qt.update_summary | assigned=5867 | elapsed_ms=0.8 | total=6670 | visible=0
+2026-04-12 12:14:46.767 | qt.filter.applied | elapsed_ms=2.3 | item_status=ALL | lc= | source=ALL | status=ALL | text= | total=6670 | vendor_ws= | visible=0
+2026-04-12 12:14:46.769 | qt.update_summary | assigned=5867 | elapsed_ms=0.9 | total=6670 | visible=6670
+2026-04-12 12:14:46.769 | qt.filter.applied | elapsed_ms=2.1 | item_status=ALL | lc=ALL | source=ALL | status=ALL | text= | total=6670 | vendor_ws= | visible=6670
+2026-04-12 12:14:46.770 | qt.update_summary | assigned=5867 | elapsed_ms=0.8 | total=6670 | visible=6670
+2026-04-12 12:14:49.980 | qt.remove_not_needed.begin
+2026-04-12 12:14:50.044 | qt.remove_not_needed.scanned | flagged=6223 | skipped_assigned=384 | total=6670
+2026-04-12 12:14:51.681 | qt.model.set_data | generation=2 | items=447
+2026-04-12 12:14:51.682 | qt.update_summary | assigned=384 | elapsed_ms=0.2 | total=447 | visible=447
+2026-04-12 12:14:51.683 | qt.update_summary | assigned=384 | elapsed_ms=0.1 | total=447 | visible=447
+2026-04-12 12:14:51.683 | qt.remove_not_needed.done | remaining=447 | removed=6223
+2026-04-12 12:19:24.678 | qt.controller.load_persistent_state.begin | data_dir=C:\Users\Cornelio\Desktop\POCreator
+2026-04-12 12:19:24.679 | qt.controller.load_persistent_state.done | ignored=8 | notes=4 | rules=41 | vendors=1
+2026-04-12 12:19:29.474 | qt.load_finished | sales_items=8979 | startup_rows=643 | warnings=7
+2026-04-12 12:19:29.474 | qt.controller.apply_load_result | po_items=449 | sales_items=8979 | suspended=763
+2026-04-12 12:19:41.338 | qt.filters_applied | excluded_cust=1 | excluded_lc=4 | lc_sample=XPA-,XPM-,XPS-,XSM-
+2026-04-12 12:19:41.340 | qt.controller.prepare_assignment.begin | excluded_cust=1 | excluded_lc=4 | inventory=33481 | receipts=6228 | sales_items=8979
+2026-04-12 12:19:42.421 | qt.controller.prepare_assignment.session_done | elapsed_ms=1080.3 | filtered=7956 | has_items=True
+2026-04-12 12:19:42.421 | qt.controller.prepare_assignment.sample_item | demand_signal=2 | final=0 | ic=103061 | lc=025- | raw_need=0 | receipt_confidence=high | receipt_vendor=GREGDIST | status=skip | suggested=0 | vendor=GREGDIST
+2026-04-12 12:19:42.421 | qt.controller.prepare_assignment.normalize | elapsed_ms=0.1
+2026-04-12 12:19:42.427 | auto_assign_from_receipts.done | assigned=0 | skipped=928 | vendors=0
+2026-04-12 12:19:42.427 | qt.controller.prepare_assignment.auto_assign | elapsed_ms=2.9 | result={'assigned_count': 0, 'skipped_count': 928, 'vendor_counts': {}}
+2026-04-12 12:19:42.437 | qt.controller.prepare_assignment.status_breakdown | st_ok=626 | st_review=181 | st_skip=7149
+2026-04-12 12:19:42.437 | qt.controller.prepare_assignment.done | auto_assigned=0 | filtered_items=7956 | has_suggested=795 | span_days=96 | vendors=102 | with_vendor=7028 | zero_demand=4785 | zero_final=7161
+2026-04-12 12:19:42.438 | qt.assignment_finished | filtered_count=7956 | has_items=True
+2026-04-12 12:19:42.438 | qt.bulk_tab.set_data | inventory=33481 | items=7956 | rules=41
+2026-04-12 12:19:42.438 | qt.model.set_data | generation=1 | items=7956
+2026-04-12 12:19:42.441 | qt.update_summary | assigned=7028 | elapsed_ms=1.1 | total=7956 | visible=7956
+2026-04-12 12:19:42.444 | qt.update_summary | assigned=7028 | elapsed_ms=1.0 | total=7956 | visible=0
+2026-04-12 12:19:42.444 | qt.filter.applied | elapsed_ms=2.4 | item_status=ALL | lc= | source=ALL | status=ALL | text= | total=7956 | vendor_ws= | visible=0
+2026-04-12 12:19:42.447 | qt.update_summary | assigned=7028 | elapsed_ms=0.9 | total=7956 | visible=7956
+2026-04-12 12:19:42.447 | qt.filter.applied | elapsed_ms=2.1 | item_status=ALL | lc=ALL | source=ALL | status=ALL | text= | total=7956 | vendor_ws= | visible=7956
+2026-04-12 12:19:42.448 | qt.update_summary | assigned=7028 | elapsed_ms=0.9 | total=7956 | visible=7956
+2026-04-12 12:19:44.922 | qt.remove_not_needed.begin
+2026-04-12 12:19:45.018 | qt.remove_not_needed.scanned | flagged=7164 | skipped_assigned=695 | total=7956
+2026-04-12 12:19:46.399 | qt.model.set_data | generation=2 | items=792
+2026-04-12 12:19:46.400 | qt.update_summary | assigned=695 | elapsed_ms=0.4 | total=792 | visible=792
+2026-04-12 12:19:46.401 | qt.update_summary | assigned=695 | elapsed_ms=0.1 | total=792 | visible=792
+2026-04-12 12:19:46.401 | qt.remove_not_needed.done | remaining=792 | removed=7164
+2026-04-12 12:21:17.704 | qt.update_summary | assigned=695 | elapsed_ms=0.9 | total=792 | visible=167
+2026-04-12 12:21:17.704 | qt.filter.applied | elapsed_ms=1.9 | item_status=Review | lc=ALL | source=ALL | status=ALL | text= | total=792 | vendor_ws= | visible=167
+2026-04-12 12:21:24.983 | qt.bulk_tab.delete_key | rows=167
+2026-04-12 12:21:26.475 | qt.bulk_tab.delete_key.confirmed | rows=167
+2026-04-12 12:21:26.476 | qt.rows_removed.begin | row_count=167
+2026-04-12 12:21:26.484 | qt.model.set_data | generation=3 | items=625
+2026-04-12 12:21:26.485 | qt.update_summary | assigned=543 | elapsed_ms=0.2 | total=625 | visible=0
+2026-04-12 12:21:26.486 | qt.update_summary | assigned=543 | elapsed_ms=0.1 | total=625 | visible=0
+2026-04-12 12:21:26.486 | qt.rows_removed.done | remaining=0 | removed=167
+2026-04-12 12:21:28.637 | qt.bulk_tab.reset_filters
+2026-04-12 12:21:28.638 | qt.update_summary | assigned=543 | elapsed_ms=0.3 | total=625 | visible=625
+2026-04-12 12:21:28.638 | qt.filter.applied | elapsed_ms=0.8 | item_status=ALL | lc=ALL | source=ALL | status=ALL | text= | total=625 | vendor_ws= | visible=625
+2026-04-12 12:21:41.336 | qt.bulk_tab.draft_review
+2026-04-12 12:21:41.336 | qt.draft_review.begin
+2026-04-12 12:21:49.786 | qt.draft_review.done | files=36

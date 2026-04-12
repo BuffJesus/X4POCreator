@@ -37,6 +37,7 @@ import os
 from PySide6.QtCore import Qt, QSize, QThread
 from PySide6.QtGui import QAction, QKeySequence
 from PySide6.QtWidgets import (
+    QApplication,
     QFileDialog,
     QHBoxLayout,
     QLabel,
@@ -50,6 +51,9 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+import export_flow
+import maintenance
+import maintenance_flow
 import theme as t
 import theme_qt as tq
 from debug_log import write_debug
@@ -118,6 +122,10 @@ class POBuilderShell(QMainWindow):
         super().__init__(parent)
         self.app_version = app_version
         self.app_settings = app_settings if app_settings is not None else {}
+        self._loaded_report_paths: dict[str, str] = {}
+        self._vendor_export_scope_overrides: dict[str, str] = {}
+        self._loading_depth = 0
+        self._loading_message = ""
         self.setWindowTitle(f"PO Builder (Qt) — v{app_version}" if app_version else "PO Builder (Qt)")
         self.resize(1280, 800)
         self.setMinimumSize(QSize(960, 600))
@@ -266,6 +274,8 @@ class POBuilderShell(QMainWindow):
 
     def _on_load_finished(self, result: dict):
         """Handle a completed parse result from the Load tab."""
+        if self.load_tab is not None:
+            self._loaded_report_paths = dict(self.load_tab.current_paths())
         sales_items = result.get("sales_items") or []
         warnings = result.get("warnings") or []
         startup_rows = result.get("startup_warning_rows") or []
@@ -793,110 +803,146 @@ class POBuilderShell(QMainWindow):
 
     # ── Export ────────────────────────────────────────────────────
 
-    def _on_export_requested(self, output_dir: str):
-        """Write per-vendor xlsx files to the selected directory."""
-        write_debug("qt.export.begin", output_dir=output_dir)
-        ctrl = self.controller
-        model = self.bulk_tab.model if self.bulk_tab else None
-        if model is None:
-            return
-
-        assigned = [
-            item for item in model.items
-            if str(item.get("vendor", "")).strip()
-        ]
-        vendors = sorted({str(i.get("vendor", "")).strip() for i in assigned if i.get("vendor")})
-        write_debug("qt.export.items",
-                     assigned=len(assigned),
-                     vendors=len(vendors),
-                     vendor_list=",".join(vendors[:10]))
-        if not assigned:
-            QMessageBox.warning(self, "No Items", "No assigned items to export.")
-            return
-
-        try:
-            created = self._export_x4_xlsx(assigned, output_dir)
-        except Exception as exc:
-            write_debug("qt.export.error", error=str(exc))
-            QMessageBox.critical(
-                self, "Export Error", f"Failed to export:\n{exc}",
-            )
-            return
-
-        # Append to order history so the next session has recent order context
-        try:
-            import storage as _storage
-            _storage.append_order_history(ctrl._data_path("order_history"), assigned)
-            write_debug("qt.export.order_history_appended", items=len(assigned))
-        except Exception as exc:
-            write_debug("qt.export.order_history_error", error=str(exc))
-
-        # Save session snapshot for audit trail
-        try:
-            sessions_dir = ctrl._data_path("sessions")
-            import os
-            os.makedirs(sessions_dir, exist_ok=True)
-            snapshot = {
-                "export_dir": output_dir,
-                "item_count": len(assigned),
-                "vendors": sorted({str(i.get("vendor", "")) for i in assigned if i.get("vendor")}),
-                "items": [
-                    {
-                        "line_code": i.get("line_code", ""),
-                        "item_code": i.get("item_code", ""),
-                        "vendor": i.get("vendor", ""),
-                        "final_qty": i.get("final_qty", 0),
-                        "pack_size": i.get("pack_size"),
-                        "why": i.get("why", ""),
-                    }
-                    for i in assigned
-                ],
-            }
-            from datetime import datetime
-            stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            snapshot_path = os.path.join(sessions_dir, f"session_{stamp}.json")
-            import storage as _storage
-            _storage.save_json_file(snapshot_path, snapshot)
-        except Exception:
-            pass  # Non-fatal — don't block export on snapshot failure
-
-        if created:
-            file_list = "\n".join(f"  \u2022 {f}" for f in created[:10])
-            if len(created) > 10:
-                file_list += f"\n  \u2026 and {len(created) - 10} more"
-            QMessageBox.information(
-                self, "Export Complete",
-                f"Created {len(created)} file(s) in:\n{output_dir}\n\n{file_list}",
-            )
-        else:
-            QMessageBox.information(
-                self, "Export Complete",
-                f"Export finished. Files written to:\n{output_dir}",
-            )
+    def _on_export_requested(self, _output_dir: str):
+        """Write per-vendor xlsx files through the shared export flow."""
+        assigned = self._assigned_items_for_export()
+        write_debug("qt.export.begin", assigned=len(assigned))
+        export_flow.do_export(
+            self,
+            self._export_vendor_po,
+            self.controller._data_path("order_history"),
+            self.controller._data_path("sessions"),
+            assigned_items=assigned,
+        )
         self._mark_step("Bulk", "done")
         self._mark_step("Review", "done")
-        self.status.showMessage(f"Exported to {output_dir}", 10000)
+        return
 
-    @staticmethod
-    def _export_x4_xlsx(items: list[dict], output_dir: str) -> list[str]:
-        """Write per-vendor xlsx files in X4 Import from Excel format.
+    def _assigned_items_for_export(self) -> list[dict]:
+        model = self.bulk_tab.model if self.bulk_tab else None
+        if model is None:
+            return []
+        return [item for item in model.items if str(item.get("vendor", "")).strip()]
 
-        Columns: product group, item code, order quantity
-        Matches ``po_builder.export_vendor_po`` exactly so the files
-        import cleanly into X4.
-        """
-        import os
-        from collections import defaultdict
-        from datetime import datetime
+    def _loaded_report_paths_for_snapshot(self) -> dict:
+        return dict(self._loaded_report_paths)
 
+    def _show_warning(self, title: str, message: str):
+        return QMessageBox.warning(self, title, message)
+
+    def _show_info(self, title: str, message: str):
+        return QMessageBox.information(self, title, message)
+
+    def _show_error(self, title: str, message: str):
+        return QMessageBox.critical(self, title, message)
+
+    def _ask_yes_no(self, title: str, message: str) -> bool:
+        result = QMessageBox.question(self, title, message, QMessageBox.Yes | QMessageBox.No)
+        return result == QMessageBox.Yes
+
+    def _ask_yes_no_cancel(self, title: str, message: str):
+        result = QMessageBox.question(
+            self,
+            title,
+            message,
+            QMessageBox.Yes | QMessageBox.No | QMessageBox.Cancel,
+        )
+        if result == QMessageBox.Cancel:
+            return None
+        return result == QMessageBox.Yes
+
+    def _get_mixed_export_behavior(self) -> str:
+        return str(self.app_settings.get("mixed_export_behavior", "all_exportable") or "").strip() or "all_exportable"
+
+    def _get_planned_only_export_behavior(self) -> str:
+        return (
+            str(self.app_settings.get("planned_only_export_behavior", "export_automatically") or "").strip()
+            or "export_automatically"
+        )
+
+    def _get_last_export_dir(self) -> str:
+        return str(self.app_settings.get("last_export_dir", "") or "").strip()
+
+    def _set_last_export_dir(self, path: str):
+        normalized = str(path or "").strip()
+        if normalized:
+            self.app_settings["last_export_dir"] = normalized
+
+    def _choose_output_dir(self) -> str:
+        start = self._get_last_export_dir()
+        output_dir = QFileDialog.getExistingDirectory(
+            self,
+            "Select Output Folder for PO Files",
+            start,
+        )
+        if output_dir:
+            self._set_last_export_dir(output_dir)
+        return output_dir
+
+    def _show_loading(self, text="Working..."):
+        self._loading_depth += 1
+        self._loading_message = text
+        QApplication.setOverrideCursor(Qt.WaitCursor)
+        self.status.showMessage(text)
+
+    def _hide_loading(self):
+        if self._loading_depth > 0:
+            self._loading_depth -= 1
+        while QApplication.overrideCursor() is not None:
+            QApplication.restoreOverrideCursor()
+        if self._loading_depth == 0:
+            self.status.clearMessage()
+
+    def _process_events(self):
+        QApplication.processEvents()
+
+    def _show_export_preview_dialog(self, preview_data: dict) -> bool:
+        from ui_qt.export_dialogs import ExportPreviewDialog
+
+        dialog = ExportPreviewDialog(
+            preview_data,
+            initial_overrides=self._vendor_export_scope_overrides,
+            parent=self,
+        )
+        accepted = dialog.exec() == ExportPreviewDialog.Accepted
+        if accepted:
+            self._vendor_export_scope_overrides = dialog.overrides
+        return accepted
+
+    def _get_x4_pack_size(self, key):
+        pack_lookup = getattr(self.controller.session, "pack_size_source_lookup", {}) or {}
+        pack = pack_lookup.get(key)
+        if pack:
+            return pack
+        generic = pack_lookup.get(("", key[1]))
+        if generic:
+            return generic
+        return None
+
+    def _build_maintenance_report(self):
+        candidates = maintenance_flow.build_maintenance_candidates(
+            self.controller.session,
+            suggest_min_max=self.controller._suggest_min_max,
+            get_x4_pack_size=self._get_x4_pack_size,
+        )
+        return maintenance.build_maintenance_report(candidates)
+
+    def _show_maintenance_report(self, output_dir, issues=None):
+        issues = list(issues or [])
+        if not issues:
+            self.status.showMessage(f"Exported to {output_dir}", 10000)
+            return
+        csv_path = export_flow.export_maintenance_csv(issues, output_dir)
+        QMessageBox.information(
+            self,
+            "Maintenance Report",
+            f"Generated {len(issues)} maintenance item(s).\n\nCSV: {csv_path}",
+        )
+
+    def _export_vendor_po(self, vendor: str, items: list[dict], output_dir: str):
         import openpyxl
-        from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
-
-        by_vendor: dict[str, list[dict]] = defaultdict(list)
-        for item in items:
-            vendor = str(item.get("vendor", "")).strip().upper()
-            if vendor:
-                by_vendor[vendor].append(item)
+        from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+        from datetime import datetime
 
         header_font = Font(bold=True, size=11, color="FFFFFF")
         header_fill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
@@ -905,57 +951,45 @@ class POBuilderShell(QMainWindow):
             top=Side(style="thin"), bottom=Side(style="thin"),
         )
 
-        created = []
-        for vendor, vendor_items in sorted(by_vendor.items()):
-            wb = openpyxl.Workbook()
-            ws = wb.active
-            ws.title = "PO Import"
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "PO Import"
 
-            # Header row — must match X4 import template exactly
-            headers = ["product group", "item code", "order quantity"]
-            has_notes = any(item.get("notes") for item in vendor_items)
-            if has_notes:
-                headers.append("Notes")
-            for col_idx, header in enumerate(headers, 1):
-                cell = ws.cell(row=1, column=col_idx, value=header)
-                cell.font = header_font
-                cell.fill = header_fill
-                cell.alignment = Alignment(horizontal="center")
+        headers = ["product group", "item code", "order quantity"]
+        has_notes = any(item.get("notes") for item in items)
+        if has_notes:
+            headers.append("Notes")
+        for col_idx, header in enumerate(headers, 1):
+            cell = ws.cell(row=1, column=col_idx, value=header)
+            cell.font = header_font
+            cell.fill = header_fill
+            cell.alignment = Alignment(horizontal="center")
+            cell.border = thin_border
+
+        for row_idx, item in enumerate(items, 2):
+            pg = ws.cell(row=row_idx, column=1, value=item.get("line_code", ""))
+            ic = ws.cell(row=row_idx, column=2, value=item.get("item_code", ""))
+            qty = ws.cell(row=row_idx, column=3, value=item.get("final_qty", item.get("order_qty", 0)))
+            for cell in (pg, ic, qty):
                 cell.border = thin_border
-
-            # Data rows
-            for row_idx, item in enumerate(vendor_items, 2):
-                pg = ws.cell(row=row_idx, column=1, value=item.get("line_code", ""))
-                ic = ws.cell(row=row_idx, column=2, value=item.get("item_code", ""))
-                qty = ws.cell(row=row_idx, column=3,
-                              value=item.get("final_qty", item.get("order_qty", 0)))
-                for cell in (pg, ic, qty):
-                    cell.border = thin_border
-                # Force item code as text to preserve leading zeros
-                ic.number_format = "@"
-                qty.alignment = Alignment(horizontal="center")
-                if has_notes:
-                    note = ws.cell(row=row_idx, column=4, value=item.get("notes", ""))
-                    note.border = thin_border
-
-            ws.column_dimensions["A"].width = 16
-            ws.column_dimensions["B"].width = 20
-            ws.column_dimensions["C"].width = 16
+            ic.number_format = "@"
+            qty.alignment = Alignment(horizontal="center")
             if has_notes:
-                ws.column_dimensions["D"].width = 32
+                note = ws.cell(row=row_idx, column=4, value=item.get("notes", ""))
+                note.border = thin_border
 
-            safe_name = "".join(c if c.isalnum() or c in "-_ " else "_" for c in vendor)
-            timestamp = datetime.now().strftime("%Y%m%d")
-            filename = f"PO_{safe_name}_{timestamp}.xlsx"
-            filepath = os.path.join(output_dir, filename)
-            wb.save(filepath)
-            created.append(filename)
-            write_debug("qt.export.vendor_file",
-                         vendor=vendor, items=len(vendor_items), file=filename)
+        ws.column_dimensions["A"].width = 16
+        ws.column_dimensions["B"].width = 20
+        ws.column_dimensions["C"].width = 16
+        if has_notes:
+            ws.column_dimensions["D"].width = 32
 
-        return created
-
-    # ── Remove Not Needed ─────────────────────────────────────────
+        safe_name = "".join(c if c.isalnum() or c in "-_ " else "_" for c in vendor)
+        timestamp = datetime.now().strftime("%Y%m%d")
+        filepath = os.path.join(output_dir, f"PO_{safe_name}_{timestamp}.xlsx")
+        wb.save(filepath)
+        write_debug("qt.export.vendor_file", vendor=vendor, items=len(items), file=os.path.basename(filepath))
+        return filepath
 
     def _on_remove_not_needed(self):
         """Remove items that don't need ordering from the bulk grid."""

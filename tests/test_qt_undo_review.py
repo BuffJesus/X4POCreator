@@ -171,6 +171,26 @@ class TestReviewTab(unittest.TestCase):
         tab._set_show("Exceptions Only")
         self.assertEqual(tab._table.rowCount(), 2)
 
+    def test_context_summary_mentions_ready_items(self):
+        from ui_qt.review_tab import ReviewTab
+        tab = ReviewTab()
+        tab.set_items([
+            _item(ic="001", vendor="ABC", status="OK", final_qty=3),
+            _item(ic="002", vendor="XYZ", status="REVIEW", final_qty=1),
+        ])
+        self.assertIn("1", tab._context_summary.text())
+        self.assertIn("vendor file", tab._context_summary.text())
+
+    def test_focus_chip_mentions_top_exception_vendor(self):
+        from ui_qt.review_tab import ReviewTab
+        tab = ReviewTab()
+        tab.set_items([
+            _item(ic="001", vendor="ABC", status="REVIEW"),
+            _item(ic="002", vendor="ABC", status="WARNING"),
+            _item(ic="003", vendor="XYZ", status="REVIEW"),
+        ])
+        self.assertIn("ABC", tab._focus_chip.text())
+
     def test_is_exception(self):
         from ui_qt.review_tab import _is_exception
         self.assertTrue(_is_exception({"status": "REVIEW"}))
@@ -178,6 +198,40 @@ class TestReviewTab(unittest.TestCase):
         self.assertTrue(_is_exception({"status": "OK", "review_required": True}))
         self.assertFalse(_is_exception({"status": "OK"}))
         self.assertFalse(_is_exception({"status": ""}))
+
+
+@unittest.skipUnless(HAS_QT, "PySide6 not available")
+class TestExportPreviewDialog(unittest.TestCase):
+
+    @classmethod
+    def setUpClass(cls):
+        if QApplication.instance() is None:
+            cls._app = QApplication(sys.argv)
+
+    def test_constructs_with_preview_data(self):
+        from ui_qt.export_dialogs import ExportPreviewDialog
+        dialog = ExportPreviewDialog({
+            "vendor_summaries": [
+                {"vendor": "ABC", "item_count": 2, "estimated_value": 20.0},
+                {"vendor": "XYZ", "item_count": 1, "estimated_value": 5.0},
+            ],
+            "total_item_count": 3,
+            "total_estimated_value": 25.0,
+        })
+        self.assertEqual(dialog._table.rowCount(), 2)
+
+    def test_override_changes_are_captured(self):
+        from ui_qt.export_dialogs import ExportPreviewDialog
+        dialog = ExportPreviewDialog({
+            "vendor_summaries": [
+                {"vendor": "ABC", "item_count": 2, "estimated_value": 20.0},
+            ],
+            "total_item_count": 2,
+            "total_estimated_value": 20.0,
+        })
+        combo = dialog._table.cellWidget(0, 3)
+        combo.setCurrentIndex(1)  # Defer
+        self.assertEqual(dialog.overrides, {"ABC": "defer"})
 
 
 # ─── Shell integration ────────────────────────────────────────────────────
@@ -209,6 +263,13 @@ class TestShellReview(unittest.TestCase):
         shell._on_nav_changed(3)
         # Should have 2 assigned items
         self.assertEqual(shell.review_tab._table.rowCount(), 2)
+
+    def test_export_helpers_exist(self):
+        from ui_qt.shell import POBuilderShell
+        shell = POBuilderShell(app_version="test")
+        self.assertTrue(callable(shell._show_export_preview_dialog))
+        self.assertTrue(callable(shell._choose_output_dir))
+        self.assertTrue(callable(shell._export_vendor_po))
 
 
 if __name__ == "__main__":

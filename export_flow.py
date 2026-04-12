@@ -58,6 +58,66 @@ def critical_held_items(held_items):
     return [item for item in held_items if is_critical_shipping_hold(item)]
 
 
+def _show_warning(app, title, message):
+    handler = getattr(app, "_show_warning", None)
+    if callable(handler):
+        return handler(title, message)
+    return messagebox.showwarning(title, message)
+
+
+def _show_info(app, title, message):
+    handler = getattr(app, "_show_info", None)
+    if callable(handler):
+        return handler(title, message)
+    return messagebox.showinfo(title, message)
+
+
+def _show_error(app, title, message):
+    handler = getattr(app, "_show_error", None)
+    if callable(handler):
+        return handler(title, message)
+    return messagebox.showerror(title, message)
+
+
+def _ask_yes_no(app, title, message):
+    handler = getattr(app, "_ask_yes_no", None)
+    if callable(handler):
+        return handler(title, message)
+    return messagebox.askyesno(title, message)
+
+
+def _ask_yes_no_cancel(app, title, message):
+    handler = getattr(app, "_ask_yes_no_cancel", None)
+    if callable(handler):
+        return handler(title, message)
+    return messagebox.askyesnocancel(title, message)
+
+
+def _show_export_preview_dialog(app, preview_data):
+    handler = getattr(app, "_show_export_preview_dialog", None)
+    if callable(handler):
+        return handler(preview_data)
+    try:
+        import ui_review as _ui_review
+        return _ui_review.show_export_preview_dialog(app, preview_data)
+    except Exception:
+        return True
+
+
+def _process_ui_events(app):
+    handler = getattr(app, "_process_events", None)
+    if callable(handler):
+        return handler()
+    root = getattr(app, "root", None)
+    updater = getattr(root, "update", None)
+    if callable(updater):
+        return updater()
+    updater = getattr(app, "update", None)
+    if callable(updater):
+        return updater()
+    return None
+
+
 def choose_export_items(app, exportable_items):
     immediate_items = [item for item in exportable_items if export_bucket(item) == "release_now"]
     planned_items = [item for item in exportable_items if export_bucket(item) == "planned_today"]
@@ -86,7 +146,8 @@ def choose_export_items(app, exportable_items):
         if planned_only_behavior == "export_automatically":
             return planned_items
 
-        proceed = messagebox.askyesno(
+        proceed = _ask_yes_no(
+            app,
             "Export Planned POs?",
             (
                 f"{len(planned_items)} item(s) are planned-release POs for an upcoming free-freight day.\n\n"
@@ -100,7 +161,8 @@ def choose_export_items(app, exportable_items):
     if mixed_behavior == "immediate_only":
         return immediate_items
 
-    choice = messagebox.askyesnocancel(
+    choice = _ask_yes_no_cancel(
+        app,
         "Export Scope",
         (
             f"{len(immediate_items)} immediate-release item(s) and {len(planned_items)} planned-release item(s) are exportable.\n\n"
@@ -127,6 +189,12 @@ def select_export_items(app, exportable_items, *, selection_mode="default"):
 
 
 def loaded_report_paths_from_app(app):
+    handler = getattr(app, "_loaded_report_paths_for_snapshot", None)
+    if callable(handler):
+        paths = handler()
+        if isinstance(paths, dict):
+            return dict(paths)
+
     def _value(attr_name):
         variable = getattr(app, attr_name, None)
         getter = getattr(variable, "get", None)
@@ -145,6 +213,10 @@ def loaded_report_paths_from_app(app):
 
 
 def choose_output_dir(app):
+    handler = getattr(app, "_choose_output_dir", None)
+    if callable(handler):
+        return handler()
+
     initialdir = ""
     get_last_export_dir = getattr(app, "_get_last_export_dir", None)
     if callable(get_last_export_dir):
@@ -191,7 +263,7 @@ def do_export(
     session = getattr(app, "session", app)
     source_items = list(assigned_items if assigned_items is not None else session.assigned_items)
     if not source_items:
-        messagebox.showwarning("No Items", "No items to export.")
+        _show_warning(app, "No Items", "No items to export.")
         return
 
     exportable_items, held_items = partition_export_items(source_items)
@@ -209,7 +281,8 @@ def do_export(
                     f"\n\n{len(critical_held)} held item(s) are critical exceptions and should be reviewed with the "
                     "'Critical Held' release filter before waiting on shipping policy."
                 )
-            messagebox.showinfo(
+            _show_info(
+                app,
                 "No Exportable Items",
                 (
                     f"All {export_scope_label} are currently held by vendor shipping policy, so no PO files were exported.\n\n"
@@ -218,7 +291,7 @@ def do_export(
                 ),
             )
         else:
-            messagebox.showwarning("No Items", "No items are currently eligible for export.")
+            _show_warning(app, "No Items", "No items are currently eligible for export.")
         return
 
     selected_export_items = select_export_items(app, exportable_items, selection_mode=selection_mode)
@@ -236,12 +309,8 @@ def do_export(
 
     # Show export preview dialog; user can set per-vendor scope overrides there
     preview = build_export_preview(selected_export_items)
-    try:
-        import ui_review as _ui_review
-        if not _ui_review.show_export_preview_dialog(app, preview):
-            return  # user cancelled
-    except Exception:
-        pass  # if UI not available (e.g. tests), skip preview
+    if not _show_export_preview_dialog(app, preview):
+        return
 
     # Apply vendor scope overrides set by the preview dialog
     selected_export_items = apply_vendor_scope_overrides(app, selected_export_items)
@@ -258,7 +327,7 @@ def do_export(
         return
 
     app._show_loading("Exporting POs...")
-    app.root.update()
+    _process_ui_events(app)
 
     vendor_groups = group_assigned_items(selected_export_items)
 
@@ -271,7 +340,7 @@ def do_export(
                 created_files.append(filepath)
             except Exception as exc:
                 app._hide_loading()
-                messagebox.showerror("Export Error", f"Failed to export PO for {vendor}:\n{exc}")
+                _show_error(app, "Export Error", f"Failed to export PO for {vendor}:\n{exc}")
                 return
 
     with perf_trace.span("export_flow.append_order_history"):
@@ -296,7 +365,7 @@ def do_export(
             storage.save_session_snapshot(sessions_dir, session_snapshot)
     except Exception as exc:
         app._hide_loading()
-        messagebox.showerror("Session Save Error", f"Failed to save session snapshot:\n{exc}")
+        _show_error(app, "Session Save Error", f"Failed to save session snapshot:\n{exc}")
         return
 
     app._hide_loading()
@@ -328,7 +397,8 @@ def do_export(
         planned_note = (
             f"\n\n{len(planned_items)} assigned item(s) were exported as planned-release POs for an upcoming free-freight day."
         )
-    messagebox.showinfo(
+    _show_info(
+        app,
         "Export Complete",
         f"Created {len(created_files)} PO file(s) in:\n{output_dir}\n\n{file_list}\n\n"
         "Each file is ready for X4 Import from Excel.\n"
