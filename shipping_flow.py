@@ -281,7 +281,7 @@ def value_confidence_label(confidence):
     }.get(confidence or "", confidence or "")
 
 
-def item_cost_data(item, inventory_lookup):
+def item_cost_data(item, inventory_lookup, receipt_cost_lookup=None):
     key = (item.get("line_code", ""), item.get("item_code", ""))
     inv = inventory_lookup.get(key, {}) if inventory_lookup else {}
     qty = max(0, _safe_float(item.get("final_qty", item.get("order_qty", 0)), 0.0))
@@ -296,8 +296,6 @@ def item_cost_data(item, inventory_lookup):
             unit_cost = None
         else:
             if unit_cost > 0:
-                # Flag costs that are implausibly extreme: above $500,000/unit or
-                # below $0.0001/unit (but nonzero) are almost certainly data errors.
                 if unit_cost > 500_000 or unit_cost < 0.0001:
                     source = "suspicious_repl_cost"
                 else:
@@ -308,8 +306,17 @@ def item_cost_data(item, inventory_lookup):
             else:
                 source = "invalid_repl_cost"
                 unit_cost = None
-    estimated_order_value = (unit_cost * qty) if source == "inventory_repl_cost" and unit_cost is not None else 0.0
-    confidence = "high" if source == "inventory_repl_cost" else "low"
+
+    # Fallback: use weighted average unit cost from receipt history
+    if unit_cost is None and receipt_cost_lookup:
+        receipt_unit = receipt_cost_lookup.get(key)
+        if receipt_unit is not None and receipt_unit > 0:
+            unit_cost = receipt_unit
+            source = "receipt_cost"
+
+    has_cost = source in ("inventory_repl_cost", "receipt_cost")
+    estimated_order_value = (unit_cost * qty) if has_cost and unit_cost is not None else 0.0
+    confidence = "high" if source == "inventory_repl_cost" else ("medium" if source == "receipt_cost" else "low")
     return {
         "unit_cost": unit_cost,
         "estimated_order_value": estimated_order_value,

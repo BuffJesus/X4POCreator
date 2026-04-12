@@ -438,6 +438,7 @@ def parse_detailed_pair_aggregates(detailed_sales_path, received_parts_path, *, 
         keys=len(sales_summary),
     )
     receipt_history_lookup = {}
+    receipt_cost_accum = {}  # key → {"total_cost": float, "total_qty": float}
     receipt_row_count = 0
     for row in _iter_received_parts_detail_csv(received_parts_path):
         receipt_row_count += 1
@@ -448,6 +449,16 @@ def parse_detailed_pair_aggregates(detailed_sales_path, received_parts_path, *, 
         qty_received = _max(0, _coerce(row.get("qty_received", 0)))
         vendor = _normalize_vendor_code(row.get("vendor", ""))
         receipt_date = str(row.get("receipt_date", "") or "").strip()
+
+        # Accumulate cost data for receipt-based unit cost fallback
+        ext_cost = row.get("ext_cost")
+        if ext_cost is not None and qty_received > 0:
+            accum = receipt_cost_accum.get(key)
+            if accum is None:
+                accum = {"total_cost": 0.0, "total_qty": 0.0}
+                receipt_cost_accum[key] = accum
+            accum["total_cost"] += ext_cost
+            accum["total_qty"] += qty_received
 
         summary_entry = sales_summary.setdefault(key, {
             "line_code": key[0],
@@ -511,10 +522,17 @@ def parse_detailed_pair_aggregates(detailed_sales_path, received_parts_path, *, 
         rows=receipt_row_count,
         keys=len(receipt_history_lookup),
     )
+    # Build receipt-cost lookup: weighted average unit cost from all receipts
+    receipt_cost_lookup = {}
+    for key, accum in receipt_cost_accum.items():
+        if accum["total_qty"] > 0:
+            receipt_cost_lookup[key] = round(accum["total_cost"] / accum["total_qty"], 4)
+
     return {
         "sales_items": list(sales_summary.values()),
         "sales_window": (sales_start, sales_end),
         "receipt_history_lookup": _finalize_streamed_receipt_history(receipt_history_lookup),
+        "receipt_cost_lookup": receipt_cost_lookup,
         "detailed_sales_stats_lookup": _finalize_streamed_sales_stats(detailed_stats_lookup),
         "detailed_sales_rows": list(detailed_sales_rollup.values()),
     }

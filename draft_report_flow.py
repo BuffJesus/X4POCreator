@@ -94,17 +94,18 @@ def _format_why(item):
     return text
 
 
-def _row_values(item, inventory_lookup):
+def _row_values(item, inventory_lookup, receipt_cost_lookup=None):
     key = (item.get("line_code", ""), item.get("item_code", ""))
     inv = (inventory_lookup or {}).get(key, {}) or {}
     draft_qty = _draft_qty(item)
     cost_data = shipping_flow.item_cost_data(
         {**item, "final_qty": draft_qty},
         inventory_lookup,
+        receipt_cost_lookup=receipt_cost_lookup,
     )
     unit_cost = cost_data.get("unit_cost")
     cost_source = cost_data.get("source")
-    has_cost = cost_source == "inventory_repl_cost" and unit_cost is not None
+    has_cost = cost_source in ("inventory_repl_cost", "receipt_cost") and unit_cost is not None
     ext_cost = (unit_cost or 0.0) * draft_qty if has_cost else None
 
     # Prefer item's snapshot of min/max (already resolved by enrich); fall
@@ -185,7 +186,7 @@ def _apply_print_setup(ws, vendor, total_pages_hint=None):
     ws.oddFooter.right.text = "Page &P of &N"
 
 
-def _write_vendor_sheet(wb, vendor, items, inventory_lookup, *, run_date):
+def _write_vendor_sheet(wb, vendor, items, inventory_lookup, *, run_date, receipt_cost_lookup=None):
     ws = wb.active if wb.worksheets and wb.active.title == "Sheet" else wb.create_sheet()
     ws.title = (vendor[:28] or "DRAFT").replace("/", "_")
 
@@ -230,7 +231,7 @@ def _write_vendor_sheet(wb, vendor, items, inventory_lookup, *, run_date):
     ws.row_dimensions[header_row].height = 22
 
     # Data rows
-    rows_data = [_row_values(item, inventory_lookup) for item in items]
+    rows_data = [_row_values(item, inventory_lookup, receipt_cost_lookup) for item in items]
     rows_data.sort(key=_sort_key)
 
     total_units = 0
@@ -308,6 +309,7 @@ def export_draft_review_files(
     *,
     run_date=None,
     vendor_filter=None,
+    receipt_cost_lookup=None,
 ):
     """Write one xlsx per vendor; return list of (vendor, path) tuples.
 
@@ -335,7 +337,8 @@ def export_draft_review_files(
     for vendor, vitems in sorted(vendor_groups.items()):
         vitems_sorted = sorted(vitems, key=lambda it: str(it.get("item_code", "")))
         wb = openpyxl.Workbook()
-        _write_vendor_sheet(wb, vendor, vitems_sorted, inventory_lookup, run_date=run_date)
+        _write_vendor_sheet(wb, vendor, vitems_sorted, inventory_lookup,
+                           run_date=run_date, receipt_cost_lookup=receipt_cost_lookup)
         safe_vendor = _safe_vendor_filename(vendor)
         filename = f"DraftReview_{safe_vendor}_{timestamp}.xlsx"
         filepath = os.path.join(output_dir, filename)

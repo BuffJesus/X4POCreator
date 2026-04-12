@@ -643,6 +643,7 @@ class POBuilderShell(QMainWindow):
                 model.items,
                 ctrl.session.inventory_lookup,
                 output_dir,
+                receipt_cost_lookup=getattr(ctrl.session, "receipt_cost_lookup", None),
             )
             if created:
                 file_list = "\n".join(f"  \u2022 {vendor}: {os.path.basename(path)}"

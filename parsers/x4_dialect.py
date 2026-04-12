@@ -4,6 +4,17 @@ row builders, and the column-based line-code finder."""
 import re
 
 from parsers.normalize import _safe_cell, _coerce_int, _normalize_vendor_code
+
+
+def _safe_float(value):
+    """Coerce to float or None."""
+    text = str(value or "").strip().replace(",", "")
+    if not text:
+        return None
+    try:
+        return float(text)
+    except (TypeError, ValueError):
+        return None
 from parsers.dates import parse_x4_date
 
 
@@ -123,6 +134,7 @@ def _parse_x4_received_parts_detail_row(row):
         "item_code": _safe_cell(row, 16),
         "description": _clean_item_description(_safe_cell(row, 17)),
         "qty_received": _coerce_int(_safe_cell(row, 22)),
+        "ext_cost": _safe_float(_safe_cell(row, 21)),
         "receipt_date": _safe_cell(row, 14),
         "vendor": _normalize_vendor_code(_safe_cell(row, 18)),
     }

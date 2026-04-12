@@ -289,6 +289,7 @@ def _parse_sales_inputs(paths, *, progress_callback=None):
                 "sales_items": aggregates.get("sales_items", []),
                 "sales_window": aggregates.get("sales_window", (None, None)),
                 "receipt_history_lookup": aggregates.get("receipt_history_lookup", {}),
+                "receipt_cost_lookup": aggregates.get("receipt_cost_lookup", {}),
                 "detailed_sales_stats_lookup": aggregates.get("detailed_sales_stats_lookup", {}),
             }
         if callable(progress_callback):
@@ -448,6 +449,7 @@ def parse_all_files(
     result["unresolved_detailed_item_codes"] = set()
     result["sales_items"] = sales_inputs["sales_items"]
     result["receipt_history_lookup"] = sales_inputs.get("receipt_history_lookup", {})
+    result["receipt_cost_lookup"] = sales_inputs.get("receipt_cost_lookup", {})
     result["detailed_sales_stats_lookup"] = sales_inputs.get("detailed_sales_stats_lookup", {})
     if not result["sales_items"]:
         return result
@@ -967,6 +969,7 @@ def apply_load_result(session, result, *, parsers_module=parsers):
     session.inventory_lookup = result.get("inventory_lookup", {})
     session.inventory_source_lookup = copy.deepcopy(session.inventory_lookup)
     session.receipt_history_lookup = result.get("receipt_history_lookup", {})
+    session.receipt_cost_lookup = result.get("receipt_cost_lookup", {})
     session.detailed_sales_stats_lookup = result.get("detailed_sales_stats_lookup", {})
     session.inventory_coverage_missing_keys = set(result.get("inventory_coverage_missing_keys", set()) or set())
     session.detailed_sales_conflict_keys = set(result.get("detailed_sales_conflict_keys", set()) or set())

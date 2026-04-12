@@ -202,6 +202,7 @@ class ParserSmokeTests(unittest.TestCase):
             "item_code": "X107-C",
             "description": "3/8 EXTRUDED STREET TEE",
             "qty_received": 4,
+            "ext_cost": 9.84,
             "receipt_date": "26-Mar-2018",
             "vendor": "UNISELE",
         }])
@@ -307,6 +308,7 @@ class ParserSmokeTests(unittest.TestCase):
             "item_code": "X107-C",
             "description": "3/8 EXTRUDED STREET TEE",
             "qty_received": 4,
+            "ext_cost": 9.84,
             "receipt_date": "26-Mar-2018",
             "vendor": "UNISELE",
         }])
