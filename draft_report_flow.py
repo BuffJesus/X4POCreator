@@ -190,47 +190,77 @@ def _write_vendor_sheet(wb, vendor, items, inventory_lookup, *, run_date, receip
     ws = wb.active if wb.worksheets and wb.active.title == "Sheet" else wb.create_sheet()
     ws.title = (vendor[:28] or "DRAFT").replace("/", "_")
 
-    # Styling
-    banner_font = Font(bold=True, size=14)
-    subbanner_font = Font(size=10, italic=True)
-    header_font = Font(bold=True, size=10, color="FFFFFF")
-    header_fill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
-    draft_qty_font = Font(bold=True, size=10)
-    draft_qty_fill = PatternFill(start_color="FFF2CC", end_color="FFF2CC", fill_type="solid")
-    totals_font = Font(bold=True, size=11)
-    thin = Side(style="thin", color="999999")
-    border = Border(left=thin, right=thin, top=thin, bottom=thin)
+    # ── Design tokens (Tuner-inspired) ────────────────────────────
+    # Dark header with high contrast, warm accent on the draft qty
+    # column, alternating row tints for scannability, generous row
+    # height so the operator never squints.
+    _DEEP = "14171E"       # near-black header background
+    _PANEL = "1A1D24"      # dark panel for totals
+    _ROW_EVEN = "F8F9FA"   # light grey even rows (print-friendly)
+    _ROW_ODD = "FFFFFF"    # white odd rows
+    _ACCENT = "5A9AD6"     # blue accent (matches theme.ACCENT_PRIMARY)
+    _DRAFT_BG = "FFF8E1"   # warm yellow for draft qty column
+    _DRAFT_BOLD = "F9A825"  # amber for draft qty header
+    _OK = "43A047"         # green for totals
+    _TEXT_W = "FFFFFF"      # white text on dark
+    _TEXT_D = "212121"      # dark text on light
+    _TEXT_M = "757575"      # muted text
+    _BORDER = "E0E0E0"     # soft border for rows
+
+    banner_font = Font(bold=True, size=14, color=_TEXT_D)
+    date_font = Font(size=10, color=_TEXT_M)
+    sub_font = Font(size=10, italic=True, color=_TEXT_M)
+    header_font = Font(bold=True, size=9, color=_TEXT_W)
+    header_fill = PatternFill(start_color=_DEEP, end_color=_DEEP, fill_type="solid")
+    draft_header_fill = PatternFill(start_color=_DRAFT_BOLD, end_color=_DRAFT_BOLD, fill_type="solid")
+    body_font = Font(size=9, color=_TEXT_D)
+    draft_qty_font = Font(bold=True, size=10, color=_TEXT_D)
+    draft_qty_fill = PatternFill(start_color=_DRAFT_BG, end_color=_DRAFT_BG, fill_type="solid")
+    cost_est_font = Font(size=9, italic=True, color=_TEXT_M)
+    totals_font = Font(bold=True, size=11, color=_TEXT_W)
+    totals_fill = PatternFill(start_color=_DEEP, end_color=_DEEP, fill_type="solid")
+    totals_draft_fill = PatternFill(start_color=_OK, end_color=_OK, fill_type="solid")
+    even_fill = PatternFill(start_color=_ROW_EVEN, end_color=_ROW_EVEN, fill_type="solid")
+    soft = Side(style="thin", color=_BORDER)
+    border = Border(left=soft, right=soft, top=soft, bottom=soft)
+    no_border = Border()
 
     n_cols = len(_COLUMNS)
-    last_col_letter = get_column_letter(n_cols)
 
-    # Row 1: banner with vendor + date
-    ws.cell(row=1, column=1, value=f"Draft PO Review — {vendor}").font = banner_font
+    # Row 1: banner — vendor name prominently
+    banner_cell = ws.cell(row=1, column=1, value=f"Draft PO Review  -  {vendor}")
+    banner_cell.font = banner_font
     ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=max(1, n_cols - 3))
     date_cell = ws.cell(row=1, column=n_cols - 2, value=run_date.strftime("%A, %B %d, %Y"))
+    date_cell.font = date_font
     date_cell.alignment = Alignment(horizontal="right")
     ws.merge_cells(start_row=1, start_column=n_cols - 2, end_row=1, end_column=n_cols)
+    ws.row_dimensions[1].height = 28
 
-    # Row 2: subtitle
+    # Row 2: subtitle — item count + instructions
+    items_with_cost_preview = sum(1 for i in items if shipping_flow.item_cost_data(
+        i, inventory_lookup, receipt_cost_lookup=receipt_cost_lookup,
+    ).get("unit_cost") is not None)
     subtitle = (
-        f"{len(items)} item(s) — verify quantities below. "
-        "Bold yellow column = qty being ordered."
+        f"{len(items)} items  |  Yellow column = draft order qty  |  "
+        f"{items_with_cost_preview}/{len(items)} priced"
     )
     sub_cell = ws.cell(row=2, column=1, value=subtitle)
-    sub_cell.font = subbanner_font
+    sub_cell.font = sub_font
     ws.merge_cells(start_row=2, start_column=1, end_row=2, end_column=n_cols)
+    ws.row_dimensions[2].height = 20
 
-    # Row 3: column headers
+    # Row 3: column headers — dark background, draft qty in amber
     header_row = 3
-    for idx, (_key, label, _width, align) in enumerate(_COLUMNS, start=1):
+    for idx, (key, label, _width, _align) in enumerate(_COLUMNS, start=1):
         cell = ws.cell(row=header_row, column=idx, value=label)
         cell.font = header_font
-        cell.fill = header_fill
+        cell.fill = draft_header_fill if key == "draft_qty" else header_fill
         cell.alignment = Alignment(horizontal="center", vertical="center")
         cell.border = border
-    ws.row_dimensions[header_row].height = 22
+    ws.row_dimensions[header_row].height = 24
 
-    # Data rows
+    # Data rows — alternating tints, generous height
     rows_data = [_row_values(item, inventory_lookup, receipt_cost_lookup) for item in items]
     rows_data.sort(key=_sort_key)
 
@@ -238,39 +268,53 @@ def _write_vendor_sheet(wb, vendor, items, inventory_lookup, *, run_date, receip
     total_ext = 0.0
     items_with_cost = 0
     for row_offset, row_data in enumerate(rows_data, start=header_row + 1):
+        is_even = (row_offset - header_row) % 2 == 0
         for col_idx, (key, _label, _width, align) in enumerate(_COLUMNS, start=1):
             value = row_data.get(key, "")
             cell = ws.cell(row=row_offset, column=col_idx, value=value)
             cell.border = border
+            cell.font = body_font
             cell.alignment = Alignment(
                 horizontal=align,
                 vertical="top",
                 wrap_text=(key in ("description", "why")),
             )
+            # Draft qty column: always warm yellow
             if key == "draft_qty":
                 cell.font = draft_qty_font
                 cell.fill = draft_qty_fill
+            elif is_even:
+                cell.fill = even_fill
+            # Cost columns: number format + italic if receipt-based
             if key in ("unit_cost", "ext_cost") and isinstance(value, (int, float)):
                 cell.number_format = "$#,##0.00"
+        ws.row_dimensions[row_offset].height = 18
         total_units += int(row_data.get("draft_qty", 0) or 0)
         ext = row_data.get("_ext_cost_numeric", 0.0) or 0.0
         total_ext += ext
         if ext > 0:
             items_with_cost += 1
 
-    # Totals row
-    totals_row = header_row + len(rows_data) + 1
-    ws.cell(row=totals_row, column=1, value="TOTALS").font = totals_font
+    # Totals row — dark background, green draft qty, prominent
+    totals_row = header_row + len(rows_data) + 2  # blank row before totals
+    ws.row_dimensions[totals_row - 1].height = 8  # spacer
+    for col in range(1, n_cols + 1):
+        cell = ws.cell(row=totals_row, column=col)
+        cell.fill = totals_fill
+        cell.border = border
+
+    label_cell = ws.cell(row=totals_row, column=1, value="TOTALS")
+    label_cell.font = totals_font
+    label_cell.fill = totals_fill
     ws.merge_cells(start_row=totals_row, start_column=1, end_row=totals_row, end_column=6)
-    pack_col = 7
+
     draft_col = 8
-    unit_col = 9
     ext_col = 10
     why_col = 11
 
     units_cell = ws.cell(row=totals_row, column=draft_col, value=total_units)
-    units_cell.font = totals_font
-    units_cell.fill = draft_qty_fill
+    units_cell.font = Font(bold=True, size=12, color=_TEXT_W)
+    units_cell.fill = totals_draft_fill
     units_cell.alignment = Alignment(horizontal="right")
     units_cell.border = border
 
@@ -280,23 +324,23 @@ def _write_vendor_sheet(wb, vendor, items, inventory_lookup, *, run_date, receip
     ext_cell.number_format = "$#,##0.00"
     ext_cell.border = border
 
-    cost_coverage_note = (
-        f"{items_with_cost}/{len(rows_data)} items priced"
-        if rows_data else ""
+    coverage_pct = round(items_with_cost / len(rows_data) * 100) if rows_data else 0
+    note_cell = ws.cell(
+        row=totals_row, column=why_col,
+        value=f"{items_with_cost}/{len(rows_data)} priced ({coverage_pct}%)",
     )
-    note_cell = ws.cell(row=totals_row, column=why_col, value=cost_coverage_note)
-    note_cell.font = subbanner_font
+    note_cell.font = Font(size=9, italic=True, color=_TEXT_W)
+    note_cell.fill = totals_fill
     note_cell.alignment = Alignment(horizontal="left")
     note_cell.border = border
+
+    ws.row_dimensions[totals_row].height = 26
 
     # Column widths
     for idx, (_key, _label, width, _align) in enumerate(_COLUMNS, start=1):
         ws.column_dimensions[get_column_letter(idx)].width = width
 
-    # Freeze panes below the header row so scrolling on screen still shows
-    # the banner + column labels.
     ws.freeze_panes = f"A{header_row + 1}"
-
     _apply_print_setup(ws, vendor)
     return ws
 
