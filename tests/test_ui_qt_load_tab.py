@@ -37,7 +37,7 @@ class LoadTabTests(unittest.TestCase):
         return LoadTab(app_settings=app_settings)
 
     def test_picker_rows_match_load_file_sections(self):
-        from ui_load import LOAD_FILE_SECTIONS
+        from ui_load_data import LOAD_FILE_SECTIONS
         tab = self._build_tab()
         expected_keys = set()
         for section in LOAD_FILE_SECTIONS:

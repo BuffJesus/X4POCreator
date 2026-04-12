@@ -37,7 +37,10 @@ from PySide6.QtWidgets import (
 import theme as t
 import theme_qt as tq
 
-from ui_help import HELP_SECTIONS  # noqa: E402
+# Pure-data import — ``ui_help`` itself imports tkinter at module load,
+# so the Qt build reaches directly into ``ui_help_data`` to avoid pulling
+# the excluded stack.
+from ui_help_data import HELP_SECTIONS  # noqa: E402
 
 
 _INLINE_CODE_RE = re.compile(r"`([^`]+)`")

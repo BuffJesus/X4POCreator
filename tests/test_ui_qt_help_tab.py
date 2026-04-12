@@ -77,7 +77,7 @@ class HelpTabWidgetTests(unittest.TestCase):
 
     def test_tab_instantiates_with_section_list(self):
         from ui_qt.help_tab import HelpTab
-        from ui_help import HELP_SECTIONS
+        from ui_help_data import HELP_SECTIONS
         tab = HelpTab()
         self.assertEqual(tab._sections.count(), len(HELP_SECTIONS))
 

@@ -55,8 +55,10 @@ from PySide6.QtWidgets import (
 import theme as t
 import theme_qt as tq
 
-# Reuse the tkinter tab's data definition to keep the two UIs in sync.
-from ui_load import LOAD_FILE_SECTIONS  # noqa: E402
+# Reuse the shared pure-data module so both UIs stay in sync.  We go
+# straight to ``ui_load_data`` (not ``ui_load``) so the Qt build never
+# imports tkinter transitively — the Qt PyInstaller spec excludes it.
+from ui_load_data import LOAD_FILE_SECTIONS  # noqa: E402
 
 
 # Map from `LOAD_FILE_SECTIONS` browse_key → the key used by
