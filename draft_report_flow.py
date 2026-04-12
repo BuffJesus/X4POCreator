@@ -238,13 +238,7 @@ def _write_vendor_sheet(wb, vendor, items, inventory_lookup, *, run_date, receip
     ws.row_dimensions[1].height = 28
 
     # Row 2: subtitle — item count + instructions
-    items_with_cost_preview = sum(1 for i in items if shipping_flow.item_cost_data(
-        i, inventory_lookup, receipt_cost_lookup=receipt_cost_lookup,
-    ).get("unit_cost") is not None)
-    subtitle = (
-        f"{len(items)} items  |  Yellow column = draft order qty  |  "
-        f"{items_with_cost_preview}/{len(items)} priced"
-    )
+    subtitle = f"{len(items)} items  |  Yellow column = draft order qty"
     sub_cell = ws.cell(row=2, column=1, value=subtitle)
     sub_cell.font = sub_font
     ws.merge_cells(start_row=2, start_column=1, end_row=2, end_column=n_cols)
@@ -324,15 +318,9 @@ def _write_vendor_sheet(wb, vendor, items, inventory_lookup, *, run_date, receip
     ext_cell.number_format = "$#,##0.00"
     ext_cell.border = border
 
-    coverage_pct = round(items_with_cost / len(rows_data) * 100) if rows_data else 0
-    note_cell = ws.cell(
-        row=totals_row, column=why_col,
-        value=f"{items_with_cost}/{len(rows_data)} priced ({coverage_pct}%)",
-    )
-    note_cell.font = Font(size=9, italic=True, color=_TEXT_W)
-    note_cell.fill = totals_fill
-    note_cell.alignment = Alignment(horizontal="left")
-    note_cell.border = border
+    # Leave the why column empty in the totals row — clean finish
+    ws.cell(row=totals_row, column=why_col).fill = totals_fill
+    ws.cell(row=totals_row, column=why_col).border = border
 
     ws.row_dimensions[totals_row].height = 26
 
