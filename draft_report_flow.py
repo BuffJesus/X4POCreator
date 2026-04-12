@@ -40,16 +40,20 @@ except ImportError as exc:  # pragma: no cover - import guard
 # landscape printing without truncating the description column too far.
 _COLUMNS = [
     ("item_code",   "Item Code",    14, "left"),
-    ("description", "Description",  36, "left"),
+    ("description", "Description",  30, "left"),
     ("qoh",         "QOH",           6, "right"),
-    ("cur_min",     "Min",           6, "right"),
-    ("cur_max",     "Max",           6, "right"),
+    ("cur_min",     "Min",           5, "right"),
+    ("cur_max",     "Max",           5, "right"),
     ("qty_on_po",   "On PO",         6, "right"),
-    ("pack_size",   "Pack",          6, "right"),
+    ("pack_size",   "Pack",          5, "right"),
     ("draft_qty",   "Draft Qty",     9, "right"),
-    ("unit_cost",   "Unit $",        9, "right"),
-    ("ext_cost",    "Ext $",        11, "right"),
-    ("why",         "Why",          40, "left"),
+    ("unit_cost",   "Unit $",        8, "right"),
+    ("ext_cost",    "Ext $",        10, "right"),
+    ("why",         "Why",          28, "left"),
+    # Blank columns for hand-written markup during physical verification
+    ("_check",      "\u2713",        4, "center"),
+    ("_adj_qty",    "Adj Qty",       8, "right"),
+    ("_notes",      "Notes",        16, "left"),
 ]
 
 
@@ -244,12 +248,22 @@ def _write_vendor_sheet(wb, vendor, items, inventory_lookup, *, run_date, receip
     ws.merge_cells(start_row=2, start_column=1, end_row=2, end_column=n_cols)
     ws.row_dimensions[2].height = 20
 
-    # Row 3: column headers — dark background, draft qty in amber
+    # Row 3: column headers — dark background, draft qty in amber,
+    # markup columns in light grey to signal "write here"
+    markup_fill = PatternFill(start_color="E8EDF5", end_color="E8EDF5", fill_type="solid")
+    markup_header_font = Font(bold=True, size=9, color=_TEXT_M)
     header_row = 3
     for idx, (key, label, _width, _align) in enumerate(_COLUMNS, start=1):
         cell = ws.cell(row=header_row, column=idx, value=label)
-        cell.font = header_font
-        cell.fill = draft_header_fill if key == "draft_qty" else header_fill
+        if key.startswith("_"):
+            cell.font = markup_header_font
+            cell.fill = markup_fill
+        elif key == "draft_qty":
+            cell.font = header_font
+            cell.fill = draft_header_fill
+        else:
+            cell.font = header_font
+            cell.fill = header_fill
         cell.alignment = Alignment(horizontal="center", vertical="center")
         cell.border = border
     ws.row_dimensions[header_row].height = 24
@@ -318,9 +332,11 @@ def _write_vendor_sheet(wb, vendor, items, inventory_lookup, *, run_date, receip
     ext_cell.number_format = "$#,##0.00"
     ext_cell.border = border
 
-    # Leave the why column empty in the totals row — clean finish
-    ws.cell(row=totals_row, column=why_col).fill = totals_fill
-    ws.cell(row=totals_row, column=why_col).border = border
+    # Fill remaining totals row cells with the dark background
+    for col in range(why_col, n_cols + 1):
+        c = ws.cell(row=totals_row, column=col)
+        c.fill = totals_fill
+        c.border = border
 
     ws.row_dimensions[totals_row].height = 26
 
