@@ -34,7 +34,7 @@ from __future__ import annotations
 
 import os
 
-from PySide6.QtCore import Qt, QSize, QThread
+from PySide6.QtCore import Qt, QSize, QThread, QEvent
 from PySide6.QtGui import QAction, QKeySequence
 from PySide6.QtWidgets import (
     QApplication,
@@ -113,6 +113,24 @@ def _placeholder_page(title: str, breadcrumb: str, phase: str) -> QWidget:
     layout.addWidget(body, stretch=1)
 
     return page
+
+
+# Custom events for thread→GUI communication in the update flow.
+_UPDATE_READY_TYPE = QEvent.Type(QEvent.registerEventType())
+_UPDATE_FAILED_TYPE = QEvent.Type(QEvent.registerEventType())
+
+
+class _UpdateReadyEvent(QEvent):
+    def __init__(self, staging: str, current_exe: str):
+        super().__init__(_UPDATE_READY_TYPE)
+        self.staging = staging
+        self.current_exe = current_exe
+
+
+class _UpdateFailedEvent(QEvent):
+    def __init__(self, error: str):
+        super().__init__(_UPDATE_FAILED_TYPE)
+        self.error = error
 
 
 class POBuilderShell(QMainWindow):
@@ -247,6 +265,11 @@ class POBuilderShell(QMainWindow):
         self._shortcut_action.triggered.connect(self._on_show_shortcuts)
         self.addAction(self._shortcut_action)
 
+        # Background update check on startup
+        self._update_release: dict | None = None
+        self._version_label = version_label
+        self._start_update_check()
+
     def _mark_step(self, label: str, state: str):
         """Update a sidebar item's workflow state indicator.
 
@@ -280,6 +303,127 @@ class POBuilderShell(QMainWindow):
         from ui_qt.shortcut_overlay import ShortcutOverlayDialog
         dialog = ShortcutOverlayDialog(parent=self)
         dialog.exec()
+
+    # ── Update check ─────────────────────────────────────────────
+
+    def _start_update_check(self):
+        """Run a background check for newer GitHub releases."""
+        check_enabled = self.app_settings.get("check_for_updates_on_startup", True)
+        if not check_enabled:
+            return
+
+        class _Worker(QThread):
+            def __init__(self, parent=None):
+                super().__init__(parent)
+                self.release = None
+
+            def run(self):
+                import update_check
+                self.release = update_check.check_for_update()
+
+        self._update_worker = _Worker(self)
+        self._update_worker.finished.connect(self._on_update_check_done)
+        self._update_worker.start()
+
+    def _on_update_check_done(self):
+        release = getattr(self._update_worker, "release", None)
+        if not release:
+            return
+        self._update_release = release
+        tag = release.get("tag_name", "")
+        self._version_label.setText(f"Update available: {tag}")
+        self._version_label.setStyleSheet(
+            f"color: {t.ACCENT_PRIMARY}; padding: 0 {t.SPACE_MD}px; "
+            f"font-weight: bold; cursor: pointer;"
+        )
+        self._version_label.mousePressEvent = lambda _: self._show_update_dialog()
+        self.status.showMessage(f"Update available: {tag}", 10000)
+
+    def _show_update_dialog(self):
+        import webbrowser
+        import update_flow
+        release = self._update_release
+        if not release:
+            return
+        tag = release.get("tag_name", "")
+        name = release.get("name") or tag
+        published = release.get("published_at", "")[:10]
+        exe_url = update_flow.find_exe_asset(release)
+        can_auto = update_flow.can_self_update() and exe_url
+
+        if can_auto:
+            msg = (
+                f"A newer release is available.\n\n"
+                f"Current: v{self.app_version}\n"
+                f"Latest: {name} ({tag})\n"
+                f"Published: {published}\n\n"
+                f"Download and install now? The app will restart."
+            )
+            answer = QMessageBox.question(
+                self, "Update Available", msg,
+                QMessageBox.Yes | QMessageBox.No | QMessageBox.Cancel,
+            )
+            if answer == QMessageBox.Yes:
+                self._do_auto_update(exe_url)
+            elif answer == QMessageBox.No:
+                url = release.get("html_url", "")
+                if url:
+                    webbrowser.open(url)
+        else:
+            msg = (
+                f"A newer release is available.\n\n"
+                f"Current: v{self.app_version}\n"
+                f"Latest: {name} ({tag})\n"
+                f"Published: {published}\n\n"
+                f"Open the release page to download?"
+            )
+            if QMessageBox.question(self, "Update Available", msg) == QMessageBox.Yes:
+                url = release.get("html_url", "")
+                if url:
+                    webbrowser.open(url)
+
+    def _do_auto_update(self, exe_url: str):
+        import sys
+        import threading
+        import update_flow
+        current_exe = sys.executable
+        staging = update_flow.staging_path_for(current_exe)
+        self.status.showMessage("Downloading update...")
+
+        def _worker():
+            try:
+                update_flow.download_update(exe_url, staging)
+            except Exception as exc:
+                update_flow.cleanup_staging(staging)
+                QApplication.instance().postEvent(self, _UpdateFailedEvent(str(exc)))
+                return
+            QApplication.instance().postEvent(self, _UpdateReadyEvent(staging, current_exe))
+
+        threading.Thread(target=_worker, daemon=True).start()
+
+    def customEvent(self, event):
+        if isinstance(event, _UpdateReadyEvent):
+            self._on_update_downloaded(event.staging, event.current_exe)
+        elif isinstance(event, _UpdateFailedEvent):
+            QMessageBox.critical(self, "Update Failed",
+                                 f"Download failed:\n{event.error}\n\nPlease download manually.")
+            self.status.clearMessage()
+
+    def _on_update_downloaded(self, staging: str, current_exe: str):
+        import update_flow
+        try:
+            script = update_flow.write_updater_script(staging, current_exe)
+        except Exception as exc:
+            update_flow.cleanup_staging(staging)
+            QMessageBox.critical(self, "Update Failed", f"Could not prepare update:\n{exc}")
+            self.status.clearMessage()
+            return
+        answer = QMessageBox.question(
+            self, "Ready to Install",
+            "Update downloaded. Restart now to install?",
+        )
+        if answer == QMessageBox.Yes:
+            update_flow.launch_updater_and_exit(self, script)
 
     def _on_load_finished(self, result: dict):
         """Handle a completed parse result from the Load tab."""

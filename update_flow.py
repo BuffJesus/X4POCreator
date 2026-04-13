@@ -167,19 +167,12 @@ def launch_updater_and_exit(app, updater_script_path):
         creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP,
         close_fds=True,
     )
-    root = getattr(app, "root", None)
-    if root is not None:
+    close_fn = getattr(app, "close", None) or getattr(app, "_on_close", None) or getattr(app, "destroy", None)
+    if callable(close_fn):
         try:
-            root.destroy()
+            close_fn()
         except Exception:
             pass
-    else:
-        close_fn = getattr(app, "_on_close", None) or getattr(app, "destroy", None)
-        if callable(close_fn):
-            try:
-                close_fn()
-            except Exception:
-                pass
 
 
 def cleanup_staging(staging_path):
