@@ -1919,6 +1919,71 @@ class RulesTests(unittest.TestCase):
         self.assertEqual(result, 1)
 
 
+class MaxCredibilityTests(unittest.TestCase):
+    """Tests for the pack vs max credibility check in determine_target_stock."""
+
+    def test_bolts_with_nonsensical_max_gets_adjusted_to_pack(self):
+        item = {"inventory": {"qoh": 3, "min": 2, "max": 10}, "pack_size": 100,
+                "qty_sold": 8, "qty_suspended": 0, "qty_on_po": 0}
+        determine_target_stock(item)
+        self.assertEqual(item["target_stock"], 100)
+        self.assertEqual(item["target_basis"], "pack_adjusted_max")
+
+    def test_hose_with_pack_larger_than_max_stays_at_current_max(self):
+        item = {"inventory": {"qoh": 58, "min": 10, "max": 93}, "pack_size": 300,
+                "qty_sold": 12, "qty_suspended": 0, "qty_on_po": 0}
+        determine_target_stock(item)
+        self.assertEqual(item["target_stock"], 93)
+        self.assertEqual(item["target_basis"], "current_max")
+
+    def test_screws_with_reasonable_max_stays_at_current_max(self):
+        item = {"inventory": {"qoh": 200, "min": 50, "max": 500}, "pack_size": 100,
+                "qty_sold": 80, "qty_suspended": 0, "qty_on_po": 0}
+        determine_target_stock(item)
+        self.assertEqual(item["target_stock"], 500)
+        self.assertEqual(item["target_basis"], "current_max")
+
+    def test_no_pack_info_trusts_current_max(self):
+        item = {"inventory": {"qoh": 5, "min": 2, "max": 10}, "pack_size": 0,
+                "qty_sold": 8, "qty_suspended": 0, "qty_on_po": 0}
+        determine_target_stock(item)
+        self.assertEqual(item["target_stock"], 10)
+        self.assertEqual(item["target_basis"], "current_max")
+
+    def test_adjusted_target_uses_pack_when_pack_exceeds_max(self):
+        # max=5, pack=100 — adjustment should give 100, not 5
+        item = {"inventory": {"qoh": 2, "min": 1, "max": 5}, "pack_size": 100,
+                "qty_sold": 4, "qty_suspended": 0, "qty_on_po": 0}
+        determine_target_stock(item)
+        self.assertEqual(item["target_stock"], 100)
+        self.assertEqual(item["target_basis"], "pack_adjusted_max")
+
+    def test_boundary_ratio_is_credible(self):
+        # max=20, pack=100 → ratio = 5x exactly → 100 <= 20*5 = 100 → credible
+        item = {"inventory": {"qoh": 10, "min": 5, "max": 20}, "pack_size": 100,
+                "qty_sold": 15, "qty_suspended": 0, "qty_on_po": 0}
+        determine_target_stock(item)
+        self.assertEqual(item["target_stock"], 20)
+        self.assertEqual(item["target_basis"], "current_max")
+
+    def test_just_over_boundary_is_not_credible(self):
+        # max=19, pack=100 → 100 > 19*5=95 → not credible
+        item = {"inventory": {"qoh": 10, "min": 5, "max": 19}, "pack_size": 100,
+                "qty_sold": 15, "qty_suspended": 0, "qty_on_po": 0}
+        determine_target_stock(item)
+        self.assertEqual(item["target_stock"], 100)
+        self.assertEqual(item["target_basis"], "pack_adjusted_max")
+
+    def test_enrich_bolts_adjusts_target_from_nonsensical_max(self):
+        item = {"description": "1/4 HEX BOLT", "qty_sold": 8, "qty_suspended": 0,
+                "qty_on_po": 0, "pack_size": 100, "demand_signal": 8}
+        enrich_item(item, {"qoh": 3, "max": 10, "min": 2}, 100, None)
+        self.assertEqual(item["target_basis"], "pack_adjusted_max")
+        self.assertEqual(item["target_stock"], 100)
+        # raw_need is computed from adjusted target, not the original max=10
+        self.assertGreater(item["raw_need"], 0)
+
+
 class StockoutRiskScoreTests(unittest.TestCase):
     def test_zero_demand_returns_zero(self):
         item = {"demand_signal": 0, "inventory_position": 0, "recency_confidence": "high"}

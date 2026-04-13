@@ -145,6 +145,7 @@ def build_detail_parts(item, *, why, pack_qty, policy, acceptable_overstock,
     if target_basis:
         basis_labels = {
             "current_max": "Based on current max",
+            "pack_adjusted_max": "Max adjusted up to pack size (system max too low for pack)",
             "suggested_max": "Based on suggested max",
             "current_min": "Based on current min",
             "suggested_min": "Based on suggested min",

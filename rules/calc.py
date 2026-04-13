@@ -8,6 +8,24 @@ strings — that responsibility stays in the orchestrator.
 
 import math
 
+from rules._constants import MAX_CREDIBILITY_PACK_RATIO
+
+
+def _max_is_credible(current_max, pack_qty):
+    """Return True if current_max looks like an intentional operator setting
+    rather than X4 auto-calculated noise.
+
+    Heuristic: if a single pack is more than 3x the max, no operator
+    would have set that max knowing the pack size.  X4's auto-calc
+    formula doesn't consider pack sizes, so it routinely produces
+    max=10 for bolts that come in packs of 100.
+    """
+    if not pack_qty or pack_qty <= 0:
+        return True  # can't assess without pack info
+    if not isinstance(current_max, (int, float)) or current_max <= 0:
+        return True  # no max to question
+    return pack_qty <= current_max * MAX_CREDIBILITY_PACK_RATIO
+
 
 def calculate_inventory_position(item):
     """Calculate and persist the item's inventory position."""
@@ -33,14 +51,19 @@ def determine_target_stock(item):
         demand_signal = item.get("qty_sold", 0) + item.get("qty_suspended", 0)
     item["demand_signal"] = demand_signal
 
-    # Operator-set current_max is authoritative — suggested_max only
-    # fills the gap when no explicit max exists.  Prior logic took
-    # max(current_max, suggested_max) which let a formula-driven
-    # suggestion override an intentional operator limit (e.g. hose
-    # with max=420 getting suggested_max=769 → ordering 2 rolls).
+    # Operator-set current_max is authoritative when credible.
+    # But X4 auto-calculates max without considering pack sizes,
+    # producing nonsense like max=10 for bolts in packs of 100.
+    # When pack >> max (ratio > 3x), treat max as auto-noise and
+    # adjust target up to at least one full pack.
+    pack_qty = item.get("pack_size") or 0
     if isinstance(current_max, (int, float)) and current_max > 0:
-        target_stock = current_max
-        item["target_basis"] = "current_max"
+        if _max_is_credible(current_max, pack_qty):
+            target_stock = current_max
+            item["target_basis"] = "current_max"
+        else:
+            target_stock = max(current_max, pack_qty)
+            item["target_basis"] = "pack_adjusted_max"
     elif isinstance(suggested_max, (int, float)) and suggested_max > 0:
         target_stock = suggested_max
         item["target_basis"] = "suggested_max"
