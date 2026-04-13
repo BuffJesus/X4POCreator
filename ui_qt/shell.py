@@ -183,6 +183,15 @@ class POBuilderShell(QMainWindow):
                 self.bulk_tab.draft_review_requested.connect(self._on_draft_review)
                 self.bulk_tab.undo_requested.connect(self._on_undo)
                 self.bulk_tab.redo_requested.connect(self._on_redo)
+                # Workflow dialog signals
+                self.bulk_tab.vendor_review_requested.connect(self._on_vendor_review)
+                self.bulk_tab.session_diff_requested.connect(self._on_session_diff)
+                self.bulk_tab.supplier_map_requested.connect(self._on_supplier_map)
+                self.bulk_tab.qoh_review_requested.connect(self._on_qoh_review)
+                self.bulk_tab.skip_actions_requested.connect(self._on_skip_actions)
+                self.bulk_tab.session_history_requested.connect(self._on_session_history)
+                self.bulk_tab.ignored_items_requested.connect(self._on_ignored_items)
+                self.bulk_tab.vendor_manager_requested.connect(self._on_vendor_manager)
                 self.bulk_tab.model.edit_callback = self._on_cell_edit
                 self.bulk_tab.model.before_edit_callback = self._on_before_cell_edit
                 self.stack.addWidget(self.bulk_tab)
@@ -804,7 +813,13 @@ class POBuilderShell(QMainWindow):
     # ── Export ────────────────────────────────────────────────────
 
     def _on_export_requested(self, _output_dir: str):
-        """Write per-vendor xlsx files through the shared export flow."""
+        """Write per-vendor xlsx files through the shared export flow.
+
+        Runs stock warnings check first — mirrors tkinter's
+        check_stock_warnings gate before export.
+        """
+        if not self._qt_check_stock_warnings():
+            return
         assigned = self._assigned_items_for_export()
         write_debug("qt.export.begin", assigned=len(assigned))
         export_flow.do_export(
@@ -817,6 +832,71 @@ class POBuilderShell(QMainWindow):
         self._mark_step("Bulk", "done")
         self._mark_step("Review", "done")
         return
+
+    def _qt_check_stock_warnings(self) -> bool:
+        """Pre-export stock warnings check. Returns True to proceed."""
+        import perf_trace
+        from rules.not_needed import not_needed_reason
+        ctrl = self.controller
+        model = self.bulk_tab.model if self.bulk_tab else None
+        if model is None:
+            return True
+
+        self._show_loading("Checking stock warnings\u2026")
+        QApplication.processEvents()
+
+        flagged = []
+        with perf_trace.span("qt.check_stock_warnings.scan",
+                              item_count=len(model.items)):
+            for item in model.items:
+                if not item.get("vendor"):
+                    continue
+                key = (item.get("line_code", ""), item.get("item_code", ""))
+                inv = ctrl.session.inventory_lookup.get(key, {})
+                try:
+                    reason_text, _ = not_needed_reason(ctrl, item, max_exceed_abs_buffer=5)
+                except Exception:
+                    reason_text = ""
+                if reason_text:
+                    reasons = [p.strip() for p in reason_text.split(";") if p.strip()]
+                    _, sug_max = ctrl._suggest_min_max(key)
+                    flagged.append({
+                        "item": item,
+                        "qoh": inv.get("qoh", 0),
+                        "min": inv.get("min"),
+                        "max": inv.get("max"),
+                        "sug_max": sug_max,
+                        "pack_size": item.get("pack_size"),
+                        "reasons": reasons,
+                    })
+
+        self._hide_loading()
+        write_debug("qt.check_stock_warnings.done", flagged=len(flagged))
+
+        if not flagged:
+            return True
+
+        MAX_FLAGGED_ROWS = 50
+        if len(flagged) > MAX_FLAGGED_ROWS:
+            from ui_qt.workflow_dialogs import TooManyFlaggedDialog
+            dialog = TooManyFlaggedDialog(len(flagged), parent=self)
+            dialog.exec()
+            return dialog.proceed
+
+        from ui_qt.workflow_dialogs import StockWarningsDialog
+        dialog = StockWarningsDialog(flagged, parent=self)
+        dialog.exec()
+        if not dialog.proceed:
+            return False
+        # Clear vendor on unchecked items
+        for item in dialog.items_to_unassign:
+            real_item = item.get("item", item)
+            real_item["vendor"] = ""
+        if dialog.items_to_unassign:
+            model.set_data(model.items, ctrl.session.inventory_lookup,
+                           ctrl.order_rules, ctrl._suggest_min_max)
+            self.bulk_tab._update_summary()
+        return True
 
     def _assigned_items_for_export(self) -> list[dict]:
         model = self.bulk_tab.model if self.bulk_tab else None
@@ -992,63 +1072,129 @@ class POBuilderShell(QMainWindow):
         return filepath
 
     def _on_remove_not_needed(self):
-        """Remove items that don't need ordering from the bulk grid."""
+        """Remove items that don't need ordering — scan + interactive dialog.
+
+        The scan takes ~730ms on 56K items — fast enough to run synchronously
+        with processEvents for status updates.  QThread was tried but caused
+        signal delivery issues (callback never fired on the main thread).
+        """
+        import time as _time
+        import perf_trace
         write_debug("qt.remove_not_needed.begin")
         ctrl = self.controller
         model = self.bulk_tab.model if self.bulk_tab else None
         if model is None:
             return
 
+        self._show_loading("Scanning for not-needed items\u2026")
+        QApplication.processEvents()
+
         from rules.not_needed import not_needed_reason
 
         items = model.items
-        removal_indices = []
+        candidates = []
         skipped_assigned = 0
+        total = len(items)
+        t0 = _time.perf_counter()
+        perf_trace.stamp("qt.remove_not_needed.scan.begin", total=total)
+        report_interval = max(1, total // 20)
         for i, item in enumerate(items):
-            # Match tkinter logic: by default, skip assigned items that
-            # have a positive final_qty and non-skip status — the operator
-            # assigned a vendor because they want to order.
+            if i % report_interval == 0 and i > 0:
+                self.status.showMessage(
+                    f"Scanning\u2026 {i:,}/{total:,} ({len(candidates)} flagged)"
+                )
+                QApplication.processEvents()
             vendor = str(item.get("vendor", "") or "").strip()
             if vendor:
-                item_needs_order = (item.get("final_qty") or 0) > 0 and item.get("status") != "skip"
+                item_needs_order = (
+                    (item.get("final_qty") or 0) > 0
+                    and item.get("status") != "skip"
+                )
                 if item_needs_order:
                     skipped_assigned += 1
                     continue
             try:
                 result = not_needed_reason(ctrl, item, max_exceed_abs_buffer=50)
-                # not_needed_reason returns (reason_str, auto_remove_bool)
                 reason = result[0] if isinstance(result, (list, tuple)) else result
+                auto = (result[1]
+                        if isinstance(result, (list, tuple)) and len(result) > 1
+                        else bool(reason))
                 if reason:
-                    removal_indices.append(i)
+                    key = (item.get("line_code", ""), item.get("item_code", ""))
+                    inv = ctrl.session.inventory_lookup.get(key, {})
+                    _, sug_max = ctrl._suggest_min_max(key)
+                    candidates.append({
+                        "index": i,
+                        "line_code": item.get("line_code", ""),
+                        "item_code": item.get("item_code", ""),
+                        "description": item.get("description", ""),
+                        "final_qty": item.get("final_qty", item.get("order_qty", 0)),
+                        "qoh": inv.get("qoh", 0),
+                        "max": inv.get("max"),
+                        "sug_max": sug_max,
+                        "reason": reason,
+                        "auto_remove": auto,
+                    })
             except Exception as exc:
                 write_debug("qt.remove_not_needed.item_error",
-                             index=i, line_code=item.get("line_code", ""),
-                             item_code=item.get("item_code", ""), error=str(exc))
+                             index=i,
+                             line_code=item.get("line_code", ""),
+                             item_code=item.get("item_code", ""),
+                             error=str(exc))
+        elapsed_ms = (_time.perf_counter() - t0) * 1000
+        perf_trace.stamp("qt.remove_not_needed.scan.done",
+                          total=total, flagged=len(candidates),
+                          skipped_assigned=skipped_assigned,
+                          elapsed_ms=round(elapsed_ms, 1))
+        self._hide_loading()
         write_debug("qt.remove_not_needed.scanned",
-                     total=len(items), flagged=len(removal_indices),
+                     total=total, flagged=len(candidates),
                      skipped_assigned=skipped_assigned)
-
-        if not removal_indices:
-            QMessageBox.information(
-                self, "Nothing to Remove",
-                "All items appear to need ordering.",
-            )
-            return
-
-        confirm = QMessageBox.question(
-            self, "Remove Not Needed",
-            f"Remove {len(removal_indices)} item(s) that don't need ordering?",
-            QMessageBox.Yes | QMessageBox.No,
+        self._show_remove_not_needed_dialog(
+            items, candidates, skipped_assigned, model, ctrl,
         )
-        if confirm != QMessageBox.Yes:
+
+    def _show_remove_not_needed_dialog(
+        self, items, candidates, skipped_assigned, model, ctrl,
+    ):
+        """Open the interactive dialog after scanning completes."""
+        if not candidates:
+            QMessageBox.information(self, "Nothing to Remove",
+                                    "All items appear to need ordering.")
             return
+
+        try:
+            write_debug("qt.remove_not_needed.dialog.build",
+                         candidates=len(candidates))
+            from ui_qt.workflow_dialogs import RemoveNotNeededDialog
+            dialog = RemoveNotNeededDialog(
+                candidates,
+                excluded_assigned_count=skipped_assigned,
+                parent=self,
+            )
+            write_debug("qt.remove_not_needed.dialog.show")
+            if dialog.exec() != RemoveNotNeededDialog.Accepted:
+                write_debug("qt.remove_not_needed.dialog.cancelled")
+                return
+        except Exception as exc:
+            write_debug("qt.remove_not_needed.dialog.error", error=str(exc))
+            QMessageBox.critical(self, "Error", f"Dialog failed: {exc}")
+            return
+
+        removed_candidate_indices = dialog.removed_indices
+        if not removed_candidate_indices:
+            return
+
+        removal_indices = sorted(
+            [candidates[ci]["index"] for ci in removed_candidate_indices],
+            reverse=True,
+        )
 
         # Capture for undo
         removal_pairs = [(i, items[i]) for i in removal_indices]
         self.undo_stack.push_removal("remove:not_needed", removal_pairs)
 
-        # Remove in reverse order
-        for i in sorted(removal_indices, reverse=True):
+        for i in removal_indices:
             items.pop(i)
 
         model.set_data(
@@ -1153,3 +1299,226 @@ class POBuilderShell(QMainWindow):
             self.bulk_tab._update_summary()
 
         self.status.showMessage(f"Ignored {ignore_key}", 5000)
+
+    # ── Workflow dialog launchers ──────────────────────────────────
+
+    def _on_vendor_review(self):
+        """Open vendor review dialog with session snapshot data."""
+        import storage
+        import vendor_summary_flow
+        ctrl = self.controller
+        sessions_dir = ctrl._data_path("sessions")
+        snapshots = storage.load_session_snapshots(sessions_dir, max_count=25) or []
+        lead_times = storage.infer_vendor_lead_times(snapshots) or {}
+        vendor_codes = list(getattr(ctrl, "vendor_codes_used", None) or [])
+        summaries = vendor_summary_flow.summarize_all_vendors(
+            snapshots, vendor_codes=vendor_codes or None,
+            lead_times=lead_times, top_n=5,
+        )
+        from ui_qt.workflow_dialogs import VendorReviewDialog
+        dialog = VendorReviewDialog(summaries, parent=self)
+        dialog.exec()
+
+    def _on_session_diff(self):
+        """Open session diff dialog."""
+        import session_diff_flow
+        ctrl = self.controller
+        sessions_dir = ctrl._data_path("sessions")
+        previous = session_diff_flow.load_previous_snapshot(sessions_dir)
+        items = []
+        model = self.bulk_tab.model if self.bulk_tab else None
+        if model:
+            items = list(model.items)
+        current = {"exported_items": items}
+        diff = session_diff_flow.diff_sessions(previous, current)
+        summary_text = session_diff_flow.format_diff_summary(diff) or "No changes since the last session."
+        snap_label = session_diff_flow.snapshot_label(previous) or ""
+        from ui_qt.workflow_dialogs import SessionDiffDialog
+        dialog = SessionDiffDialog(diff, summary_text=summary_text,
+                                    snapshot_label=snap_label, parent=self)
+        dialog.exec()
+
+    def _on_supplier_map(self):
+        """Open supplier map editor."""
+        import supplier_map_flow
+        ctrl = self.controller
+        path = ctrl._data_path("supplier_vendor_map")
+        mapping = supplier_map_flow.load_supplier_map(path)
+
+        from ui_qt.workflow_dialogs import SupplierMapDialog
+        dialog = SupplierMapDialog(mapping, parent=self)
+
+        def _on_learn():
+            import storage
+            sessions_dir = ctrl._data_path("sessions")
+            snapshots = storage.load_session_snapshots(sessions_dir, max_count=25) or []
+            inferred = supplier_map_flow.build_supplier_map_from_history(snapshots)
+            if not inferred:
+                QMessageBox.information(dialog, "Nothing to Learn",
+                                        "No supplier\u2192vendor pairs found in snapshots.")
+                return
+            merged = supplier_map_flow.merge_supplier_maps(dialog.working_mapping, inferred)
+            dialog.set_mapping(merged)
+
+        def _on_apply(working):
+            model = self.bulk_tab.model if self.bulk_tab else None
+            if model is None:
+                return
+            pairs = supplier_map_flow.apply_supplier_map(model.items, working)
+            if not pairs:
+                QMessageBox.information(dialog, "Nothing to Apply",
+                                        "No unassigned items match a mapped supplier.")
+                return
+            for item, vendor in pairs:
+                item["vendor"] = vendor
+            model.set_data(model.items, ctrl.session.inventory_lookup,
+                           ctrl.order_rules, ctrl._suggest_min_max)
+            self.bulk_tab._update_summary()
+            QMessageBox.information(dialog, "Applied",
+                                    f"Auto-assigned {len(pairs)} item(s).")
+
+        def _on_save(working):
+            try:
+                supplier_map_flow.save_supplier_map(path, working)
+            except Exception as exc:
+                QMessageBox.critical(dialog, "Save Failed", str(exc))
+
+        dialog.learn_requested.connect(_on_learn)
+        dialog.apply_requested.connect(_on_apply)
+        dialog.save_requested.connect(_on_save)
+        dialog.exec()
+
+    def _on_qoh_review(self):
+        """Open QOH adjustments review dialog."""
+        import qoh_review_flow
+        ctrl = self.controller
+        adjustments = getattr(ctrl, "qoh_adjustments", {}) or {}
+        inv_lookup = ctrl.session.inventory_lookup if ctrl.session else {}
+        rows = qoh_review_flow.format_qoh_adjustments(adjustments, inv_lookup)
+
+        from ui_qt.workflow_dialogs import QohReviewDialog
+        dialog = QohReviewDialog(rows, parent=self)
+        if dialog.exec() == QohReviewDialog.Accepted and dialog.reverted_keys:
+            reverted = qoh_review_flow.revert_qoh_adjustments(
+                adjustments, inv_lookup, dialog.reverted_keys,
+            )
+            if reverted:
+                model = self.bulk_tab.model if self.bulk_tab else None
+                if model:
+                    model.set_data(model.items, inv_lookup,
+                                   ctrl.order_rules, ctrl._suggest_min_max)
+                    self.bulk_tab._update_summary()
+                self.status.showMessage(
+                    f"Reverted {len(dialog.reverted_keys)} QOH edit(s)", 5000,
+                )
+
+    def _on_skip_actions(self):
+        """Open skip cleanup tools dialog."""
+        import skip_actions_flow
+        model = self.bulk_tab.model if self.bulk_tab else None
+        if model is None:
+            return
+        items = list(model.items)
+        skip_items = skip_actions_flow.filter_skip_items(items)
+        clusters = skip_actions_flow.count_skip_clusters_by_line_code(items)
+
+        from ui_qt.workflow_dialogs import SkipActionsDialog
+        dialog = SkipActionsDialog(skip_items, clusters, parent=self)
+
+        def _on_action(action, scope):
+            ctrl = self.controller
+            if action == "ignore":
+                keys = skip_actions_flow.collect_ignore_keys(scope)
+                if keys:
+                    ctrl.ignored_item_keys.update(keys)
+                    try:
+                        import storage
+                        storage.save_ignored_items(
+                            ctrl._data_path("ignored_items"), ctrl.ignored_item_keys,
+                        )
+                    except Exception:
+                        pass
+                    QMessageBox.information(dialog, "Ignored",
+                                            f"Added {len(keys)} item(s) to ignore list.")
+                    dialog.accept()
+            elif action == "flag_discontinue":
+                flagged = 0
+                for lc, ic in skip_actions_flow.collect_keys_for_action(scope):
+                    rule_key = f"{lc}:{ic}"
+                    rule = ctrl.order_rules.setdefault(rule_key, {})
+                    if not rule.get("discontinue_candidate"):
+                        rule["discontinue_candidate"] = True
+                        flagged += 1
+                ctrl._save_order_rules()
+                QMessageBox.information(dialog, "Flagged",
+                                        f"Flagged {flagged} item(s) as discontinue candidates.")
+            elif action == "export_csv":
+                inv_lookup = ctrl.session.inventory_lookup if ctrl.session else {}
+                rows = skip_actions_flow.build_skip_export_rows(scope, inv_lookup)
+                if not rows:
+                    QMessageBox.information(dialog, "Nothing to Export", "No usable rows.")
+                    return
+                path, _ = QFileDialog.getSaveFileName(
+                    dialog, "Export Skip List", "skip_review.csv",
+                    "CSV (*.csv);;All files (*.*)",
+                )
+                if not path:
+                    return
+                try:
+                    csv_text = skip_actions_flow.render_skip_csv(rows)
+                    with open(path, "w", encoding="utf-8", newline="") as fh:
+                        fh.write(csv_text)
+                    QMessageBox.information(dialog, "Exported",
+                                            f"Wrote {len(rows)} row(s) to:\n{os.path.abspath(path)}")
+                except OSError as exc:
+                    QMessageBox.critical(dialog, "Export Failed", str(exc))
+
+        dialog.action_requested.connect(_on_action)
+        dialog.exec()
+
+    def _on_session_history(self):
+        """Open session history browser."""
+        import storage
+        ctrl = self.controller
+        sessions_dir = ctrl._data_path("sessions")
+        snapshots = storage.load_session_snapshots(sessions_dir, max_count=None)
+        from ui_qt.workflow_dialogs import SessionHistoryDialog
+        dialog = SessionHistoryDialog(snapshots, parent=self)
+        dialog.exec()
+
+    def _on_ignored_items(self):
+        """Open ignored items manager."""
+        ctrl = self.controller
+        keys = sorted(ctrl.ignored_item_keys)
+        from ui_qt.workflow_dialogs import IgnoredItemsDialog
+        dialog = IgnoredItemsDialog(keys, parent=self)
+        dialog.exec()
+        if dialog.keys_to_remove:
+            ctrl.ignored_item_keys -= dialog.keys_to_remove
+            try:
+                import storage
+                storage.save_ignored_items(
+                    ctrl._data_path("ignored_items"), ctrl.ignored_item_keys,
+                )
+            except Exception:
+                pass
+            self.status.showMessage(
+                f"Removed {len(dialog.keys_to_remove)} item(s) from ignore list", 5000,
+            )
+
+    def _on_vendor_manager(self):
+        """Open vendor manager dialog."""
+        ctrl = self.controller
+        codes = list(getattr(ctrl, "vendor_codes_used", None) or [])
+        from ui_qt.workflow_dialogs import VendorManagerDialog
+        dialog = VendorManagerDialog(codes, parent=self)
+        dialog.exec()
+        # Apply changes
+        for change in dialog.changes:
+            action = change.get("action")
+            if action == "add":
+                ctrl._remember_vendor_code(change["code"])
+            elif action == "remove":
+                ctrl._remove_vendor_code(change["code"])
+            elif action == "rename":
+                ctrl._rename_vendor_code(change["old"], change["new"])

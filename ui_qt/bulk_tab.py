@@ -74,6 +74,15 @@ class BulkTab(QWidget):
     draft_review_requested = Signal()
     undo_requested = Signal()
     redo_requested = Signal()
+    # Workflow dialog signals
+    vendor_review_requested = Signal()
+    session_diff_requested = Signal()
+    supplier_map_requested = Signal()
+    qoh_review_requested = Signal()
+    skip_actions_requested = Signal()
+    session_history_requested = Signal()
+    ignored_items_requested = Signal()
+    vendor_manager_requested = Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -221,6 +230,24 @@ class BulkTab(QWidget):
             btn.setStyleSheet(_SECONDARY_BTN)
             btn.clicked.connect(handler)
             action_layout.addWidget(btn)
+
+        self._add_separator(action_layout)
+
+        # "More" dropdown — workflow dialogs
+        btn_more = QPushButton("More \u25BE")
+        btn_more.setStyleSheet(_SECONDARY_BTN)
+        self._more_menu = QMenu(self)
+        self._more_menu.addAction("Vendor Review", lambda: self.vendor_review_requested.emit())
+        self._more_menu.addAction("Session Diff", lambda: self.session_diff_requested.emit())
+        self._more_menu.addAction("Supplier Map", lambda: self.supplier_map_requested.emit())
+        self._more_menu.addAction("QOH Adjustments", lambda: self.qoh_review_requested.emit())
+        self._more_menu.addAction("Skip Cleanup", lambda: self.skip_actions_requested.emit())
+        self._more_menu.addSeparator()
+        self._more_menu.addAction("Session History", lambda: self.session_history_requested.emit())
+        self._more_menu.addAction("Ignored Items", lambda: self.ignored_items_requested.emit())
+        self._more_menu.addAction("Vendor Manager", lambda: self.vendor_manager_requested.emit())
+        btn_more.setMenu(self._more_menu)
+        action_layout.addWidget(btn_more)
 
         action_layout.addStretch(1)
         layout.addWidget(action_card)

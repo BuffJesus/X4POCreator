@@ -45,6 +45,10 @@ def main() -> int:
     app.setApplicationVersion(APP_VERSION)
     app.setOrganizationName("POBuilder")
 
+    # Enable perf tracing when DEBUG_PERF=1 or perf_trace.enabled flag exists
+    import perf_trace
+    perf_trace.maybe_auto_enable()
+
     # Apply the app-wide stylesheet so every default Qt widget inherits
     # the dark palette without per-widget styling.
     app.setStyleSheet(tq.app_stylesheet())
