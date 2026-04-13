@@ -213,8 +213,8 @@ def build_row_values(item: dict, inventory_lookup: dict, order_rules: dict,
         pack_size if pack_size else "",           # 15
         unit_cost_display,            # 16 unit_cost
         ext_cost_display,             # 17 ext_cost
-        inventory.get("last_sale", "") or "",    # 18 last_sale
-        inventory.get("last_receipt", "") or "",  # 19 last_receipt
+        inventory.get("last_sale", "") or item.get("last_sale_date", "") or "",  # 18 last_sale
+        inventory.get("last_receipt", "") or item.get("last_receipt_date", "") or "",  # 19 last_receipt
         supplier,                     # 20 supplier
         why,                          # 21 why
         notes,                        # 22 notes

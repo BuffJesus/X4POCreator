@@ -94,11 +94,15 @@ class ItemDetailsDialog(QDialog):
         cost_display = f"${repl_cost:,.2f}" if isinstance(repl_cost, (int, float)) and repl_cost else ""
         risk = item.get("stockout_risk_score")
         risk_display = f"{int(round(risk * 100))}%" if isinstance(risk, float) else ""
+        last_sale = inv.get("last_sale", "") or item.get("last_sale_date", "")
+        last_receipt = inv.get("last_receipt", "") or item.get("last_receipt_date", "")
         activity_fields = [
             ("Unit Cost", cost_display),
-            ("Last Sale", inv.get("last_sale", "")),
-            ("Last Receipt", inv.get("last_receipt", "")),
+            ("Last Sale", last_sale),
+            ("Last Receipt", last_receipt),
             ("Days Since Last Sale", item.get("days_since_last_sale", "")),
+            ("Avg Days Between Sales", item.get("avg_days_between_sales", "")),
+            ("Transaction Count", item.get("transaction_count", "")),
             ("Stockout Risk", risk_display),
             ("Dead Stock", item.get("dead_stock", "")),
             ("Recency Confidence", item.get("recency_confidence", "")),

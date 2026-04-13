@@ -41,8 +41,11 @@ def sales_last_sale_metrics(last_sale_value, *, now=None, parse_date):
     }
 
 
-def annotate_sales_items(sales_items, *, inventory_lookup, sales_span_days, parse_date, now=None):
+def annotate_sales_items(sales_items, *, inventory_lookup, sales_span_days, parse_date, now=None,
+                         detailed_sales_stats_lookup=None, receipt_history_lookup=None):
     span_days = _coerce_span_days(sales_span_days)
+    ds_lookup = detailed_sales_stats_lookup or {}
+    rh_lookup = receipt_history_lookup or {}
     for item in sales_items:
         key = (item.get("line_code", ""), item.get("item_code", ""))
         inv = inventory_lookup.get(key, {}) or {}
@@ -54,11 +57,18 @@ def annotate_sales_items(sales_items, *, inventory_lookup, sales_span_days, pars
         item["annualized_sales_loaded"] = _annualize(qty_sold, span_days)
         item["avg_weekly_receipts_loaded"] = _weekly_rate(qty_received, span_days)
         item["annualized_receipts_loaded"] = _annualize(qty_received, span_days)
+        # Last sale: prefer X4 inventory field, fall back to detailed sales stats
+        last_sale_raw = inv.get("last_sale", "")
+        if not last_sale_raw:
+            ds_stats = ds_lookup.get(key, {})
+            last_sale_raw = ds_stats.get("last_sale_date", "")
         item.update(
-            sales_last_sale_metrics(
-                inv.get("last_sale", ""),
-                now=now,
-                parse_date=parse_date,
-            )
+            sales_last_sale_metrics(last_sale_raw, now=now, parse_date=parse_date)
         )
+        # Last receipt: prefer X4 inventory field, fall back to receipt history
+        if not inv.get("last_receipt"):
+            rh = rh_lookup.get(key, {})
+            receipt_date = rh.get("last_receipt_date", "")
+            if receipt_date:
+                item["last_receipt_date"] = receipt_date
     return sales_items

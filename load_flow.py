@@ -827,6 +827,8 @@ def parse_all_files(
         sales_span_days=result.get("sales_span_days"),
         parse_date=parsers.parse_x4_date,
         now=now,
+        detailed_sales_stats_lookup=result.get("detailed_sales_stats_lookup"),
+        receipt_history_lookup=result.get("receipt_history_lookup"),
     )
     for item in result["sales_items"]:
         stats = result["detailed_sales_stats_lookup"].get((item.get("line_code", ""), item.get("item_code", "")), {})
