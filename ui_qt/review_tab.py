@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QHeaderView,
     QLabel,
+    QLineEdit,
     QMenu,
     QMessageBox,
     QPushButton,
@@ -175,10 +176,32 @@ class ReviewTab(QWidget):
         export_layout.setContentsMargins(t.SPACE_LG, t.SPACE_MD, t.SPACE_LG, t.SPACE_MD)
         export_layout.setSpacing(t.SPACE_MD)
 
+        export_left = QVBoxLayout()
+        export_left.setSpacing(t.SPACE_XS)
+
         self._export_summary = QLabel()
         self._export_summary.setTextFormat(Qt.RichText)
         self._export_summary.setStyleSheet(f"color: {t.TEXT_SECONDARY};")
-        export_layout.addWidget(self._export_summary, stretch=1)
+        export_left.addWidget(self._export_summary)
+
+        memo_row = QHBoxLayout()
+        memo_row.setSpacing(t.SPACE_SM)
+        memo_label = QLabel("PO Memo:")
+        memo_label.setStyleSheet(f"color: {t.TEXT_DIM}; font-size: {t.FONT_SMALL}px;")
+        memo_row.addWidget(memo_label)
+        self._memo_edit = QLineEdit()
+        self._memo_edit.setPlaceholderText("Optional note for all PO files")
+        self._memo_edit.setStyleSheet(
+            f"background: {t.BG_INSET}; color: {t.TEXT_PRIMARY}; "
+            f"border: 1px solid {t.BORDER}; border-radius: 3px; "
+            f"padding: 2px 6px; font-size: {t.FONT_SMALL}px;"
+        )
+        self._memo_edit.setMaximumWidth(300)
+        memo_row.addWidget(self._memo_edit)
+        memo_row.addStretch(1)
+        export_left.addLayout(memo_row)
+
+        export_layout.addLayout(export_left, stretch=1)
 
         self._export_btn = QPushButton("Export PO Files ->")
         self._export_btn.setFixedHeight(40)

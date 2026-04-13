@@ -210,6 +210,7 @@ class POBuilderShell(QMainWindow):
                 self.bulk_tab.session_history_requested.connect(self._on_session_history)
                 self.bulk_tab.ignored_items_requested.connect(self._on_ignored_items)
                 self.bulk_tab.vendor_manager_requested.connect(self._on_vendor_manager)
+                self.bulk_tab.settings_requested.connect(self._on_settings)
                 self.bulk_tab.export_dead_stock.connect(self._on_export_dead_stock)
                 self.bulk_tab.export_deferred.connect(self._on_export_deferred)
                 self.bulk_tab.export_session_summary.connect(self._on_export_session_summary)
@@ -846,6 +847,29 @@ class POBuilderShell(QMainWindow):
                 self, "Draft Review Error", f"Failed to generate draft review:\n{exc}",
             )
 
+    # ── Settings ──────────────────────────────────────────────────
+
+    def _on_settings(self):
+        from ui_qt.settings_dialog import SettingsDialog
+        dialog = SettingsDialog(self.app_settings, parent=self)
+        if dialog.exec() == SettingsDialog.Accepted and dialog.changed:
+            self._save_settings()
+            write_debug("qt.settings.saved")
+
+    def _save_settings(self):
+        import storage
+        import sys as _sys
+        if getattr(_sys, "frozen", False):
+            data_dir = os.path.dirname(_sys.executable)
+        else:
+            data_dir = os.path.dirname(os.path.abspath(__file__))
+            data_dir = os.path.dirname(data_dir)  # up from ui_qt/
+        path = os.path.join(data_dir, "po_builder_settings.json")
+        try:
+            storage.save_json_file(path, self.app_settings)
+        except Exception as exc:
+            write_debug("qt.settings.save_error", error=str(exc))
+
     # ── Analysis Reports ───────────────────────────────────────────
 
     def _on_export_dead_stock(self):
@@ -1045,8 +1069,13 @@ class POBuilderShell(QMainWindow):
         """
         if not self._qt_check_stock_warnings():
             return
+        # Capture PO memo from review tab before exporting
+        self._po_memo = ""
+        if self.review_tab and hasattr(self.review_tab, "_memo_edit"):
+            self._po_memo = self.review_tab._memo_edit.text().strip()
         assigned = self._assigned_items_for_export()
-        write_debug("qt.export.begin", assigned=len(assigned))
+        write_debug("qt.export.begin", assigned=len(assigned),
+                     po_memo=bool(self._po_memo))
         export_flow.do_export(
             self,
             self._export_vendor_po,
@@ -1249,6 +1278,7 @@ class POBuilderShell(QMainWindow):
         from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
         from datetime import datetime
 
+        po_memo = getattr(self, "_po_memo", "") or ""
         header_font = Font(bold=True, size=11, color="FFFFFF")
         header_fill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
         thin_border = Border(
@@ -1261,8 +1291,9 @@ class POBuilderShell(QMainWindow):
         ws.title = "PO Import"
 
         headers = ["product group", "item code", "order quantity"]
-        has_notes = any(item.get("notes") for item in items)
-        if has_notes:
+        has_item_notes = any(item.get("notes") for item in items)
+        include_notes = bool(po_memo) or has_item_notes
+        if include_notes:
             headers.append("Notes")
         for col_idx, header in enumerate(headers, 1):
             cell = ws.cell(row=1, column=col_idx, value=header)
@@ -1279,8 +1310,9 @@ class POBuilderShell(QMainWindow):
                 cell.border = thin_border
             ic.number_format = "@"
             qty.alignment = Alignment(horizontal="center")
-            if has_notes:
-                note = ws.cell(row=row_idx, column=4, value=item.get("notes", ""))
+            if include_notes:
+                note_text = item.get("notes", "") or po_memo
+                note = ws.cell(row=row_idx, column=4, value=note_text)
                 note.border = thin_border
 
         ws.column_dimensions["A"].width = 16
