@@ -3,13 +3,12 @@
 **Know who you're buying from, catch mismatches before export, and
 assign vendors in bulk by supplier name.**
 
-This release adds vendor mismatch detection, a settings dialog, PO
-memo support, a supplier-based bulk assignment tool, a formatted
-dead stock report you can hand to vendors, and a proper post-load
-summary.  It also fixes the progress bar freeze on large datasets
-and cleans up 87 stale files from the repo.
+Vendor mismatch detection, settings dialog, PO memo, supplier-based
+bulk assignment, formatted dead stock xlsx, proper post-load summary,
+missing date fix, progress bar fix, README rewrite, and a repo
+cleanup that removed 100+ stale files.
 
-872 tests pass.
+872 tests pass.  126 tracked files.
 
 ---
 
@@ -99,13 +98,38 @@ now updates live throughout the load.
 
 ---
 
+## Missing Last Sale / Last Receipt Dates Fixed
+
+Items like ACK-06B606 showed blank Last Sale / Last Receipt even
+though the detailed sales CSV had transaction dates for them.
+
+**Root cause:** the date annotation only checked X4's inventory
+report field.  When X4 left that blank, the detailed sales data
+(which had the actual dates) was ignored.
+
+**Fix:** falls back to detailed sales stats and receipt history
+when X4 fields are empty.  Item details dialog also now shows
+avg days between sales and transaction count.
+
+---
+
+## README Rewrite
+
+Old README referenced v0.3.0, deleted tkinter files, and a module
+layout from 6 months ago.  Full rewrite reflecting the Qt stack,
+current features, and actual architecture.
+
+---
+
 ## Repo Cleanup
 
 - Deleted 71 patch-level release notes (v0.1.x through v0.10.x)
 - Deleted 6 old roadmap files, stale VERSION, handoff docs
+- Deleted 8 screenshots, stale PowerShell script, debug spec
 - Removed runtime artifacts from git (cache, trace logs)
-- Updated .gitignore to prevent re-tracking
-- Total: 87 files removed, ~15,000 lines deleted
+- Tightened .gitignore (*.png, *.spec, *.jsonl, output_qt/)
+- Removed empty orphan directories (app/, parsing/)
+- Total: 100+ files removed from repo, 126 remain
 
 ---
 
@@ -114,6 +138,7 @@ now updates live throughout the load.
 | Metric | Count |
 |--------|-------|
 | Tests passing | 872 |
+| Tracked files | 126 |
 | New features | 6 (mismatch, supplier apply, settings, memo, summary, xlsx report) |
-| Bug fixes | 1 (GIL progress freeze) |
-| Files cleaned | 87 |
+| Bug fixes | 2 (GIL progress freeze, missing dates) |
+| Files cleaned | 100+ |
