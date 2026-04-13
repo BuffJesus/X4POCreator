@@ -33,13 +33,17 @@ def determine_target_stock(item):
         demand_signal = item.get("qty_sold", 0) + item.get("qty_suspended", 0)
     item["demand_signal"] = demand_signal
 
-    target_candidates = [value for value in (current_max, suggested_max) if isinstance(value, (int, float)) and value > 0]
-    if target_candidates:
-        target_stock = max(target_candidates)
-        if isinstance(current_max, (int, float)) and current_max == target_stock:
-            item["target_basis"] = "current_max"
-        else:
-            item["target_basis"] = "suggested_max"
+    # Operator-set current_max is authoritative — suggested_max only
+    # fills the gap when no explicit max exists.  Prior logic took
+    # max(current_max, suggested_max) which let a formula-driven
+    # suggestion override an intentional operator limit (e.g. hose
+    # with max=420 getting suggested_max=769 → ordering 2 rolls).
+    if isinstance(current_max, (int, float)) and current_max > 0:
+        target_stock = current_max
+        item["target_basis"] = "current_max"
+    elif isinstance(suggested_max, (int, float)) and suggested_max > 0:
+        target_stock = suggested_max
+        item["target_basis"] = "suggested_max"
     else:
         fallback_candidates = [value for value in (current_min, suggested_min, demand_signal) if isinstance(value, (int, float)) and value > 0]
         target_stock = max(fallback_candidates) if fallback_candidates else 0
