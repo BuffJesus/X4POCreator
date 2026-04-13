@@ -7,7 +7,6 @@ import perf_trace
 import reorder_flow
 import shipping_flow
 import storage
-import ui_bulk
 from item_workflow import apply_recent_order_context
 from rules import enrich_item, get_rule_float, get_rule_int, get_rule_pack_size, has_exact_qty_override
 
@@ -337,7 +336,7 @@ def prepare_assignment_session(
         return False
 
     filtered_items.sort(key=lambda x: (x["line_code"], x["item_code"]))
-    ui_bulk.replace_filtered_items(session, filtered_items)
+    session.filtered_items = list(filtered_items)
 
     perf_trace.stamp(
         "assignment_flow.candidates_build_breakdown",

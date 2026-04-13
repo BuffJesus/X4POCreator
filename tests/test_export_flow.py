@@ -107,11 +107,11 @@ class ExportFlowTests(unittest.TestCase):
             {"item_code": "E", "release_decision": "export_next_business_day_for_free_day"},
         ]
 
-        with patch("export_flow.messagebox.askyesnocancel", return_value=False):
-            selected = export_flow.choose_export_items(
-                SimpleNamespace(app_settings={"mixed_export_behavior": "ask_when_mixed"}),
-                items,
-            )
+        app = SimpleNamespace(
+            app_settings={"mixed_export_behavior": "ask_when_mixed"},
+            _ask_yes_no_cancel=lambda t, m: False,
+        )
+        selected = export_flow.choose_export_items(app, items)
 
         self.assertEqual([item["item_code"] for item in selected], ["A"])
 
@@ -132,11 +132,11 @@ class ExportFlowTests(unittest.TestCase):
             {"item_code": "E", "release_decision": "export_next_business_day_for_free_day"},
         ]
 
-        with patch("export_flow.messagebox.askyesno", return_value=True):
-            selected = export_flow.choose_export_items(
-                SimpleNamespace(app_settings={"planned_only_export_behavior": "ask_before_export"}),
-                items,
-            )
+        app = SimpleNamespace(
+            app_settings={"planned_only_export_behavior": "ask_before_export"},
+            _ask_yes_no=lambda t, m: True,
+        )
+        selected = export_flow.choose_export_items(app, items)
 
         self.assertEqual([item["item_code"] for item in selected], ["E"])
 
@@ -154,34 +154,6 @@ class ExportFlowTests(unittest.TestCase):
         self.assertEqual([item["item_code"] for item in immediate], ["A"])
         self.assertEqual([item["item_code"] for item in planned], ["B"])
         self.assertEqual([item["item_code"] for item in all_exportable], ["A", "B", "C"])
-
-    def test_choose_output_dir_uses_saved_last_export_dir_when_it_exists(self):
-        app = SimpleNamespace(
-            app_settings={"last_export_dir": "C:\\Exports"},
-            _get_last_export_dir=lambda: "C:\\Exports",
-            _set_last_export_dir=lambda path: None,
-        )
-
-        with patch("export_flow.os.path.isdir", return_value=True), \
-             patch("export_flow.filedialog.askdirectory", return_value="C:\\Exports\\Next") as mocked_dir:
-            output_dir = export_flow.choose_output_dir(app)
-
-        self.assertEqual(output_dir, "C:\\Exports\\Next")
-        self.assertEqual(mocked_dir.call_args.kwargs["initialdir"], "C:\\Exports")
-
-    def test_choose_output_dir_persists_selected_folder(self):
-        saved = {}
-        app = SimpleNamespace(
-            app_settings={},
-            _get_last_export_dir=lambda: "",
-            _set_last_export_dir=lambda path: saved.update({"path": path}),
-        )
-
-        with patch("export_flow.filedialog.askdirectory", return_value="C:\\Exports\\Next"):
-            output_dir = export_flow.choose_output_dir(app)
-
-        self.assertEqual(output_dir, "C:\\Exports\\Next")
-        self.assertEqual(saved["path"], "C:\\Exports\\Next")
 
     def test_choose_output_dir_uses_app_hook_when_available(self):
         app = SimpleNamespace(_choose_output_dir=lambda: "D:\\POs")
@@ -341,37 +313,36 @@ class ExportFlowTests(unittest.TestCase):
             qoh_adjustments={},
             order_rules={},
         )
+        info_calls = []
         app = SimpleNamespace(
             session=session,
             app_settings={"mixed_export_behavior": "ask_when_mixed"},
-            root=SimpleNamespace(update=lambda: None),
             _show_loading=lambda message: None,
             _hide_loading=lambda: None,
             _persist_suspense_carry=lambda: {"conflict": True},
             _build_maintenance_report=lambda: [],
             _show_maintenance_report=lambda output_dir, issues: None,
-            var_sales_path=SimpleNamespace(get=lambda: ""),
-            var_po_path=SimpleNamespace(get=lambda: ""),
-            var_susp_path=SimpleNamespace(get=lambda: ""),
-            var_onhand_path=SimpleNamespace(get=lambda: ""),
-            var_minmax_path=SimpleNamespace(get=lambda: ""),
-            var_packsize_path=SimpleNamespace(get=lambda: ""),
+            _show_info=lambda t, m: info_calls.append((t, m)),
+            _show_warning=lambda t, m: None,
+            _ask_yes_no=lambda t, m: True,
+            _ask_yes_no_cancel=lambda t, m: True,
+            _show_export_preview_dialog=lambda p: True,
+            _loaded_report_paths_for_snapshot=lambda: {},
         )
 
-        with tempfile.TemporaryDirectory() as tmp, \
-             patch("export_flow.filedialog.askdirectory", return_value=tmp), \
-             patch("export_flow.storage.append_order_history"), \
-             patch("export_flow.storage.save_session_snapshot"), \
-             patch("export_flow.messagebox.showinfo") as mocked_info:
-            export_flow.do_export(
-                app,
-                lambda vendor, items, output_dir: str(Path(output_dir) / f"{vendor}.xlsx"),
-                str(Path(tmp) / "order_history.json"),
-                str(Path(tmp) / "sessions"),
-            )
+        with tempfile.TemporaryDirectory() as tmp:
+            app._choose_output_dir = lambda: tmp
+            with patch("export_flow.storage.append_order_history"), \
+                 patch("export_flow.storage.save_session_snapshot"):
+                export_flow.do_export(
+                    app,
+                    lambda vendor, items, output_dir: str(Path(output_dir) / f"{vendor}.xlsx"),
+                    str(Path(tmp) / "order_history.json"),
+                    str(Path(tmp) / "sessions"),
+                )
 
-        mocked_info.assert_called_once()
-        self.assertIn("merged your update with newer shared data", mocked_info.call_args.args[1])
+        self.assertEqual(len(info_calls), 1)
+        self.assertIn("merged your update with newer shared data", info_calls[0][1])
 
     def test_do_export_skips_held_items_and_notes_them_in_completion_message(self):
         session = AppSessionState(
@@ -407,45 +378,43 @@ class ExportFlowTests(unittest.TestCase):
             qoh_adjustments={},
             order_rules={},
         )
+        info_calls = []
         app = SimpleNamespace(
             session=session,
             app_settings={"mixed_export_behavior": "ask_when_mixed"},
-            root=SimpleNamespace(update=lambda: None),
             _show_loading=lambda message: None,
             _hide_loading=lambda: None,
             _persist_suspense_carry=lambda: {"conflict": False},
             _build_maintenance_report=lambda: [],
             _show_maintenance_report=lambda output_dir, issues: None,
-            var_sales_path=SimpleNamespace(get=lambda: ""),
-            var_po_path=SimpleNamespace(get=lambda: ""),
-            var_susp_path=SimpleNamespace(get=lambda: ""),
-            var_onhand_path=SimpleNamespace(get=lambda: ""),
-            var_minmax_path=SimpleNamespace(get=lambda: ""),
-            var_packsize_path=SimpleNamespace(get=lambda: ""),
+            _show_info=lambda t, m: info_calls.append((t, m)),
+            _show_warning=lambda t, m: None,
+            _ask_yes_no=lambda t, m: True,
+            _ask_yes_no_cancel=lambda t, m: True,
+            _show_export_preview_dialog=lambda p: True,
+            _loaded_report_paths_for_snapshot=lambda: {},
         )
 
-        with tempfile.TemporaryDirectory() as tmp, \
-             patch("export_flow.messagebox.askyesnocancel", return_value=True), \
-             patch("export_flow.filedialog.askdirectory", return_value=tmp), \
-             patch("export_flow.storage.append_order_history") as mocked_history, \
-             patch("export_flow.storage.save_session_snapshot"), \
-             patch("export_flow.messagebox.showinfo") as mocked_info:
-            export_flow.do_export(
-                app,
-                lambda vendor, items, output_dir: str(Path(output_dir) / f"{vendor}_{len(items)}.xlsx"),
-                str(Path(tmp) / "order_history.json"),
-                str(Path(tmp) / "sessions"),
-            )
+        with tempfile.TemporaryDirectory() as tmp:
+            app._choose_output_dir = lambda: tmp
+            with patch("export_flow.storage.append_order_history") as mocked_history, \
+                 patch("export_flow.storage.save_session_snapshot"):
+                export_flow.do_export(
+                    app,
+                    lambda vendor, items, output_dir: str(Path(output_dir) / f"{vendor}_{len(items)}.xlsx"),
+                    str(Path(tmp) / "order_history.json"),
+                    str(Path(tmp) / "sessions"),
+                )
 
         mocked_history.assert_called_once()
         exported_items = mocked_history.call_args.args[1]
         self.assertEqual(len(exported_items), 2)
         self.assertEqual(exported_items[0]["item_code"], "GH781-4")
         self.assertEqual(exported_items[1]["item_code"], "GH781-6")
-        self.assertIn("planned-release POs", mocked_info.call_args.args[1])
-        self.assertIn("were held by shipping policy and were not exported", mocked_info.call_args.args[1])
-        self.assertIn("critical exceptions", mocked_info.call_args.args[1])
-        self.assertIn("target order/release dates", mocked_info.call_args.args[1])
+        self.assertIn("planned-release POs", info_calls[-1][1])
+        self.assertIn("were held by shipping policy and were not exported", info_calls[-1][1])
+        self.assertIn("critical exceptions", info_calls[-1][1])
+        self.assertIn("target order/release dates", info_calls[-1][1])
 
     def test_do_export_can_skip_planned_items_and_export_immediate_only(self):
         session = AppSessionState(
@@ -472,32 +441,29 @@ class ExportFlowTests(unittest.TestCase):
         app = SimpleNamespace(
             session=session,
             app_settings={"mixed_export_behavior": "ask_when_mixed"},
-            root=SimpleNamespace(update=lambda: None),
             _show_loading=lambda message: None,
             _hide_loading=lambda: None,
             _persist_suspense_carry=lambda: {"conflict": False},
             _build_maintenance_report=lambda: [],
             _show_maintenance_report=lambda output_dir, issues: None,
-            var_sales_path=SimpleNamespace(get=lambda: ""),
-            var_po_path=SimpleNamespace(get=lambda: ""),
-            var_susp_path=SimpleNamespace(get=lambda: ""),
-            var_onhand_path=SimpleNamespace(get=lambda: ""),
-            var_minmax_path=SimpleNamespace(get=lambda: ""),
-            var_packsize_path=SimpleNamespace(get=lambda: ""),
+            _show_info=lambda t, m: None,
+            _show_warning=lambda t, m: None,
+            _ask_yes_no=lambda t, m: True,
+            _ask_yes_no_cancel=lambda t, m: False,
+            _show_export_preview_dialog=lambda p: True,
+            _loaded_report_paths_for_snapshot=lambda: {},
         )
 
-        with tempfile.TemporaryDirectory() as tmp, \
-             patch("export_flow.messagebox.askyesnocancel", return_value=False), \
-             patch("export_flow.filedialog.askdirectory", return_value=tmp), \
-             patch("export_flow.storage.append_order_history") as mocked_history, \
-             patch("export_flow.storage.save_session_snapshot"), \
-             patch("export_flow.messagebox.showinfo"):
-            export_flow.do_export(
-                app,
-                lambda vendor, items, output_dir: str(Path(output_dir) / f"{vendor}_{len(items)}.xlsx"),
-                str(Path(tmp) / "order_history.json"),
-                str(Path(tmp) / "sessions"),
-            )
+        with tempfile.TemporaryDirectory() as tmp:
+            app._choose_output_dir = lambda: tmp
+            with patch("export_flow.storage.append_order_history") as mocked_history, \
+                 patch("export_flow.storage.save_session_snapshot"):
+                export_flow.do_export(
+                    app,
+                    lambda vendor, items, output_dir: str(Path(output_dir) / f"{vendor}_{len(items)}.xlsx"),
+                    str(Path(tmp) / "order_history.json"),
+                    str(Path(tmp) / "sessions"),
+                )
 
         mocked_history.assert_called_once()
         exported_items = mocked_history.call_args.args[1]
@@ -527,42 +493,38 @@ class ExportFlowTests(unittest.TestCase):
             qoh_adjustments={},
             order_rules={},
         )
+        ask_calls = []
         app = SimpleNamespace(
             session=session,
             app_settings={"mixed_export_behavior": "ask_when_mixed"},
-            root=SimpleNamespace(update=lambda: None),
             _show_loading=lambda message: None,
             _hide_loading=lambda: None,
             _persist_suspense_carry=lambda: {"conflict": False},
             _build_maintenance_report=lambda: [],
             _show_maintenance_report=lambda output_dir, issues: None,
-            var_sales_path=SimpleNamespace(get=lambda: ""),
-            var_po_path=SimpleNamespace(get=lambda: ""),
-            var_susp_path=SimpleNamespace(get=lambda: ""),
-            var_onhand_path=SimpleNamespace(get=lambda: ""),
-            var_minmax_path=SimpleNamespace(get=lambda: ""),
-            var_packsize_path=SimpleNamespace(get=lambda: ""),
+            _show_info=lambda t, m: None,
+            _show_warning=lambda t, m: None,
+            _ask_yes_no=lambda t, m: ask_calls.append("yn") or True,
+            _ask_yes_no_cancel=lambda t, m: ask_calls.append("ync") or True,
+            _show_export_preview_dialog=lambda p: True,
+            _loaded_report_paths_for_snapshot=lambda: {},
         )
 
-        with tempfile.TemporaryDirectory() as tmp, \
-             patch("export_flow.messagebox.askyesnocancel") as ask_mixed, \
-             patch("export_flow.messagebox.askyesno") as ask_planned, \
-             patch("export_flow.filedialog.askdirectory", return_value=tmp), \
-             patch("export_flow.storage.append_order_history") as mocked_history, \
-             patch("export_flow.storage.save_session_snapshot"), \
-             patch("export_flow.messagebox.showinfo"):
-            export_flow.do_export(
-                app,
-                lambda vendor, items, output_dir: str(Path(output_dir) / f"{vendor}_{len(items)}.xlsx"),
-                str(Path(tmp) / "order_history.json"),
-                str(Path(tmp) / "sessions"),
-                assigned_items=[session.assigned_items[1]],
-                export_scope_label="planned today items",
-                selection_mode="all_exportable",
-            )
+        with tempfile.TemporaryDirectory() as tmp:
+            app._choose_output_dir = lambda: tmp
+            with patch("export_flow.storage.append_order_history") as mocked_history, \
+                 patch("export_flow.storage.save_session_snapshot"):
+                export_flow.do_export(
+                    app,
+                    lambda vendor, items, output_dir: str(Path(output_dir) / f"{vendor}_{len(items)}.xlsx"),
+                    str(Path(tmp) / "order_history.json"),
+                    str(Path(tmp) / "sessions"),
+                    assigned_items=[session.assigned_items[1]],
+                    export_scope_label="planned today items",
+                    selection_mode="all_exportable",
+                )
 
-        ask_mixed.assert_not_called()
-        ask_planned.assert_not_called()
+        self.assertEqual(ask_calls, [])
         exported_items = mocked_history.call_args.args[1]
         self.assertEqual([item["item_code"] for item in exported_items], ["GH781-6"])
         self.assertEqual(exported_items[0]["export_batch_type"], "planned_release")
@@ -583,23 +545,28 @@ class ExportFlowTests(unittest.TestCase):
                 },
             ],
         )
-        app = SimpleNamespace(session=session)
+        info_calls = []
+        dir_calls = []
+        app = SimpleNamespace(
+            session=session,
+            _show_info=lambda t, m: info_calls.append((t, m)),
+            _show_warning=lambda t, m: None,
+            _choose_output_dir=lambda: dir_calls.append(1) or "",
+        )
 
-        with patch("export_flow.filedialog.askdirectory") as mocked_dir, \
-             patch("export_flow.messagebox.showinfo") as mocked_info:
-            export_flow.do_export(
-                app,
-                lambda vendor, items, output_dir: output_dir,
-                str(ROOT / "order_history.json"),
-                str(ROOT / "sessions"),
-            )
+        export_flow.do_export(
+            app,
+            lambda vendor, items, output_dir: output_dir,
+            str(ROOT / "order_history.json"),
+            str(ROOT / "sessions"),
+        )
 
-        mocked_dir.assert_not_called()
-        mocked_info.assert_called_once()
-        self.assertIn("currently held by vendor shipping policy", mocked_info.call_args.args[1])
-        self.assertIn("critical exceptions", mocked_info.call_args.args[1])
-        self.assertIn("target order 2026-03-12", mocked_info.call_args.args[1])
-        self.assertIn("target release 2026-03-13", mocked_info.call_args.args[1])
+        self.assertEqual(dir_calls, [])
+        self.assertEqual(len(info_calls), 1)
+        self.assertIn("currently held by vendor shipping policy", info_calls[0][1])
+        self.assertIn("critical exceptions", info_calls[0][1])
+        self.assertIn("target order 2026-03-12", info_calls[0][1])
+        self.assertIn("target release 2026-03-13", info_calls[0][1])
 
     def test_do_export_can_export_scoped_vendor_items_only(self):
         session = AppSessionState(
@@ -614,34 +581,32 @@ class ExportFlowTests(unittest.TestCase):
         app = SimpleNamespace(
             session=session,
             app_settings={"mixed_export_behavior": "all_exportable"},
-            root=SimpleNamespace(update=lambda: None),
             _show_loading=lambda message: None,
             _hide_loading=lambda: None,
             _persist_suspense_carry=lambda: {"conflict": False},
             _build_maintenance_report=lambda: [],
             _show_maintenance_report=lambda output_dir, issues: None,
-            var_sales_path=SimpleNamespace(get=lambda: ""),
-            var_po_path=SimpleNamespace(get=lambda: ""),
-            var_susp_path=SimpleNamespace(get=lambda: ""),
-            var_onhand_path=SimpleNamespace(get=lambda: ""),
-            var_minmax_path=SimpleNamespace(get=lambda: ""),
-            var_packsize_path=SimpleNamespace(get=lambda: ""),
+            _show_info=lambda t, m: None,
+            _show_warning=lambda t, m: None,
+            _ask_yes_no=lambda t, m: True,
+            _ask_yes_no_cancel=lambda t, m: True,
+            _show_export_preview_dialog=lambda p: True,
+            _loaded_report_paths_for_snapshot=lambda: {},
         )
 
         scoped_items = [session.assigned_items[0]]
-        with tempfile.TemporaryDirectory() as tmp, \
-             patch("export_flow.filedialog.askdirectory", return_value=tmp), \
-             patch("export_flow.storage.append_order_history") as mocked_history, \
-             patch("export_flow.storage.save_session_snapshot"), \
-             patch("export_flow.messagebox.showinfo"):
-            export_flow.do_export(
-                app,
-                lambda vendor, items, output_dir: str(Path(output_dir) / f"{vendor}_{len(items)}.xlsx"),
-                str(Path(tmp) / "order_history.json"),
-                str(Path(tmp) / "sessions"),
-                assigned_items=scoped_items,
-                export_scope_label="MOTION release now items",
-            )
+        with tempfile.TemporaryDirectory() as tmp:
+            app._choose_output_dir = lambda: tmp
+            with patch("export_flow.storage.append_order_history") as mocked_history, \
+                 patch("export_flow.storage.save_session_snapshot"):
+                export_flow.do_export(
+                    app,
+                    lambda vendor, items, output_dir: str(Path(output_dir) / f"{vendor}_{len(items)}.xlsx"),
+                    str(Path(tmp) / "order_history.json"),
+                    str(Path(tmp) / "sessions"),
+                    assigned_items=scoped_items,
+                    export_scope_label="MOTION release now items",
+                )
 
         mocked_history.assert_called_once()
         exported_items = mocked_history.call_args.args[1]
@@ -663,14 +628,16 @@ class ExportFlowTests(unittest.TestCase):
             _show_export_preview_dialog=lambda preview: preview_calls.append(preview) or True,
             _show_loading=lambda message: None,
             _hide_loading=lambda: None,
+            _show_info=lambda t, m: None,
+            _show_warning=lambda t, m: None,
+            _persist_suspense_carry=lambda: {"conflict": False},
             _build_maintenance_report=lambda: [],
             _show_maintenance_report=lambda output_dir, issues: None,
             _loaded_report_paths_for_snapshot=lambda: {},
         )
 
         with patch("export_flow.storage.append_order_history"), \
-             patch("export_flow.storage.save_session_snapshot"), \
-             patch("export_flow.messagebox.showinfo"):
+             patch("export_flow.storage.save_session_snapshot"):
             export_flow.do_export(
                 app,
                 lambda vendor, items, output_dir: str(Path(output_dir) / f"{vendor}.xlsx"),
@@ -721,26 +688,6 @@ class ExportPreviewTests(unittest.TestCase):
         self.assertEqual(preview["vendor_summaries"], [])
         self.assertEqual(preview["total_item_count"], 0)
         self.assertAlmostEqual(preview["total_estimated_value"], 0.0)
-
-    def test_po_memo_written_to_export_rows(self):
-        # Import the actual export_vendor_po from po_builder
-        import sys
-        sys.path.insert(0, str(ROOT))
-        import po_builder
-        import tempfile, openpyxl
-
-        items = [
-            {"line_code": "AER-", "item_code": "GH781-4", "order_qty": 5},
-        ]
-        with tempfile.TemporaryDirectory() as tmp:
-            path = po_builder.export_vendor_po("MOTION", items, tmp, po_memo="Test Memo")
-            wb = openpyxl.load_workbook(path)
-            ws = wb.active
-            headers = [ws.cell(row=1, column=c).value for c in range(1, 5)]
-            row2 = [ws.cell(row=2, column=c).value for c in range(1, 5)]
-
-        self.assertIn("Notes", headers)
-        self.assertEqual(row2[3], "Test Memo")
 
     def test_apply_vendor_scope_overrides_excludes_deferred(self):
         app = SimpleNamespace(_vendor_export_scope_overrides={"MOTION": "defer"})

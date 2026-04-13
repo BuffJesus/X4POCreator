@@ -15,8 +15,7 @@ from PySide6.QtWidgets import (
 
 import theme as t
 
-# Reuse the same data from the tkinter version
-from ui_shortcut_overlay import SHORTCUT_GROUPS
+from shortcut_data import SHORTCUT_GROUPS
 
 
 class ShortcutOverlayDialog(QDialog):

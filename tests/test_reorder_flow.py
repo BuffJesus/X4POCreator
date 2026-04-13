@@ -370,36 +370,5 @@ class ReorderFlowTests(unittest.TestCase):
         self.assertEqual(reorder_flow._description_for_key(app, key), "from suspended lookup")
 
 
-    def test_rebuild_bulk_metadata_after_inplace_recalc_refreshes_buckets(self):
-        # Regression: refresh_recent_orders / refresh_suggestions /
-        # normalize_items_to_cycle mutate filtered_items in place and
-        # then call _apply_bulk_filter, which uses the bucket fast path.
-        # If the bucket index isn't rebuilt the fast path returns the
-        # old buckets — same family of bugs as v0.6.3 / v0.6.4.
-        import ui_bulk
-        items = [
-            {"line_code": "A", "item_code": "1", "vendor": "",
-             "status": "review", "data_flags": [],
-             "performance_profile": "steady", "sales_health_signal": "active",
-             "reorder_attention_signal": "normal", "stockout_risk_score": 0.1},
-        ]
-        app = SimpleNamespace(filtered_items=items)
-        ui_bulk.sync_bulk_session_metadata(app, items)
-        self.assertEqual(
-            [i["item_code"] for i in app._bulk_items_by_item_status.get("Review", ())],
-            ["1"],
-        )
-
-        # Simulate an in-place recalc flipping status from review → ok
-        items[0]["status"] = "ok"
-        reorder_flow._rebuild_bulk_metadata_after_inplace_recalc(app)
-
-        self.assertEqual(app._bulk_items_by_item_status.get("Review", ()), ())
-        self.assertEqual(
-            [i["item_code"] for i in app._bulk_items_by_item_status.get("OK", ())],
-            ["1"],
-        )
-
-
 if __name__ == "__main__":
     unittest.main()

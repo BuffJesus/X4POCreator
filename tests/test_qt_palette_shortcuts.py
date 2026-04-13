@@ -89,7 +89,7 @@ class TestShortcutOverlay(unittest.TestCase):
         self.assertEqual(dialog.windowTitle(), "Keyboard Shortcuts")
 
     def test_shortcut_groups_loaded(self):
-        from ui_shortcut_overlay import SHORTCUT_GROUPS
+        from shortcut_data import SHORTCUT_GROUPS
         self.assertGreater(len(SHORTCUT_GROUPS), 0)
         # Each group is (name, list_of_tuples)
         for name, shortcuts in SHORTCUT_GROUPS:

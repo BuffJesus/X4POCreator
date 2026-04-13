@@ -1,8 +1,7 @@
 """Qt command palette — Ctrl+K to open, type to search, Enter to run.
 
 Reuses the index-building and ranking functions from
-``ui_command_palette.py`` (which are UI-agnostic) and presents them
-in a Qt dialog.
+``command_palette_data.py`` (UI-agnostic) and presents them in a Qt dialog.
 """
 
 from __future__ import annotations
@@ -22,8 +21,7 @@ from PySide6.QtWidgets import (
 import theme as t
 
 # Import the UI-agnostic index/rank functions
-from ui_command_palette import (
-    build_action_index as _build_action_index_tk,
+from command_palette_data import (
     build_item_index,
     build_vendor_index,
     rank_results,

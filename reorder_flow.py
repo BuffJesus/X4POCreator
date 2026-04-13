@@ -490,9 +490,14 @@ def _normalize_demand_signal(raw_demand, cycle_weeks, sales_span_days):
 
 
 def _rebuild_bulk_metadata_after_inplace_recalc(app):
-    """Backwards-compat shim — the canonical helper now lives in ui_bulk."""
-    import ui_bulk
-    ui_bulk.rebuild_bulk_metadata_after_inplace_recalc(app)
+    """No-op after v0.10.0 tkinter removal.
+
+    The tkinter bulk grid used to maintain its own bucket indexes and
+    render caches that needed explicit rebuild after in-place item
+    mutations.  The Qt BulkTableModel handles refresh via model signals,
+    so this is now a no-op retained only to avoid changing every call
+    site in this module.
+    """
 
 
 @perf_trace.timed("reorder_flow.refresh_suggestions")

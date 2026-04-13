@@ -4,8 +4,6 @@ from collections import defaultdict
 from datetime import datetime
 import os
 import re
-from tkinter import filedialog, messagebox
-
 import perf_trace
 import shipping_flow
 import storage
@@ -59,49 +57,27 @@ def critical_held_items(held_items):
 
 
 def _show_warning(app, title, message):
-    handler = getattr(app, "_show_warning", None)
-    if callable(handler):
-        return handler(title, message)
-    return messagebox.showwarning(title, message)
+    return app._show_warning(title, message)
 
 
 def _show_info(app, title, message):
-    handler = getattr(app, "_show_info", None)
-    if callable(handler):
-        return handler(title, message)
-    return messagebox.showinfo(title, message)
+    return app._show_info(title, message)
 
 
 def _show_error(app, title, message):
-    handler = getattr(app, "_show_error", None)
-    if callable(handler):
-        return handler(title, message)
-    return messagebox.showerror(title, message)
+    return app._show_error(title, message)
 
 
 def _ask_yes_no(app, title, message):
-    handler = getattr(app, "_ask_yes_no", None)
-    if callable(handler):
-        return handler(title, message)
-    return messagebox.askyesno(title, message)
+    return app._ask_yes_no(title, message)
 
 
 def _ask_yes_no_cancel(app, title, message):
-    handler = getattr(app, "_ask_yes_no_cancel", None)
-    if callable(handler):
-        return handler(title, message)
-    return messagebox.askyesnocancel(title, message)
+    return app._ask_yes_no_cancel(title, message)
 
 
 def _show_export_preview_dialog(app, preview_data):
-    handler = getattr(app, "_show_export_preview_dialog", None)
-    if callable(handler):
-        return handler(preview_data)
-    try:
-        import ui_review as _ui_review
-        return _ui_review.show_export_preview_dialog(app, preview_data)
-    except Exception:
-        return True
+    return app._show_export_preview_dialog(preview_data)
 
 
 def _process_ui_events(app):
@@ -213,27 +189,7 @@ def loaded_report_paths_from_app(app):
 
 
 def choose_output_dir(app):
-    handler = getattr(app, "_choose_output_dir", None)
-    if callable(handler):
-        return handler()
-
-    initialdir = ""
-    get_last_export_dir = getattr(app, "_get_last_export_dir", None)
-    if callable(get_last_export_dir):
-        initialdir = get_last_export_dir()
-    elif getattr(app, "app_settings", None):
-        initialdir = str(app.app_settings.get("last_export_dir", "") or "").strip()
-    dialog_kwargs = {"title": "Select Output Folder for PO Files"}
-    if initialdir and os.path.isdir(initialdir):
-        dialog_kwargs["initialdir"] = initialdir
-    output_dir = filedialog.askdirectory(**dialog_kwargs)
-    if output_dir:
-        set_last_export_dir = getattr(app, "_set_last_export_dir", None)
-        if callable(set_last_export_dir):
-            set_last_export_dir(output_dir)
-        elif getattr(app, "app_settings", None) is not None:
-            app.app_settings["last_export_dir"] = output_dir
-    return output_dir
+    return app._choose_output_dir()
 
 
 def build_export_audit_items(items, export_scope_label):

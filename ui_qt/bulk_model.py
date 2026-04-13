@@ -31,7 +31,7 @@ from PySide6.QtCore import (
 import theme as t
 from debug_log import write_debug
 
-# ─── Column definitions (mirrored from ui_bulk.py) ────────────────────────
+# ─── Column definitions ───────────────────────────────────────────────────
 
 COLUMNS = (
     "vendor", "line_code", "item_code", "description", "source",

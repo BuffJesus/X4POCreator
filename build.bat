@@ -7,7 +7,6 @@ echo.
 
 set BUILD_MODE=release
 if /i "%1"=="debug" set BUILD_MODE=debug
-if /i "%1"=="qt"    set BUILD_MODE=qt
 
 echo Installing dependencies...
 python -m pip install -r requirements.txt pyinstaller
@@ -32,14 +31,16 @@ if /i "%BUILD_MODE%"=="debug" (
     python -m PyInstaller -y --onefile --name "PO Builder Debug" po_builder.py ^
       --specpath . ^
       --hidden-import openpyxl ^
-      --collect-all openpyxl
-) else if /i "%BUILD_MODE%"=="qt" (
-    echo   [QT BUILD] Using PO_Builder_Qt.spec for the PySide6 build...
-    echo   Output: dist\POBuilder_Qt.exe  ^(v0.10.0 alpha - runs alongside the tkinter build^)
-    echo.
-    python -m PyInstaller -y PO_Builder_Qt.spec
+      --collect-all openpyxl ^
+      --collect-all PySide6.QtCore ^
+      --collect-all PySide6.QtGui ^
+      --collect-all PySide6.QtWidgets ^
+      --collect-all shiboken6 ^
+      --hidden-import PySide6.QtCore ^
+      --hidden-import PySide6.QtGui ^
+      --hidden-import PySide6.QtWidgets
 ) else (
-    echo   Using PO_Builder.spec for reliable openpyxl bundling...
+    echo   Using PO_Builder.spec for reliable bundling...
     python -m PyInstaller -y PO_Builder.spec
 )
 
@@ -60,18 +61,6 @@ if /i "%BUILD_MODE%"=="debug" (
         echo.
         echo   Run it and read the console output to find any remaining errors.
         echo   Then run "build.bat" ^(no argument^) for the final release build.
-    ) else (
-        echo   BUILD FAILED - check errors above
-    )
-) else if /i "%BUILD_MODE%"=="qt" (
-    if exist "dist\POBuilder_Qt.exe" (
-        echo   QT BUILD SUCCESSFUL!
-        echo   Executable: dist\POBuilder_Qt.exe
-        echo.
-        echo   This is the v0.10.0 alpha Qt rewrite.  During the migration the
-        echo   tkinter build ^(POBuilder.exe^) remains the primary weekly-run
-        echo   target; POBuilder_Qt.exe is here so you can try the new surfaces
-        echo   as each alpha lands.
     ) else (
         echo   BUILD FAILED - check errors above
     )
