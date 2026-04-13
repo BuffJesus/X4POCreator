@@ -1,7 +1,6 @@
 """PySide6 entry point for PO Builder.
 
-Runs alongside the tkinter ``po_builder.py`` entry point during the
-v0.10.0 migration.  Build via ``build.bat qt`` → ``dist/POBuilder_Qt.exe``.
+Build via ``build.bat`` → ``dist/POBuilder.exe``.
 
 This file stays thin — it's the glue that:
   1. Picks up the app version from ``app_version.py``
