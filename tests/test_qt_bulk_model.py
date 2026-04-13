@@ -60,7 +60,7 @@ class TestBulkTableModel(unittest.TestCase):
         from ui_qt.bulk_model import BulkTableModel
         model = BulkTableModel()
         self.assertEqual(model.rowCount(), 0)
-        self.assertEqual(model.columnCount(), 22)
+        self.assertEqual(model.columnCount(), 24)
 
     def test_set_data(self):
         from ui_qt.bulk_model import BulkTableModel, COLUMNS

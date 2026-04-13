@@ -64,6 +64,8 @@ def build_reason_codes(item, *, raw_need, pack_qty, policy, suggested, acceptabl
     replenishment_unit_mode = item.get("replenishment_unit_mode")
     if replenishment_unit_mode:
         reason_codes.append(f"unitmode_{replenishment_unit_mode}")
+    if item.get("deferred_pack_overshoot"):
+        reason_codes.append("deferred_pack_overshoot")
     if item.get("confirmed_stocking"):
         if item.get("confirmed_stocking_expired"):
             reason_codes.append("confirmed_stocking_expired")

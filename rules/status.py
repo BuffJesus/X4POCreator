@@ -34,6 +34,8 @@ def evaluate_item_status(item):
     if final <= 0 and raw > 0:
         status = "warning"
         flags.append("zero_final")
+        if item.get("deferred_pack_overshoot"):
+            flags.append("deferred_pack_overshoot")
 
     if final <= 0 and raw <= 0:
         status = "skip"

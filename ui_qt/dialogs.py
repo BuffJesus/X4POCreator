@@ -89,6 +89,33 @@ class ItemDetailsDialog(QDialog):
              if item.get("annualized_demand") else ""),
         ])
 
+        # Activity & Risk
+        repl_cost = item.get("repl_cost") or inv.get("repl_cost")
+        cost_display = f"${repl_cost:,.2f}" if isinstance(repl_cost, (int, float)) and repl_cost else ""
+        risk = item.get("stockout_risk_score")
+        risk_display = f"{int(round(risk * 100))}%" if isinstance(risk, float) else ""
+        activity_fields = [
+            ("Unit Cost", cost_display),
+            ("Last Sale", inv.get("last_sale", "")),
+            ("Last Receipt", inv.get("last_receipt", "")),
+            ("Days Since Last Sale", item.get("days_since_last_sale", "")),
+            ("Stockout Risk", risk_display),
+            ("Dead Stock", item.get("dead_stock", "")),
+            ("Recency Confidence", item.get("recency_confidence", "")),
+        ]
+        # Receipt history fields (stamped during enrichment)
+        if item.get("receipt_primary_vendor"):
+            activity_fields.append(("Receipt Primary Vendor", item.get("receipt_primary_vendor", "")))
+            activity_fields.append(("Vendor Confidence", item.get("receipt_vendor_confidence", "")))
+        if item.get("receipt_pack_candidate"):
+            activity_fields.append(("Receipt Pack Candidate", item.get("receipt_pack_candidate", "")))
+            activity_fields.append(("Receipt Pack Confidence", item.get("receipt_pack_confidence", "")))
+        if item.get("target_basis"):
+            activity_fields.append(("Target Basis", item.get("target_basis", "")))
+        if item.get("deferred_pack_overshoot"):
+            activity_fields.append(("Deferred", "Pack overshoot — stock comfortable"))
+        self._add_section(layout, "Activity & Risk", activity_fields)
+
         self._add_section(layout, "Why", [
             ("Why This Qty", item.get("why", "")),
         ])

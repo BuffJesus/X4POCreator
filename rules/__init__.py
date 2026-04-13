@@ -391,24 +391,43 @@ def compute_stockout_risk_score(item, lead_time_days=None):
 
 
 def classify_dead_stock(item):
-    """Return True when an item shows no sale or receipt movement and has no pending demand.
+    """Return True when an item shows no meaningful sales activity.
 
-    Criteria (all must be met):
-    - days_since_last_sale is known and >= DEAD_STOCK_MIN_DAYS_SINCE_SALE
-    - no effective suspended demand (effective_qty_suspended or qty_suspended)
-    - no open PO qty (qty_on_po)
+    Primary criteria (traditional):
+    - days_since_last_sale >= 365 AND no pending suspense/PO
 
-    Items where `days_since_last_sale` is None are left unclassified (False) because
-    missing recency data is already handled by the recency-confidence path.
+    Extended criteria (velocity-aware):
+    - avg_days_between_sales is known and item hasn't sold in 2x its
+      normal cycle (e.g. normally sells every 60 days, hasn't in 120+)
+    - Only triggers when days_since_last_sale >= 90 (avoid false
+      positives on items with naturally slow cycles)
+
+    Items where days_since_last_sale is None are left unclassified.
     """
-    days_since = item.get("days_since_last_sale")
-    if not isinstance(days_since, (int, float)) or days_since < DEAD_STOCK_MIN_DAYS_SINCE_SALE:
-        return False
     has_pending_suspense = bool(item.get("effective_qty_suspended") or item.get("qty_suspended", 0))
     has_open_po = bool(item.get("qty_on_po", 0))
     if has_pending_suspense or has_open_po:
         return False
-    return True
+
+    days_since = item.get("days_since_last_sale")
+    if not isinstance(days_since, (int, float)):
+        return False
+
+    # Traditional: no sale in 365+ days
+    if days_since >= DEAD_STOCK_MIN_DAYS_SINCE_SALE:
+        return True
+
+    # Velocity-aware: hasn't sold in 2x its normal cycle, minimum 90 days
+    avg_between = item.get("avg_days_between_sales")
+    if (
+        isinstance(avg_between, (int, float))
+        and avg_between > 0
+        and days_since >= 90
+        and days_since >= avg_between * 2
+    ):
+        return True
+
+    return False
 
 
 def infer_minimum_packs_on_hand(item, inv, pack_qty):
@@ -1315,6 +1334,7 @@ def enrich_item(item, inv, pack_qty, rule, lead_time_days=None):
     if policy not in ("manual_only", "reel_review", "large_pack_review") and should_force_recency_review(item, inv, rule):
         policy = "manual_only"
     suggested, why = calculate_suggested_qty(raw_need, pack_qty, policy, rule, inv)
+    item["deferred_pack_overshoot"] = suggested == 0 and raw_need > 0 and why.startswith("Defer:")
     projected_overstock, overstock_within_tolerance = assess_post_receipt_overstock(item, suggested)
     auto_order_projected_overstock = projected_overstock
     auto_order_overstock_within_tolerance = overstock_within_tolerance

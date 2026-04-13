@@ -122,6 +122,8 @@ class BulkTab(QWidget):
             "Needs Review": t.ACCENT_DANGER,
             "Warnings": t.ACCENT_DANGER,
             "High Risk": t.ACCENT_SPECIAL,
+            "Dead Stock": t.TEXT_DIM,
+            "Deferred": t.ACCENT_WARNING,
         }
         for label, kwargs in [
             ("All", {}),
@@ -129,6 +131,8 @@ class BulkTab(QWidget):
             ("Needs Review", {"item_status": "Review"}),
             ("Warnings", {"item_status": "Warning"}),
             ("High Risk", {"attention": "High Risk"}),
+            ("Dead Stock", {"special": "dead_stock"}),
+            ("Deferred", {"special": "deferred"}),
         ]:
             btn = QPushButton(label)
             accent = _PILL_ACCENTS.get(label, t.ACCENT_PRIMARY)
@@ -338,6 +342,14 @@ class BulkTab(QWidget):
         self._card_visible.setStyleSheet(tq.number_card_style(t.ACCENT_SPECIAL))
         summary_row.addWidget(self._card_visible)
 
+        self._card_order_value = QLabel()
+        self._card_order_value.setTextFormat(Qt.RichText)
+        self._card_order_value.setAlignment(Qt.AlignCenter)
+        self._card_order_value.setFixedHeight(52)
+        self._card_order_value.setMinimumWidth(140)
+        self._card_order_value.setStyleSheet(tq.number_card_style(t.ACCENT_SPECIAL))
+        summary_row.addWidget(self._card_order_value)
+
         summary_row.addStretch(1)
         layout.addLayout(summary_row)
 
@@ -445,15 +457,13 @@ class BulkTab(QWidget):
 
     # ── Filter helpers ────────────────────────────────────────────
 
-    def _apply_quick_filter(self, status="ALL", item_status="ALL", attention="ALL"):
-        write_debug("qt.bulk_tab.quick_filter", status=status, item_status=item_status, attention=attention)
+    def _apply_quick_filter(self, status="ALL", item_status="ALL", attention="ALL", special=""):
+        write_debug("qt.bulk_tab.quick_filter", status=status, item_status=item_status,
+                     attention=attention, special=special)
         self._status_combo.setCurrentText(status)
         self._item_status_combo.setCurrentText(item_status)
+        self._model.apply_filters(special=special)
         if attention == "High Risk":
-            # Filter to high-risk items via text search on risk score
-            # The proxy's text filter will match items; for a proper
-            # attention filter we'd need another proxy axis.  For now,
-            # reset other filters and let the user sort by Risk column.
             self._search_edit.clear()
             self._lc_combo.setCurrentText("ALL")
             self._source_combo.setCurrentText("ALL")
@@ -525,9 +535,28 @@ class BulkTab(QWidget):
             self._card_visible.setVisible(True)
         else:
             self._card_visible.setVisible(False)
+        inv_lookup = self._model._inventory_lookup or {}
+        order_value = 0.0
+        for item in self._model.items:
+            if not item.get("vendor"):
+                continue
+            qty = item.get("final_qty", 0) or 0
+            key = (item.get("line_code", ""), item.get("item_code", ""))
+            cost = item.get("repl_cost") or (inv_lookup.get(key) or {}).get("repl_cost") or 0
+            if isinstance(cost, (int, float)) and isinstance(qty, (int, float)):
+                order_value += cost * qty
+        if order_value > 0:
+            self._card_order_value.setText(tq.number_card_html(
+                f"${order_value:,.0f}", "estimated", "Order Value", t.ACCENT_SPECIAL,
+                value_font_size=t.FONT_HEADING,
+            ))
+            self._card_order_value.setVisible(True)
+        else:
+            self._card_order_value.setVisible(False)
         elapsed = (time.perf_counter() - t0) * 1000
         write_debug("qt.update_summary", total=total, assigned=assigned,
-                     visible=visible, elapsed_ms=round(elapsed, 1))
+                     visible=visible, order_value=round(order_value, 2),
+                     elapsed_ms=round(elapsed, 1))
 
     # ── Action handlers (emit signals for the controller) ─────────
 

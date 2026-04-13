@@ -37,7 +37,9 @@ COLUMNS = (
     "vendor", "line_code", "item_code", "description", "source",
     "status", "raw_need", "suggested_qty", "final_qty", "buy_rule",
     "qoh", "cur_min", "cur_max", "sug_min", "sug_max",
-    "pack_size", "unit_cost", "ext_cost", "supplier", "why", "notes", "risk",
+    "pack_size", "unit_cost", "ext_cost",
+    "last_sale", "last_receipt",
+    "supplier", "why", "notes", "risk",
 )
 
 LABELS = {
@@ -48,6 +50,7 @@ LABELS = {
     "qoh": "QOH", "cur_min": "Min", "cur_max": "Max",
     "sug_min": "Sug Min", "sug_max": "Sug Max", "pack_size": "Pack",
     "unit_cost": "Unit Cost", "ext_cost": "Ext Cost",
+    "last_sale": "Last Sale", "last_receipt": "Last Rcpt",
     "supplier": "Supplier", "why": "Why This Qty", "notes": "Notes",
     "risk": "Risk",
 }
@@ -58,6 +61,7 @@ WIDTHS = {
     "final_qty": 64, "buy_rule": 72, "qoh": 44, "cur_min": 44,
     "cur_max": 44, "sug_min": 48, "sug_max": 48, "pack_size": 40,
     "unit_cost": 64, "ext_cost": 72,
+    "last_sale": 72, "last_receipt": 72,
     "supplier": 72, "why": 180, "notes": 100, "risk": 44,
 }
 
@@ -185,10 +189,12 @@ def build_row_values(item: dict, inventory_lookup: dict, order_rules: dict,
         pack_size if pack_size else "",           # 15
         unit_cost_display,            # 16 unit_cost
         ext_cost_display,             # 17 ext_cost
-        supplier,                     # 18 supplier
-        why,                          # 19 why
-        notes,                        # 20 notes
-        risk_display,                 # 21 risk
+        inventory.get("last_sale", "") or "",    # 18 last_sale
+        inventory.get("last_receipt", "") or "",  # 19 last_receipt
+        supplier,                     # 20 supplier
+        why,                          # 21 why
+        notes,                        # 22 notes
+        risk_display,                 # 23 risk
     )
 
 
@@ -257,6 +263,7 @@ class BulkTableModel(QAbstractTableModel):
         self._filter_status: str = "ALL"
         self._filter_source: str = "ALL"
         self._filter_item_status: str = "ALL"
+        self._filter_special: str = ""
         self._filter_vendor_ws: str = ""
 
     # ── Data loading ──────────────────────────────────────────────
@@ -470,9 +477,14 @@ class BulkTableModel(QAbstractTableModel):
         source = self._filter_source
         item_st = self._filter_item_status
         vendor_ws = self._filter_vendor_ws
+        special = self._filter_special
 
         indices = []
         for i, item in enumerate(self._all_items):
+            if special == "dead_stock" and not item.get("dead_stock"):
+                continue
+            if special == "deferred" and not item.get("deferred_pack_overshoot"):
+                continue
             if vendor_ws:
                 if str(item.get("vendor", "") or "").strip().upper() != vendor_ws:
                     continue
@@ -514,7 +526,8 @@ class BulkTableModel(QAbstractTableModel):
         self._visible_indices = indices
 
     def apply_filters(self, *, text=None, line_code=None, status=None,
-                      source=None, item_status=None, vendor_ws=None):
+                      source=None, item_status=None, vendor_ws=None,
+                      special=None):
         """Set one or more filters and rebuild visible indices in one batch."""
         import time
         changed = False
@@ -540,6 +553,9 @@ class BulkTableModel(QAbstractTableModel):
             if v != self._filter_vendor_ws:
                 self._filter_vendor_ws = v
                 changed = True
+        if special is not None and special != self._filter_special:
+            self._filter_special = special
+            changed = True
         if not changed:
             return
         t0 = time.perf_counter()
@@ -558,7 +574,8 @@ class BulkTableModel(QAbstractTableModel):
 
     def reset_all_filters(self):
         self.apply_filters(text="", line_code="ALL", status="ALL",
-                          source="ALL", item_status="ALL", vendor_ws="")
+                          source="ALL", item_status="ALL", vendor_ws="",
+                          special="")
 
     def refresh_rows(self, source_rows: Sequence[int]):
         """Notify views that specific source rows changed (after edit/recalc)."""
@@ -603,6 +620,7 @@ class BulkFilterProxyModel(QSortFilterProxyModel):
         self._source = "ALL"
         self._item_status = "ALL"
         self._vendor_worksheet = ""
+        self._special = ""  # "dead_stock", "deferred", or ""
         # Multi-column sort stack: list of (column_index, Qt.SortOrder)
         self._sort_keys: list[tuple[int, Qt.SortOrder]] = []
         self._max_sort_keys = 3
@@ -655,6 +673,15 @@ class BulkFilterProxyModel(QSortFilterProxyModel):
             elapsed = (time.perf_counter() - t0) * 1000
             write_debug("qt.filter.item_status", item_status=item_status, elapsed_ms=round(elapsed, 1))
 
+    def set_special_filter(self, special: str):
+        import time
+        if special != self._special:
+            self._special = special
+            t0 = time.perf_counter()
+            self.invalidate()
+            elapsed = (time.perf_counter() - t0) * 1000
+            write_debug("qt.filter.special", special=special, elapsed_ms=round(elapsed, 1))
+
     def set_vendor_worksheet(self, vendor: str):
         import time
         vendor = vendor.strip().upper()
@@ -673,6 +700,7 @@ class BulkFilterProxyModel(QSortFilterProxyModel):
         self._source = "ALL"
         self._item_status = "ALL"
         self._vendor_worksheet = ""
+        self._special = ""
         t0 = time.perf_counter()
         self.invalidate()
         elapsed = (time.perf_counter() - t0) * 1000
@@ -693,6 +721,12 @@ class BulkFilterProxyModel(QSortFilterProxyModel):
             item_vendor = str(item.get("vendor", "") or "").strip().upper()
             if item_vendor != self._vendor_worksheet:
                 return False
+
+        # Special filter (dead stock, deferred)
+        if self._special == "dead_stock" and not item.get("dead_stock"):
+            return False
+        if self._special == "deferred" and not item.get("deferred_pack_overshoot"):
+            return False
 
         # Line code
         if self._line_code != "ALL":
