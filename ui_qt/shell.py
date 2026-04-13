@@ -544,10 +544,11 @@ class POBuilderShell(QMainWindow):
         self._assign_worker.moveToThread(self._assign_thread)
         self._assign_thread.started.connect(self._assign_worker.run)
         self._assign_worker.progress.connect(
-            lambda msg: self.status.showMessage(msg)
+            lambda msg: self.status.showMessage(msg),
+            Qt.QueuedConnection,
         )
-        self._assign_worker.finished.connect(self._on_assignment_finished)
-        self._assign_worker.failed.connect(self._on_assignment_failed)
+        self._assign_worker.finished.connect(self._on_assignment_finished, Qt.QueuedConnection)
+        self._assign_worker.failed.connect(self._on_assignment_failed, Qt.QueuedConnection)
         self._assign_worker.finished.connect(self._assign_thread.quit)
         self._assign_worker.failed.connect(self._assign_thread.quit)
         self._assign_thread.finished.connect(self._cleanup_assign_thread)

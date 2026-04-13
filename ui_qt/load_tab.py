@@ -593,9 +593,9 @@ class LoadTab(QWidget):
         self._worker = ParseWorker(paths, stored_hashes)
         self._worker.moveToThread(self._thread)
         self._thread.started.connect(self._worker.run)
-        self._worker.progress.connect(self._on_progress)
-        self._worker.finished.connect(self._on_finished)
-        self._worker.failed.connect(self._on_failed)
+        self._worker.progress.connect(self._on_progress, Qt.QueuedConnection)
+        self._worker.finished.connect(self._on_finished, Qt.QueuedConnection)
+        self._worker.failed.connect(self._on_failed, Qt.QueuedConnection)
         # Tear down both objects once the worker signals done.
         self._worker.finished.connect(self._thread.quit)
         self._worker.failed.connect(self._thread.quit)
@@ -614,6 +614,7 @@ class LoadTab(QWidget):
 
     def _on_progress(self, message: str):
         self._status_label.setText(message)
+        self._status_label.repaint()
 
     def _on_finished(self, result: dict):
         # Persist fresh schema hashes so the next load has a baseline.
