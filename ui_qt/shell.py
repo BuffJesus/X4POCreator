@@ -210,6 +210,9 @@ class POBuilderShell(QMainWindow):
                 self.bulk_tab.session_history_requested.connect(self._on_session_history)
                 self.bulk_tab.ignored_items_requested.connect(self._on_ignored_items)
                 self.bulk_tab.vendor_manager_requested.connect(self._on_vendor_manager)
+                self.bulk_tab.export_dead_stock.connect(self._on_export_dead_stock)
+                self.bulk_tab.export_deferred.connect(self._on_export_deferred)
+                self.bulk_tab.export_session_summary.connect(self._on_export_session_summary)
                 self.bulk_tab.model.edit_callback = self._on_cell_edit
                 self.bulk_tab.model.before_edit_callback = self._on_before_cell_edit
                 self.stack.addWidget(self.bulk_tab)
@@ -828,6 +831,70 @@ class POBuilderShell(QMainWindow):
             QMessageBox.critical(
                 self, "Draft Review Error", f"Failed to generate draft review:\n{exc}",
             )
+
+    # ── Analysis Reports ───────────────────────────────────────────
+
+    def _on_export_dead_stock(self):
+        model = self.bulk_tab.model if self.bulk_tab else None
+        if not model or not model.items:
+            QMessageBox.information(self, "No Data", "Load data first.")
+            return
+        output_dir = QFileDialog.getExistingDirectory(self, "Select Folder for Dead Stock Report")
+        if not output_dir:
+            return
+        import analysis_reports
+        inv = self.controller.session.inventory_lookup or {}
+        path = analysis_reports.export_dead_stock_csv(model.items, inv, output_dir)
+        summary = analysis_reports.dead_stock_summary(
+            analysis_reports.build_dead_stock_rows(model.items, inv)
+        )
+        QMessageBox.information(
+            self, "Dead Stock Report",
+            f"Exported {summary['total_items']} dead stock items "
+            f"(${summary['total_on_hand_value']:,.0f} on-hand value) "
+            f"across {len(summary['vendors'])} vendor(s).\n\n{os.path.basename(path)}",
+        )
+
+    def _on_export_deferred(self):
+        model = self.bulk_tab.model if self.bulk_tab else None
+        if not model or not model.items:
+            QMessageBox.information(self, "No Data", "Load data first.")
+            return
+        output_dir = QFileDialog.getExistingDirectory(self, "Select Folder for Deferred Items Report")
+        if not output_dir:
+            return
+        import analysis_reports
+        inv = self.controller.session.inventory_lookup or {}
+        rows = analysis_reports.build_deferred_rows(model.items, inv)
+        if not rows:
+            QMessageBox.information(self, "No Deferred Items", "No items were deferred this session.")
+            return
+        path = analysis_reports.export_deferred_csv(model.items, inv, output_dir)
+        QMessageBox.information(
+            self, "Deferred Items Report",
+            f"Exported {len(rows)} deferred item(s).\n\n{os.path.basename(path)}",
+        )
+
+    def _on_export_session_summary(self):
+        model = self.bulk_tab.model if self.bulk_tab else None
+        if not model or not model.items:
+            QMessageBox.information(self, "No Data", "Load data first.")
+            return
+        output_dir = QFileDialog.getExistingDirectory(self, "Select Folder for Session Summary")
+        if not output_dir:
+            return
+        import analysis_reports
+        inv = self.controller.session.inventory_lookup or {}
+        path = analysis_reports.export_session_summary_csv(model.items, inv, output_dir)
+        summary = analysis_reports.build_session_summary(model.items, inv)
+        QMessageBox.information(
+            self, "Session Summary",
+            f"Exported session summary:\n"
+            f"  {summary['total_items']:,} items, {summary['assigned']:,} assigned\n"
+            f"  Est. order value: ${summary['total_order_value']:,.0f}\n"
+            f"  {len(summary['vendor_summaries'])} vendor(s)\n\n"
+            f"{os.path.basename(path)}",
+        )
 
     def _on_before_cell_edit(self, row: int, col_name: str):
         """Capture before-state for undo on cell edits."""

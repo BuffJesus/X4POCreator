@@ -83,6 +83,9 @@ class BulkTab(QWidget):
     session_history_requested = Signal()
     ignored_items_requested = Signal()
     vendor_manager_requested = Signal()
+    export_dead_stock = Signal()
+    export_deferred = Signal()
+    export_session_summary = Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -250,6 +253,11 @@ class BulkTab(QWidget):
         self._more_menu.addAction("Session History", lambda: self.session_history_requested.emit())
         self._more_menu.addAction("Ignored Items", lambda: self.ignored_items_requested.emit())
         self._more_menu.addAction("Vendor Manager", lambda: self.vendor_manager_requested.emit())
+        self._more_menu.addSeparator()
+        reports_menu = self._more_menu.addMenu("Export Reports")
+        reports_menu.addAction("Dead Stock Report", lambda: self.export_dead_stock.emit())
+        reports_menu.addAction("Deferred Items Report", lambda: self.export_deferred.emit())
+        reports_menu.addAction("Session Summary", lambda: self.export_session_summary.emit())
         btn_more.setMenu(self._more_menu)
         action_layout.addWidget(btn_more)
 
