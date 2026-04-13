@@ -76,6 +76,30 @@ DEFAULT_HIDDEN = frozenset({
 COL_INDEX = {name: idx for idx, name in enumerate(COLUMNS)}
 
 
+# ─── Helpers ─────────────────────────────────────────────────────────────
+
+def _vendor_mismatch_tooltip(item: dict) -> str | None:
+    """Return tooltip when assigned vendor differs from receipt evidence."""
+    assigned = str(item.get("vendor", "") or "").strip().upper()
+    if not assigned:
+        return None
+    receipt = str(item.get("receipt_primary_vendor", "") or "").strip().upper()
+    if not receipt or receipt == assigned:
+        return None
+    confidence = str(item.get("receipt_vendor_confidence", "") or "").strip().lower()
+    if confidence in ("", "none", "low"):
+        return None
+    return (
+        f"Vendor mismatch: assigned {assigned}, "
+        f"but receipt history suggests {receipt} ({confidence} confidence)"
+    )
+
+
+def has_vendor_mismatch(item: dict) -> bool:
+    """True when assigned vendor contradicts receipt evidence."""
+    return _vendor_mismatch_tooltip(item) is not None
+
+
 # ─── Row value builder ────────────────────────────────────────────────────
 
 def _item_source(item: dict) -> str:
@@ -367,6 +391,15 @@ class BulkTableModel(QAbstractTableModel):
         if role == ITEM_DICT_ROLE:
             return self._all_items[src]
 
+        if role == Qt.ForegroundRole:
+            col_name = COLUMNS[col] if 0 <= col < len(COLUMNS) else ""
+            if col_name == "vendor":
+                item = self._all_items[src]
+                if has_vendor_mismatch(item):
+                    from PySide6.QtGui import QColor
+                    return QColor(t.ACCENT_WARNING)
+            return None
+
         if role == Qt.TextAlignmentRole:
             col_name = COLUMNS[col] if 0 <= col < len(COLUMNS) else ""
             if col_name in ("raw_need", "suggested_qty", "final_qty", "qoh",
@@ -382,6 +415,8 @@ class BulkTableModel(QAbstractTableModel):
                 return item.get("why", "")
             if col_name == "description":
                 return item.get("description", "")
+            if col_name == "vendor":
+                return _vendor_mismatch_tooltip(item)
             return None
 
         return None
@@ -484,6 +519,8 @@ class BulkTableModel(QAbstractTableModel):
             if special == "dead_stock" and not item.get("dead_stock"):
                 continue
             if special == "deferred" and not item.get("deferred_pack_overshoot"):
+                continue
+            if special == "vendor_mismatch" and not has_vendor_mismatch(item):
                 continue
             if vendor_ws:
                 if str(item.get("vendor", "") or "").strip().upper() != vendor_ws:

@@ -127,6 +127,7 @@ class BulkTab(QWidget):
             "High Risk": t.ACCENT_SPECIAL,
             "Dead Stock": t.TEXT_DIM,
             "Deferred": t.ACCENT_WARNING,
+            "Vendor \u2260": t.ACCENT_WARNING,
         }
         for label, kwargs in [
             ("All", {}),
@@ -136,6 +137,7 @@ class BulkTab(QWidget):
             ("High Risk", {"attention": "High Risk"}),
             ("Dead Stock", {"special": "dead_stock"}),
             ("Deferred", {"special": "deferred"}),
+            ("Vendor \u2260", {"special": "vendor_mismatch"}),
         ]:
             btn = QPushButton(label)
             accent = _PILL_ACCENTS.get(label, t.ACCENT_PRIMARY)

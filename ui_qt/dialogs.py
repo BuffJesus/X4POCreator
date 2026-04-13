@@ -105,8 +105,16 @@ class ItemDetailsDialog(QDialog):
         ]
         # Receipt history fields (stamped during enrichment)
         if item.get("receipt_primary_vendor"):
-            activity_fields.append(("Receipt Primary Vendor", item.get("receipt_primary_vendor", "")))
-            activity_fields.append(("Vendor Confidence", item.get("receipt_vendor_confidence", "")))
+            receipt_vendor = item.get("receipt_primary_vendor", "")
+            assigned_vendor = str(item.get("vendor", "") or "").strip().upper()
+            confidence = item.get("receipt_vendor_confidence", "")
+            activity_fields.append(("Receipt Primary Vendor", receipt_vendor))
+            activity_fields.append(("Vendor Confidence", confidence))
+            if (assigned_vendor and receipt_vendor
+                    and assigned_vendor != str(receipt_vendor).strip().upper()
+                    and confidence not in ("", "none", "low")):
+                activity_fields.append(("VENDOR MISMATCH",
+                    f"Assigned {assigned_vendor} but receipts suggest {receipt_vendor}"))
         if item.get("receipt_pack_candidate"):
             activity_fields.append(("Receipt Pack Candidate", item.get("receipt_pack_candidate", "")))
             activity_fields.append(("Receipt Pack Confidence", item.get("receipt_pack_confidence", "")))
