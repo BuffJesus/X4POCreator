@@ -21,7 +21,12 @@ sessions/
 *.ico
 !loading.gif
 !loading.wav
+!icon.ico
 
-^
-/SESSION_HANDOFF_2026-03-13.md
-/SESSION_HANDOFF_2026-03-15.md
+# Runtime artifacts
+debug_trace.log
+perf_trace.jsonl
+perf_summary.txt
+parse_result_cache.pkl
+*.pkl
+*.log
