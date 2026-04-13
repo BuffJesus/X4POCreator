@@ -239,10 +239,21 @@ Delete behavior
 Useful bulk actions
 - Apply to Selected: sets the vendor for the selected rows.
 - Apply to All Visible: sets the vendor for the currently filtered list.
+- Apply by Supplier: pick suppliers from a checklist and assign a vendor to all their unassigned items at once.
 - Remove Not Needed (On Screen): review likely-unnecessary rows currently visible.
 - Remove Not Needed (Filtered): review likely-unnecessary rows from the full filtered set.
 - Undo Last Remove: restores the most recent bulk-removal action.
 - Undo / Redo: reverses or reapplies broader bulk edit actions such as fill, paste, and row removal.
+
+Vendor mismatch detection
+- When you assign a vendor that differs from the item's receipt history primary vendor, the vendor cell turns amber.
+- Hover over the vendor cell to see the mismatch details.
+- Use the Vendor ≠ quick filter pill to isolate all mismatched items.
+
+More menu
+- Settings: update check, export behavior, shared/scan folder paths.
+- Export Reports: Dead Stock (xlsx), Deferred Items (csv), Session Summary (csv).
+- Vendor Review, Session Diff, Supplier Map, QOH Adjustments, Skip Cleanup, Session History, Ignored Items, Vendor Manager.
 
 Context menu
 - Remove Selected Rows
@@ -307,19 +318,18 @@ If something feels off
 - Vendor entry now auto-fills when the app has strong evidence from the current report supplier or a single-vendor recent local order history.
 
 Review table
-- Double-click Vendor, Final Qty, or Pack to edit.
+- Double-click Vendor or Final Qty to edit inline (or press F2).
 - Final Qty is what will export.
 - Why This Qty explains the recommendation in plain language.
-- Review & Export can default to Exceptions Only so routine items do not crowd the screen.
-- If no exceptions are present, Review automatically falls back to All Items so the screen stays usable.
-- The Focus filter switches between All Items and Exceptions Only.
-- The Release filter separates Release Now, Planned Today, and Held items.
-- If multiple rows are selected, editing one editable cell in that column applies that value across the selected rows.
-- Enter or F2 starts editing the active editable column.
-- Left and Right change the active editable column.
-- Up and Down move while editing.
-- Delete removes selected rows from the review list.
-- Pack edits from Review can persist into saved order rules.
+- Delete or Backspace removes selected rows from the review list.
+- Right-click for a context menu with Remove Selected Rows.
+- Exceptions Only mode hides routine items so you focus on what needs attention.
+- The Vendor filter narrows to a single vendor's items.
+
+PO Memo
+- Enter optional text in the PO Memo field on the Review tab.
+- The memo appears as a Notes column on every exported PO row.
+- Per-item notes take priority over the global memo when both exist.
 
 Release planning
 - Vendor shipping policies can mark items as Release Now, Planned Today, or Held.
@@ -520,7 +530,8 @@ Grid & Columns
 - `?` — Show the keyboard shortcut overlay
 
 Quick Filters
-- Use the pill buttons above the filter panel for one-click presets: All, Unassigned, Needs Review, Warnings, High Risk, Dead Stock, Deferred.
+- Use the pill buttons above the filter panel for one-click presets: All, Unassigned, Needs Review, Warnings, High Risk, Dead Stock, Deferred, Vendor ≠.
+- Vendor ≠ shows items where the assigned vendor contradicts receipt history.
 - Combine with the detailed filter dropdowns below for precise filtering.
 """,
     ),

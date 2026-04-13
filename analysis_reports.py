@@ -16,6 +16,13 @@ from collections import defaultdict
 from datetime import datetime
 from typing import Any, Mapping, Sequence
 
+try:
+    import openpyxl
+    from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+    _HAS_OPENPYXL = True
+except ImportError:
+    _HAS_OPENPYXL = False
+
 
 def _vendor_or_unassigned(item: Mapping[str, Any]) -> str:
     return str(item.get("vendor", "") or "").strip().upper() or "(Unassigned)"
@@ -100,6 +107,111 @@ def export_dead_stock_csv(items: Sequence[dict], inv_lookup: dict, output_dir: s
                 row["last_sale"], row["days_since_last_sale"],
                 row["avg_days_between_sales"],
             ])
+    return path
+
+
+def export_dead_stock_xlsx(items: Sequence[dict], inv_lookup: dict, output_dir: str) -> str:
+    """Write a print-ready dead stock xlsx grouped by vendor. Returns file path."""
+    rows = build_dead_stock_rows(items, inv_lookup)
+    summary = dead_stock_summary(rows)
+    timestamp = datetime.now().strftime("%Y%m%d")
+    path = os.path.join(output_dir, f"DeadStock_{timestamp}.xlsx")
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Dead Stock"
+
+    header_font = Font(bold=True, size=11, color="FFFFFF")
+    header_fill = PatternFill(start_color="C0392B", end_color="C0392B", fill_type="solid")
+    vendor_font = Font(bold=True, size=11, color="2C3E50")
+    vendor_fill = PatternFill(start_color="ECF0F1", end_color="ECF0F1", fill_type="solid")
+    money_fmt = '#,##0.00'
+    thin = Border(
+        left=Side(style="thin"), right=Side(style="thin"),
+        top=Side(style="thin"), bottom=Side(style="thin"),
+    )
+    totals_font = Font(bold=True, size=11)
+
+    headers = [
+        "Line Code", "Item Code", "Description", "QOH",
+        "Unit Cost", "On Hand Value", "Last Sale",
+        "Days Since Sale", "Avg Days Between Sales",
+    ]
+    col_widths = [10, 16, 30, 8, 12, 14, 12, 14, 18]
+
+    for ci, w in enumerate(col_widths, 1):
+        ws.column_dimensions[openpyxl.utils.get_column_letter(ci)].width = w
+
+    row_num = 1
+    # Title
+    ws.cell(row=row_num, column=1, value=f"Dead Stock Report — {datetime.now().strftime('%Y-%m-%d')}")
+    ws.cell(row=row_num, column=1).font = Font(bold=True, size=14)
+    row_num += 1
+    ws.cell(row=row_num, column=1,
+            value=f"{summary['total_items']} items, ${summary['total_on_hand_value']:,.2f} total on-hand value")
+    ws.cell(row=row_num, column=1).font = Font(size=10, italic=True)
+    row_num += 2
+
+    # Group by vendor
+    by_vendor: dict[str, list[dict]] = defaultdict(list)
+    for r in rows:
+        by_vendor[r["vendor"]].append(r)
+
+    for vendor in sorted(by_vendor):
+        vitems = by_vendor[vendor]
+        vendor_value = sum(r["on_hand_value"] for r in vitems)
+
+        # Vendor header
+        ws.merge_cells(start_row=row_num, start_column=1, end_row=row_num, end_column=len(headers))
+        vc = ws.cell(row=row_num, column=1,
+                     value=f"{vendor}  —  {len(vitems)} items, ${vendor_value:,.2f}")
+        vc.font = vendor_font
+        vc.fill = vendor_fill
+        row_num += 1
+
+        # Column headers
+        for ci, h in enumerate(headers, 1):
+            c = ws.cell(row=row_num, column=ci, value=h)
+            c.font = header_font
+            c.fill = header_fill
+            c.alignment = Alignment(horizontal="center")
+            c.border = thin
+        row_num += 1
+
+        # Data rows
+        for r in vitems:
+            vals = [
+                r["line_code"], r["item_code"], r["description"], r["qoh"],
+                r["unit_cost"] or None, r["on_hand_value"] or None,
+                r["last_sale"], r["days_since_last_sale"],
+                r["avg_days_between_sales"],
+            ]
+            for ci, v in enumerate(vals, 1):
+                c = ws.cell(row=row_num, column=ci, value=v)
+                c.border = thin
+                if ci in (5, 6):
+                    c.number_format = money_fmt
+                    c.alignment = Alignment(horizontal="right")
+                if ci in (4, 8, 9):
+                    c.alignment = Alignment(horizontal="center")
+            row_num += 1
+
+        # Vendor totals
+        ws.cell(row=row_num, column=3, value="TOTAL").font = totals_font
+        tc = ws.cell(row=row_num, column=6, value=vendor_value)
+        tc.font = totals_font
+        tc.number_format = money_fmt
+        tc.border = thin
+        row_num += 2
+
+    # Print settings
+    ws.sheet_properties.pageSetUpPr = openpyxl.worksheet.properties.PageSetupProperties(fitToPage=True)
+    ws.page_setup.orientation = "landscape"
+    ws.page_setup.fitToWidth = 1
+    ws.page_setup.fitToHeight = 0
+    ws.print_title_rows = None
+
+    wb.save(path)
     return path
 
 

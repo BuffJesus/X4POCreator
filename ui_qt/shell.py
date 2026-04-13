@@ -899,7 +899,7 @@ class POBuilderShell(QMainWindow):
             return
         import analysis_reports
         inv = self.controller.session.inventory_lookup or {}
-        path = analysis_reports.export_dead_stock_csv(model.items, inv, output_dir)
+        path = analysis_reports.export_dead_stock_xlsx(model.items, inv, output_dir)
         summary = analysis_reports.dead_stock_summary(
             analysis_reports.build_dead_stock_rows(model.items, inv)
         )
