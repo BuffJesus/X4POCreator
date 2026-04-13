@@ -48,27 +48,28 @@ PO Builder turns X4 report exports into vendor-ready PO import files while also 
 Normal flow
 - Load the current X4 CSV exports.
 - Exclude line codes or suspended customers you do not want in this run.
-- Review the Bulk Assign list, assign vendors, and adjust quantities only where needed.
-- Use Individual Assign for leftovers that need manual attention.
+- Review the Bulk Assign grid, assign vendors, and adjust quantities only where needed.
 - Review exceptions first instead of rereading every routine item.
 - Use Export Recommended for the normal export path.
 - Use the maintenance report afterward to clean up X4 source values when needed.
 
-What each main tab is for
-- Load Files: choose reports, scan a folder, manage shared/local data, and check for updates.
-- Line Codes: exclude whole product groups from the run.
-- Customers: exclude suspended customers from the Suspended Items report.
-- Assign Vendors: spreadsheet-style review, filtering, vendor assignment, and bulk editing.
-- Individual: one-item-at-a-time assignment for leftovers.
-- Review & Export: final cleanup before writing PO files.
+What each sidebar tab is for
+- Load: choose reports, scan a folder, and manage shared/local data.
+- Filter: exclude line codes and suspended customers from the run.
+- Bulk: spreadsheet-style review, filtering, vendor assignment, and bulk editing.
+- Review: final cleanup and export of per-vendor PO files.
 - Help: reference for reports, controls, and troubleshooting.
+
+Summary cards at the top of the Bulk grid
+- Total items, Assigned, Unassigned, and estimated Order Value are shown at a glance.
+- Order Value sums Final Qty x Unit Cost for all assigned items, updated live.
 
 Best practice
 - Use the latest reports from the same general time window.
-- Treat Bulk Assign as the main working screen and Individual as the exception path.
+- Treat Bulk as the main working screen; most items auto-assign from receipt history.
 - Treat Review & Export as an exception-first screen, not a touch-every-row screen.
 - Use Export Recommended unless you intentionally want immediate-only or planned-only scope.
-- Review warnings instead of exporting blindly.
+- Review warnings and deferred items instead of exporting blindly.
 - Prefer fixing repeated pack, vendor, min, and max issues at the source when possible.
 """,
     ),
@@ -130,8 +131,10 @@ Maintenance report purpose
 - Reorder-cycle changes recalculate suggested min/max and suggested qty for the current session.
 
 Target stock
-- The app usually uses the stronger of current max and suggested max.
-- If no useful max exists, it falls back to min guidance or the current demand signal.
+- When a current max is set in X4, it is treated as authoritative (the operator knows their business).
+- Suggested max only fills the gap when no explicit max exists.
+- If the max looks like auto-calculated noise (pack size is more than 5x the max), the target is adjusted up to at least one full pack and tagged "pack_adjusted_max".
+- If no useful max exists, the app falls back to min guidance or the current demand signal.
 - Very sparse 12-month sales history does not create a suggested min/max by itself.
 
 Demand signals
@@ -146,6 +149,11 @@ Pack handling
 - Reel-review and manual-only items stay flagged for human review.
 - Trigger-style rules can hold a reorder floor above the ordinary max when coverage or pack logic requires it.
 - Acceptable overstock rules can allow intentional post-receipt overstock without treating it as an error automatically.
+
+Pack-overshoot defer
+- When stock is already comfortable (QOH >= 50% of max) and a full pack would significantly overshoot max (by more than 25% of a pack), the app suggests deferring to the next cycle.
+- Deferred items show as Warnings with a "deferred_pack_overshoot" flag so you can review them.
+- The defer does NOT apply when pack > max (overshoot is inherent to the item, like hose reels) or when you genuinely need a full pack to restock.
 
 Coverage-aware rules
 - Saved item rules can define trigger qty, trigger %, minimum packs, cover days, and cover cycles.
@@ -167,8 +175,13 @@ Why text
 Common statuses
 - ok: ready to export.
 - review: needs a manual decision.
-- warning: data is incomplete or risky.
+- warning: data is incomplete, risky, or a pack overshoot was deferred.
 - skip: no order needed.
+
+Dead stock detection
+- Items with no sale in 365+ days are flagged as dead stock.
+- Items that haven't sold in 2x their normal sales cycle (minimum 90 days) are also flagged, even if under 365 days.
+- Dead stock items can be isolated with the Dead Stock quick filter pill.
 
 What overrides what
 - Manual Final Qty edits override the app suggestion for that session.
@@ -185,11 +198,16 @@ Plain-language field names
     (
         "Bulk Assign",
         "Spreadsheet-style controls, bulk actions, and selection behavior on the Assign Vendors tab.",
-        """Basic editing
+        """Grid columns
+- Editable columns: Vendor, Final Qty, QOH, Min, Max, Pack, and Notes.
+- Informational columns: Unit Cost, Ext Cost, Last Sale, Last Receipt, Risk, and more.
+- Right-click any column header to show/hide columns.
+- Shift+click a column header to add a secondary sort (up to 3 levels).
+
+Basic editing
 - Click a cell to make it active.
 - Double-click, F2, or Enter to edit the active editable cell or selection.
-- Editable bulk columns are Vendor, Final Qty, QOH, Min, Max, and Pack.
-- When editing directly in a cell, movement keys now commit the current change before moving.
+- When editing directly in a cell, movement keys commit the current change before moving.
 
 Selection
 - Ctrl+click adds cells or rows to the selection.
@@ -430,12 +448,7 @@ What to expect
     (
         "Troubleshooting",
         "Common issues and what to check first.",
-        """Bulk sheet unavailable
-- The bulk spreadsheet editor requires the tksheet package.
-- Install it in the same Python interpreter your IDE or EXE build uses.
-- For this repo, the local .venv is often the interpreter used by debug runs.
-
-Suggestion looks wrong
+        """Suggestion looks wrong
 - Check QOH, On PO, Suspense, current max, and pack size.
 - Look at the Why text for Pos, Target, Basis, Susp, and OnPO.
 - Sparse annual sales may suppress suggested min/max.
@@ -443,7 +456,8 @@ Suggestion looks wrong
 
 Item marked review or warning
 - Review often means reel/manual-only handling or another rule requiring a human decision.
-- Warning usually means missing or inconsistent data such as no pack on an item that needs one.
+- Warning usually means missing or inconsistent data, a pack overshoot deferral, or dead stock detection.
+- Press Enter on any item to open the details dialog and see the full Activity & Risk breakdown.
 
 Delete did not do what you expected
 - If rows are selected, Delete removes rows.
@@ -498,14 +512,15 @@ Selection
 
 Grid & Columns
 - `Click column header` — Sort by that column (click again to reverse)
-- `Double-click column header` — Auto-size all columns to fit the window
+- `Shift+Click column header` — Add a secondary sort (up to 3 levels)
 - `Right-click column header` — Show/hide columns
+- `Ctrl+K` — Open the command palette (jump to any item, vendor, or action)
 - `Ctrl+F` — Focus the text search box
 - `Ctrl+C` / `Ctrl+V` — Copy / Paste cell data
 - `?` — Show the keyboard shortcut overlay
 
 Quick Filters
-- Use the pill buttons above the filter panel for one-click presets: All, Unassigned, Needs Review, Warnings, High Risk.
+- Use the pill buttons above the filter panel for one-click presets: All, Unassigned, Needs Review, Warnings, High Risk, Dead Stock, Deferred.
 - Combine with the detailed filter dropdowns below for precise filtering.
 """,
     ),
