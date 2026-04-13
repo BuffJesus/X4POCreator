@@ -280,7 +280,11 @@ def _parse_sales_inputs(paths, *, progress_callback=None):
 
     if detailed_sales_path and received_parts_path:
         if callable(progress_callback):
-            progress_callback("Parsing Detailed Part Sales and Received Parts Detail...")
+            try:
+                size_mb = os.path.getsize(detailed_sales_path) / (1024 * 1024)
+                progress_callback(f"Parsing sales + receipts ({size_mb:.0f} MB, may take 30+ seconds)...")
+            except OSError:
+                progress_callback("Parsing Detailed Part Sales and Received Parts Detail...")
         if os.path.isfile(detailed_sales_path) and os.path.isfile(received_parts_path):
             aggregates = parsers.parse_detailed_pair_aggregates(detailed_sales_path, received_parts_path)
             return {

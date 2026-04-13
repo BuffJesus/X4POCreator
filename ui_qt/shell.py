@@ -269,10 +269,11 @@ class POBuilderShell(QMainWindow):
         self._shortcut_action.triggered.connect(self._on_show_shortcuts)
         self.addAction(self._shortcut_action)
 
-        # Background update check on startup
+        # Background update check — deferred until after the first load
+        # completes so it never competes with the parse worker for the GIL.
         self._update_release: dict | None = None
         self._version_label = version_label
-        self._start_update_check()
+        self._update_check_done = False
 
     def _mark_step(self, label: str, state: str):
         """Update a sidebar item's workflow state indicator.
@@ -503,6 +504,12 @@ class POBuilderShell(QMainWindow):
             f"Loaded {item_count:,} items — adjust filters then click Continue", 15000,
         )
 
+        # Deferred update check — runs after first load so it never
+        # competes with the parse worker for the GIL.
+        if not self._update_check_done:
+            self._update_check_done = True
+            self._start_update_check()
+
         if warnings:
             summary_lines = ["Top warnings:"]
             for title, _body in warnings[:5]:
@@ -521,7 +528,6 @@ class POBuilderShell(QMainWindow):
     def _on_filters_applied(self, excluded_lc: set, excluded_cust: set):
         """Run the assignment pipeline with the selected exclusions (background thread)."""
         from ui_qt.assignment_worker import AssignmentWorker
-
         write_debug("qt.filters_applied",
                      excluded_lc=len(excluded_lc),
                      excluded_cust=len(excluded_cust),

@@ -129,12 +129,14 @@ class ParseWorker(QObject):
             self.progress.emit("Starting file load...")
 
             def _progress_cb(message: str):
-                # Always marshal back through the signal — never call
-                # directly into a QWidget from the worker thread.
+                import time as _t
                 self.progress.emit(str(message))
+                # Yield the GIL so the main thread can process the
+                # queued signal and repaint.  Without this, pure-Python
+                # CPU-bound parsing holds the GIL for 30+ seconds and
+                # the main thread never gets to update the UI.
+                _t.sleep(0.05)
 
-            # Upstream kwargs are stable.  Keep them keyed so any future
-            # addition to parse_all_files doesn't silently position-shift.
             result = parse_fn(
                 self.paths,
                 old_po_warning_days=90,
@@ -143,7 +145,7 @@ class ParseWorker(QObject):
                 stored_schema_hashes=self.stored_schema_hashes,
             )
             self.finished.emit(result or {})
-        except Exception as exc:  # pragma: no cover - safety net
+        except Exception as exc:
             self.failed.emit(str(exc))
 
 
@@ -596,7 +598,6 @@ class LoadTab(QWidget):
         self._worker.progress.connect(self._on_progress, Qt.QueuedConnection)
         self._worker.finished.connect(self._on_finished, Qt.QueuedConnection)
         self._worker.failed.connect(self._on_failed, Qt.QueuedConnection)
-        # Tear down both objects once the worker signals done.
         self._worker.finished.connect(self._thread.quit)
         self._worker.failed.connect(self._thread.quit)
         self._thread.finished.connect(self._cleanup_thread)
