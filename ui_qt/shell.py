@@ -225,6 +225,7 @@ class POBuilderShell(QMainWindow):
             elif label == "Review":
                 self.review_tab = ReviewTab()
                 self.review_tab.export_requested.connect(self._on_export_requested)
+                self.review_tab.items_changed.connect(self._on_review_items_changed)
                 self.stack.addWidget(self.review_tab)
         h.addWidget(self.stack, stretch=1)
 
@@ -296,6 +297,12 @@ class POBuilderShell(QMainWindow):
                 if str(item.get("vendor", "")).strip()
             ]
             self.review_tab.set_items(assigned)
+
+    def _on_review_items_changed(self):
+        """Sync bulk model after edits or removals in the review tab."""
+        if self.bulk_tab:
+            self.bulk_tab.model.refresh_all()
+            self.bulk_tab._update_summary()
 
     def _on_ctrl_k(self):
         from ui_qt.command_palette import CommandPaletteDialog

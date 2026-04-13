@@ -577,6 +577,13 @@ class BulkTableModel(QAbstractTableModel):
                           source="ALL", item_status="ALL", vendor_ws="",
                           special="")
 
+    def refresh_all(self):
+        """Invalidate all caches and notify views of a full data change."""
+        self._cache.clear()
+        self.beginResetModel()
+        self._rebuild_visible()
+        self.endResetModel()
+
     def refresh_rows(self, source_rows: Sequence[int]):
         """Notify views that specific source rows changed (after edit/recalc)."""
         if not source_rows:

@@ -13,12 +13,15 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QHeaderView,
     QLabel,
+    QMenu,
+    QMessageBox,
     QPushButton,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
+from PySide6.QtGui import QKeySequence, QShortcut
 
 import theme as t
 import theme_qt as tq
@@ -38,6 +41,7 @@ class ReviewTab(QWidget):
     """Review and export surface for assigned items."""
 
     export_requested = Signal(str)
+    items_changed = Signal()  # emitted after edits or removals
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -136,8 +140,17 @@ class ReviewTab(QWidget):
         )
         self._table.setAlternatingRowColors(True)
         self._table.setSelectionBehavior(QAbstractItemView.SelectRows)
-        self._table.setEditTriggers(QAbstractItemView.NoEditTriggers)
-        self._table.setFocusPolicy(Qt.NoFocus)
+        self._table.setSelectionMode(QAbstractItemView.ExtendedSelection)
+        self._table.setEditTriggers(
+            QAbstractItemView.DoubleClicked | QAbstractItemView.EditKeyPressed
+        )
+        self._table.setContextMenuPolicy(Qt.CustomContextMenu)
+        self._table.customContextMenuRequested.connect(self._on_context_menu)
+        self._table.cellChanged.connect(self._on_cell_changed)
+        self._delete_shortcut = QShortcut(QKeySequence(Qt.Key_Delete), self._table)
+        self._delete_shortcut.activated.connect(self._remove_selected)
+        self._backspace_shortcut = QShortcut(QKeySequence(Qt.Key_Backspace), self._table)
+        self._backspace_shortcut.activated.connect(self._remove_selected)
         self._table.verticalHeader().setDefaultSectionSize(26)
         self._table.verticalHeader().setVisible(False)
         self._table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
@@ -233,6 +246,8 @@ class ReviewTab(QWidget):
         for item in visible:
             by_vendor[str(item.get("vendor", "")).strip().upper()].append(item)
 
+        self._table.blockSignals(True)
+        self._visible_items = visible
         self._table.setRowCount(len(visible))
         row_idx = 0
         for vendor_code in sorted(by_vendor.keys()):
@@ -249,7 +264,9 @@ class ReviewTab(QWidget):
                 ]
                 for col, val in enumerate(values):
                     cell = QTableWidgetItem(str(val))
-                    cell.setFlags(cell.flags() & ~Qt.ItemIsEditable)
+                    # Vendor (0) and Final Qty (4) are editable
+                    if col not in (0, 4):
+                        cell.setFlags(cell.flags() & ~Qt.ItemIsEditable)
                     if is_exc:
                         cell.setForeground(QColor(t.ACCENT_WARNING))
                     elif col == 0:
@@ -258,6 +275,7 @@ class ReviewTab(QWidget):
                         cell.setTextAlignment(Qt.AlignCenter)
                     self._table.setItem(row_idx, col, cell)
                 row_idx += 1
+        self._table.blockSignals(False)
 
         total = len(self._items)
         ready = total - sum(1 for item in self._items if _is_exception(item))
@@ -372,6 +390,59 @@ class ReviewTab(QWidget):
             return None, 0
         vendor = max(sorted(counts), key=lambda code: counts[code])
         return vendor, counts[vendor]
+
+    def _on_cell_changed(self, row: int, col: int):
+        """Propagate edits on Vendor or Final Qty back to the item dict."""
+        if not hasattr(self, "_visible_items") or row >= len(self._visible_items):
+            return
+        item = self._visible_items[row]
+        cell = self._table.item(row, col)
+        if not cell:
+            return
+        if col == 0:  # Vendor
+            item["vendor"] = cell.text().strip().upper()
+            self.items_changed.emit()
+        elif col == 4:  # Final Qty
+            try:
+                qty = int(float(cell.text()))
+                item["final_qty"] = qty
+                item["order_qty"] = qty
+                item["manual_override"] = True
+                self.items_changed.emit()
+            except (ValueError, TypeError):
+                self._table.blockSignals(True)
+                cell.setText(str(item.get("final_qty", 0)))
+                self._table.blockSignals(False)
+
+    def _remove_selected(self):
+        """Remove selected rows from the review items list."""
+        selected_rows = sorted({idx.row() for idx in self._table.selectedIndexes()}, reverse=True)
+        if not selected_rows or not hasattr(self, "_visible_items"):
+            return
+        to_remove = set()
+        for row in selected_rows:
+            if row < len(self._visible_items):
+                item = self._visible_items[row]
+                to_remove.add((item.get("line_code", ""), item.get("item_code", "")))
+        if not to_remove:
+            return
+        before = len(self._items)
+        self._items = [
+            item for item in self._items
+            if (item.get("line_code", ""), item.get("item_code", "")) not in to_remove
+        ]
+        removed = before - len(self._items)
+        if removed:
+            self._refresh_table()
+            self.items_changed.emit()
+
+    def _on_context_menu(self, pos):
+        idx = self._table.indexAt(pos)
+        if not idx.isValid():
+            return
+        menu = QMenu(self)
+        menu.addAction("Remove Selected Rows", self._remove_selected)
+        menu.exec(self._table.viewport().mapToGlobal(pos))
 
     def _on_export(self):
         self.export_requested.emit("")
