@@ -84,6 +84,7 @@ class BulkTab(QWidget):
     ignored_items_requested = Signal()
     vendor_manager_requested = Signal()
     settings_requested = Signal()
+    apply_vendor_to_supplier = Signal(str, str)  # (supplier, vendor)
     export_dead_stock = Signal()
     export_deferred = Signal()
     export_session_summary = Signal()
@@ -220,6 +221,16 @@ class BulkTab(QWidget):
         )
         btn_apply_vis.clicked.connect(self._on_apply_vendor_visible)
         action_layout.addWidget(btn_apply_vis)
+
+        btn_apply_supplier = QPushButton("Apply by Supplier")
+        btn_apply_supplier.setStyleSheet(
+            f"QPushButton {{ background: {t.BG_ELEVATED}; color: {t.TEXT_SECONDARY}; "
+            f"  border: 1px solid {t.BORDER}; border-radius: {t.RADIUS_SM}px; "
+            f"  padding: 5px 12px; font-size: {t.FONT_SMALL}px; }}"
+            f"QPushButton:hover {{ border-color: {t.ACCENT_PRIMARY}; color: {t.TEXT_PRIMARY}; }}"
+        )
+        btn_apply_supplier.clicked.connect(self._on_apply_by_supplier)
+        action_layout.addWidget(btn_apply_supplier)
 
         self._add_separator(action_layout)
 
@@ -593,6 +604,66 @@ class BulkTab(QWidget):
             return
         write_debug("qt.bulk_tab.apply_vendor_visible", vendor=vendor, rows=len(rows))
         self.vendor_applied.emit(rows, vendor)
+
+    def _on_apply_by_supplier(self):
+        """Open dialog to assign vendor to all items from a specific supplier."""
+        from PySide6.QtWidgets import QDialog, QDialogButtonBox, QListWidget, QListWidgetItem
+        vendor = self._vendor_apply_combo.currentText().strip().upper()
+        if not vendor:
+            QMessageBox.information(self, "No Vendor", "Enter a vendor code first.")
+            return
+
+        # Build supplier→row mapping from visible items
+        inv_lookup = self._model._inventory_lookup or {}
+        supplier_rows: dict[str, list[int]] = {}
+        for src in self.visible_source_rows():
+            item = self._model.item_at(src)
+            if not item or item.get("vendor"):
+                continue  # skip already-assigned
+            key = (item.get("line_code", ""), item.get("item_code", ""))
+            supplier = str((inv_lookup.get(key) or {}).get("supplier", "") or "").strip()
+            if supplier:
+                supplier_rows.setdefault(supplier, []).append(src)
+
+        if not supplier_rows:
+            QMessageBox.information(self, "No Suppliers",
+                                    "No unassigned items with supplier data in current view.")
+            return
+
+        # Dialog: pick suppliers to assign this vendor to
+        dlg = QDialog(self)
+        dlg.setWindowTitle(f"Apply {vendor} by Supplier")
+        dlg.setMinimumWidth(400)
+        dlg.setStyleSheet(f"background: {t.BG_PANEL}; color: {t.TEXT_SECONDARY};")
+        lay = QVBoxLayout(dlg)
+        lay.addWidget(QLabel(f"Select suppliers to assign to <b>{vendor}</b>:"))
+        lst = QListWidget()
+        for supplier in sorted(supplier_rows, key=lambda s: (-len(supplier_rows[s]), s)):
+            count = len(supplier_rows[supplier])
+            item = QListWidgetItem(f"{supplier}  ({count} items)")
+            item.setCheckState(Qt.Unchecked)
+            item.setData(Qt.UserRole, supplier)
+            lst.addItem(item)
+        lay.addWidget(lst, stretch=1)
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        buttons.accepted.connect(dlg.accept)
+        buttons.rejected.connect(dlg.reject)
+        lay.addWidget(buttons)
+
+        if dlg.exec() != QDialog.Accepted:
+            return
+
+        # Collect selected suppliers and emit
+        all_rows = []
+        for i in range(lst.count()):
+            item = lst.item(i)
+            if item.checkState() == Qt.Checked:
+                supplier = item.data(Qt.UserRole)
+                all_rows.extend(supplier_rows.get(supplier, []))
+        if all_rows:
+            write_debug("qt.bulk_tab.apply_by_supplier", vendor=vendor,
+                         suppliers=lst.count(), rows=len(all_rows))
+            self.vendor_applied.emit(all_rows, vendor)
 
     def _on_remove_not_needed(self):
         self.remove_not_needed.emit()

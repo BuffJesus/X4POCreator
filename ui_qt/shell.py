@@ -612,22 +612,39 @@ class POBuilderShell(QMainWindow):
         auto_result = getattr(ctrl, "_last_auto_assign_result", {})
         assigned_count = auto_result.get("assigned_count", 0)
 
-        item_count = len(ctrl.session.filtered_items)
-        assigned_total = sum(1 for i in ctrl.session.filtered_items if i.get("vendor"))
+        items = ctrl.session.filtered_items
+        item_count = len(items)
+        assigned_total = sum(1 for i in items if i.get("vendor"))
+        unassigned = item_count - assigned_total
+        review_count = sum(1 for i in items if str(i.get("status", "")).lower() == "review")
+        warning_count = sum(1 for i in items if str(i.get("status", "")).lower() in ("warning", "warn"))
+        dead_count = sum(1 for i in items if i.get("dead_stock"))
+
         self._status_item_count.setText(
             f"{item_count:,} items \u00b7 {assigned_total:,} assigned"
         )
 
-        status_msg = f"{item_count:,} items ready"
+        # Build summary lines
+        lines = [f"<b>{item_count:,}</b> items loaded"]
         if assigned_count:
-            status_msg += f" \u00b7 {assigned_count} auto-assigned"
-        excluded_lc = getattr(self, "_excluded_lc_snapshot", set())
-        excluded_cust = getattr(self, "_excluded_cust_snapshot", set())
-        if excluded_lc:
-            status_msg += f" \u00b7 {len(excluded_lc)} LC excluded"
-        if excluded_cust:
-            status_msg += f" \u00b7 {len(excluded_cust)} customers excluded"
-        self.status.showMessage(status_msg, 15000)
+            lines.append(f"<b>{assigned_count:,}</b> auto-assigned from receipt history")
+        if unassigned:
+            lines.append(f"<b>{unassigned:,}</b> need manual vendor assignment")
+        if review_count:
+            lines.append(f"<b>{review_count:,}</b> need review (reel/manual/pack)")
+        if warning_count:
+            lines.append(f"<b>{warning_count:,}</b> warnings (missing data / deferred)")
+        if dead_count:
+            lines.append(f"<b>{dead_count:,}</b> dead stock items")
+
+        body = "<br>".join(lines)
+        QMessageBox.information(
+            self, "Session Ready",
+            f"<p>{body}</p>"
+            f"<p style='color: gray;'>Use the bulk grid to assign remaining vendors, "
+            f"then Review & Export when ready.</p>",
+        )
+        self.status.showMessage(f"{item_count:,} items ready", 15000)
 
     def _on_assignment_failed(self, error: str):
         write_debug("qt.assignment_failed", error=error)
