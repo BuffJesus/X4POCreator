@@ -336,6 +336,40 @@ def assess_post_receipt_overstock(item, suggested_qty):
     return overstock_qty, within_tolerance
 
 
+PACK_OVERSHOOT_DEFER_THRESHOLD = 0.50  # defer if QOH >= 50% of max
+
+
+PACK_OVERSHOOT_TOLERANCE = 0.25  # allow overshoot up to 25% of pack
+
+
+def _should_defer_pack_overshoot(raw_need, pack_qty, inv):
+    """Return True if ordering a full pack would significantly overshoot
+    max while current stock is already comfortable.
+
+    Only defers when ALL of:
+    - raw_need < pack_qty (order is purely pack-rounding waste)
+    - pack_qty <= max (if pack > max, overshoot is inherent)
+    - QOH >= 50% of max (stock is comfortable)
+    - QOH + pack would exceed max by more than 25% of a pack
+      (small overshoots near a pack multiple are acceptable)
+    """
+    if not inv or not pack_qty or pack_qty <= 0:
+        return False
+    if raw_need >= pack_qty:
+        return False
+    mx = inv.get("max")
+    if not isinstance(mx, (int, float)) or mx <= 0:
+        return False
+    if pack_qty > mx:
+        return False
+    qoh = max(0, inv.get("qoh", 0) or 0)
+    if qoh < mx * PACK_OVERSHOOT_DEFER_THRESHOLD:
+        return False
+    projected = qoh + pack_qty
+    overshoot = projected - mx
+    return overshoot > pack_qty * PACK_OVERSHOOT_TOLERANCE
+
+
 def calculate_suggested_qty(raw_need, pack_qty, policy, rule, inv):
     """
     Calculate a suggested order quantity based on policy and pack.
@@ -373,17 +407,32 @@ def calculate_suggested_qty(raw_need, pack_qty, policy, rule, inv):
 
     if policy == "reel_auto":
         if pack_qty and pack_qty > 0:
+            if _should_defer_pack_overshoot(raw_need, pack_qty, inv):
+                qoh = max(0, (inv or {}).get("qoh", 0) or 0)
+                mx = (inv or {}).get("max", 0)
+                pct = int(round(qoh / mx * 100)) if mx else 0
+                return 0, f"Defer: stock at {pct}% of max ({qoh}/{mx}), pack {pack_qty} would overshoot"
             rounded = max(pack_qty, math.ceil(raw_need / pack_qty) * pack_qty)
             return rounded, f"Reel auto: graduated to auto-order, rounded to replenishment unit {pack_qty}"
         return raw_need, "Reel auto: graduated to auto-order"
 
     if policy == "pack_trigger":
         if pack_qty and pack_qty > 0:
+            if _should_defer_pack_overshoot(raw_need, pack_qty, inv):
+                qoh = max(0, (inv or {}).get("qoh", 0) or 0)
+                mx = (inv or {}).get("max", 0)
+                pct = int(round(qoh / mx * 100)) if mx else 0
+                return 0, f"Defer: stock at {pct}% of max ({qoh}/{mx}), pack {pack_qty} would overshoot"
             rounded = max(pack_qty, math.ceil(raw_need / pack_qty) * pack_qty)
             return rounded, f"Pack trigger: rounded to replenishment unit {pack_qty}"
         return raw_need, "Pack trigger (no pack data)"
 
     if pack_qty and pack_qty > 0:
+        if _should_defer_pack_overshoot(raw_need, pack_qty, inv):
+            qoh = max(0, (inv or {}).get("qoh", 0) or 0)
+            mx = (inv or {}).get("max", 0)
+            pct = int(round(qoh / mx * 100)) if mx else 0
+            return 0, f"Defer: stock at {pct}% of max ({qoh}/{mx}), pack {pack_qty} would overshoot"
         rounded = max(pack_qty, math.ceil(raw_need / pack_qty) * pack_qty)
         # Near-boundary tolerance: if raw_need is within 5% BELOW a pack
         # multiple (e.g. 99 need vs 100 pack), use exact qty instead of
