@@ -352,6 +352,8 @@ class BulkTab(QWidget):
         self._table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self._table.setSelectionMode(QAbstractItemView.ExtendedSelection)
         self._table.setSortingEnabled(True)
+        # Intercept header clicks to detect Shift for secondary sort
+        self._table.horizontalHeader().sectionClicked.connect(self._on_header_clicked)
         # Only allow editing via double-click or F2 — Enter opens details
         self._table.setEditTriggers(
             QAbstractItemView.DoubleClicked | QAbstractItemView.EditKeyPressed
@@ -564,6 +566,19 @@ class BulkTab(QWidget):
         self.redo_requested.emit()
 
     # ── Context menus ─────────────────────────────────────────────
+
+    def _on_header_clicked(self, logical_index: int):
+        """Detect Shift+click for secondary sort."""
+        from PySide6.QtWidgets import QApplication
+        modifiers = QApplication.keyboardModifiers()
+        header = self._table.horizontalHeader()
+        order = header.sortIndicatorOrder()
+        if modifiers & Qt.ShiftModifier:
+            self._proxy.add_sort_key(logical_index, order)
+            write_debug("qt.sort.secondary", col=COLUMNS[logical_index] if logical_index < len(COLUMNS) else logical_index,
+                         keys=len(self._proxy.sort_keys))
+        else:
+            self._proxy.set_primary_sort(logical_index, order)
 
     def _on_header_context_menu(self, pos):
         """Column visibility toggle via header right-click."""

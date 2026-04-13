@@ -589,6 +589,10 @@ class BulkFilterProxyModel(QSortFilterProxyModel):
     - source: "ALL", "Sales", "Susp", "Both"
     - item_status: "ALL", "Review", "Warning", "Skip", "OK"
     - vendor_worksheet: specific vendor or "" (all)
+
+    Sorting:
+    - Single click on header: sort by that column (replaces prior sort)
+    - Shift+click on header: add secondary sort (up to 3 levels)
     """
 
     def __init__(self, parent=None):
@@ -599,6 +603,9 @@ class BulkFilterProxyModel(QSortFilterProxyModel):
         self._source = "ALL"
         self._item_status = "ALL"
         self._vendor_worksheet = ""
+        # Multi-column sort stack: list of (column_index, Qt.SortOrder)
+        self._sort_keys: list[tuple[int, Qt.SortOrder]] = []
+        self._max_sort_keys = 3
 
     # ── Filter setters (each invalidates + logs timing) ─────────────
 
@@ -731,3 +738,82 @@ class BulkFilterProxyModel(QSortFilterProxyModel):
                 return False
 
         return True
+
+    # ── Multi-column sort ────────────────────────────────────────
+
+    def add_sort_key(self, column: int, order: Qt.SortOrder):
+        """Add a secondary sort key (Shift+click). Removes duplicates."""
+        self._sort_keys = [(c, o) for c, o in self._sort_keys if c != column]
+        self._sort_keys.append((column, order))
+        if len(self._sort_keys) > self._max_sort_keys:
+            self._sort_keys = self._sort_keys[-self._max_sort_keys:]
+        self.invalidate()
+
+    def set_primary_sort(self, column: int, order: Qt.SortOrder):
+        """Replace sort stack with a single primary sort (normal click)."""
+        self._sort_keys = [(column, order)]
+        self.invalidate()
+
+    @property
+    def sort_keys(self) -> list[tuple[int, Qt.SortOrder]]:
+        return list(self._sort_keys)
+
+    def sort(self, column: int, order: Qt.SortOrder = Qt.AscendingOrder):
+        """Override to use multi-column sort when keys are stacked."""
+        if not self._sort_keys:
+            self._sort_keys = [(column, order)]
+        super().sort(column, order)
+
+    def lessThan(self, left: QModelIndex, right: QModelIndex) -> bool:
+        if len(self._sort_keys) <= 1:
+            return self._compare_single(left, right)
+        return self._compare_multi(left, right)
+
+    def _sort_value(self, index: QModelIndex, col: int) -> Any:
+        """Extract a sortable value from the source model at the given row/col."""
+        model = self.sourceModel()
+        if model is None:
+            return ""
+        row = index.row()
+        val = model.data(model.index(row, col), Qt.DisplayRole)
+        if val is None:
+            return ""
+        # Try numeric sort for cost/qty columns
+        if isinstance(val, str):
+            cleaned = val.replace("$", "").replace(",", "").replace("%", "").strip()
+            if cleaned:
+                try:
+                    return float(cleaned)
+                except ValueError:
+                    pass
+        if isinstance(val, (int, float)):
+            return float(val)
+        return str(val).lower()
+
+    def _compare_single(self, left: QModelIndex, right: QModelIndex) -> bool:
+        lv = self._sort_value(left, left.column())
+        rv = self._sort_value(right, right.column())
+        try:
+            return lv < rv
+        except TypeError:
+            return str(lv) < str(rv)
+
+    def _compare_multi(self, left: QModelIndex, right: QModelIndex) -> bool:
+        """Compare using the full sort key stack."""
+        for col, order in self._sort_keys:
+            lv = self._sort_value(left, col)
+            rv = self._sort_value(right, col)
+            try:
+                if lv == rv:
+                    continue
+                result = lv < rv
+            except TypeError:
+                sl, sr = str(lv), str(rv)
+                if sl == sr:
+                    continue
+                result = sl < sr
+            # If this key's order is descending, invert
+            if order == Qt.DescendingOrder:
+                result = not result
+            return result
+        return False
