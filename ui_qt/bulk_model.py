@@ -37,7 +37,7 @@ COLUMNS = (
     "vendor", "line_code", "item_code", "description", "source",
     "status", "raw_need", "suggested_qty", "final_qty", "buy_rule",
     "qoh", "cur_min", "cur_max", "sug_min", "sug_max",
-    "pack_size", "supplier", "why", "notes", "risk",
+    "pack_size", "unit_cost", "ext_cost", "supplier", "why", "notes", "risk",
 )
 
 LABELS = {
@@ -47,6 +47,7 @@ LABELS = {
     "final_qty": "Final Qty", "buy_rule": "Buy Rule",
     "qoh": "QOH", "cur_min": "Min", "cur_max": "Max",
     "sug_min": "Sug Min", "sug_max": "Sug Max", "pack_size": "Pack",
+    "unit_cost": "Unit Cost", "ext_cost": "Ext Cost",
     "supplier": "Supplier", "why": "Why This Qty", "notes": "Notes",
     "risk": "Risk",
 }
@@ -56,6 +57,7 @@ WIDTHS = {
     "source": 40, "status": 52, "raw_need": 44, "suggested_qty": 54,
     "final_qty": 64, "buy_rule": 72, "qoh": 44, "cur_min": 44,
     "cur_max": 44, "sug_min": 48, "sug_max": 48, "pack_size": 40,
+    "unit_cost": 64, "ext_cost": 72,
     "supplier": 72, "why": 180, "notes": 100, "risk": 44,
 }
 
@@ -160,6 +162,10 @@ def build_row_values(item: dict, inventory_lookup: dict, order_rules: dict,
     notes = item.get("notes", "")
     risk_score = item.get("stockout_risk_score")
     risk_display = f"{int(round(risk_score * 100))}%" if isinstance(risk_score, float) else ""
+    repl_cost = item.get("repl_cost") or inventory.get("repl_cost")
+    unit_cost_display = f"${repl_cost:,.2f}" if isinstance(repl_cost, (int, float)) and repl_cost else ""
+    ext_cost = (repl_cost or 0) * (final_qty or 0) if isinstance(repl_cost, (int, float)) else 0
+    ext_cost_display = f"${ext_cost:,.2f}" if ext_cost else ""
     return (
         item.get("vendor", ""),      # 0  vendor
         line_code,                    # 1  line_code
@@ -177,10 +183,12 @@ def build_row_values(item: dict, inventory_lookup: dict, order_rules: dict,
         sug_min if sug_min is not None else "",   # 13
         sug_max if sug_max is not None else "",   # 14
         pack_size if pack_size else "",           # 15
-        supplier,                     # 16 supplier
-        why,                          # 17 why
-        notes,                        # 18 notes
-        risk_display,                 # 19 risk
+        unit_cost_display,            # 16 unit_cost
+        ext_cost_display,             # 17 ext_cost
+        supplier,                     # 18 supplier
+        why,                          # 19 why
+        notes,                        # 20 notes
+        risk_display,                 # 21 risk
     )
 
 
@@ -356,7 +364,7 @@ class BulkTableModel(QAbstractTableModel):
             col_name = COLUMNS[col] if 0 <= col < len(COLUMNS) else ""
             if col_name in ("raw_need", "suggested_qty", "final_qty", "qoh",
                             "cur_min", "cur_max", "sug_min", "sug_max",
-                            "pack_size", "risk"):
+                            "pack_size", "unit_cost", "ext_cost", "risk"):
                 return int(Qt.AlignRight | Qt.AlignVCenter)
             return int(Qt.AlignLeft | Qt.AlignVCenter)
 
