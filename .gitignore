@@ -1,3 +1,4 @@
+# IDE / environment
 .idea/
 .venv/
 __pycache__/
@@ -5,28 +6,33 @@ __pycache__/
 *.pyo
 *.pyd
 
+# Build output
 build/
 dist/
 *.exe
+*.spec
+!PO_Builder.spec
 
+# Data files (user-specific, never commit)
 CSVs/
 sessions/
+output_qt/
 *.csv
 *.json
 *.xlsx
 *.txt
 
+# Assets (bundled in exe, not in repo except allowlisted)
 *.gif
 *.wav
 *.ico
+*.png
 !loading.gif
 !loading.wav
 !icon.ico
 
 # Runtime artifacts
-debug_trace.log
-perf_trace.jsonl
-perf_summary.txt
-parse_result_cache.pkl
 *.pkl
 *.log
+*.jsonl
+perf_summary.txt
