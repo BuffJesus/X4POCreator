@@ -12,6 +12,42 @@ from models import AppSessionState
 
 
 class AssignmentFlowTests(unittest.TestCase):
+    def test_suspect_inventory_count_reason_flags_recent_unanchored_org_item(self):
+        item = {
+            "line_code": "ORG-",
+            "item_code": "7012",
+            "suggested_qty": 0,
+            "demand_signal": 2,
+            "target_basis": "demand_fallback",
+            "days_since_last_sale": 14,
+            "annualized_sales_loaded": 18.0,
+            "inventory_position": 12,
+            "target_stock": 2,
+        }
+        inv = {"qoh": 12, "min": None, "max": None}
+
+        reason = assignment_flow.suspect_inventory_count_reason(item, inv)
+
+        self.assertIn("inventory count may be overstated", reason)
+
+    def test_suspect_inventory_count_reason_ignores_items_with_real_min_max_anchor(self):
+        item = {
+            "line_code": "ORG-",
+            "item_code": "7012",
+            "suggested_qty": 0,
+            "demand_signal": 2,
+            "target_basis": "current_max",
+            "days_since_last_sale": 14,
+            "annualized_sales_loaded": 18.0,
+            "inventory_position": 12,
+            "target_stock": 2,
+        }
+        inv = {"qoh": 12, "min": 1, "max": 6}
+
+        reason = assignment_flow.suspect_inventory_count_reason(item, inv)
+
+        self.assertEqual(reason, "")
+
     def test_prepare_assignment_session_builds_filtered_items_and_duplicates(self):
         session = AppSessionState(
             sales_items=[{

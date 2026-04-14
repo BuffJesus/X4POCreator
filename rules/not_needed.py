@@ -32,6 +32,7 @@ def not_needed_reason(app, item, max_exceed_abs_buffer):
     performance_profile = item.get("performance_profile", "")
     sales_health_signal = item.get("sales_health_signal", "")
     possible_missed_reorder = bool(item.get("possible_missed_reorder"))
+    suspect_inventory_count = bool(item.get("suspect_inventory_count"))
     reorder_trigger_threshold = item.get("reorder_trigger_threshold")
     reorder_trigger_basis = item.get("reorder_trigger_basis", "")
     reorder_needed = bool(item.get("reorder_needed"))
@@ -155,6 +156,9 @@ def not_needed_reason(app, item, max_exceed_abs_buffer):
     if possible_missed_reorder:
         reasons.append("Review: likely missed reorder candidate based on historical sales and stale recency")
         protect_from_auto_remove = True
+    elif suspect_inventory_count:
+        reasons.append("Review: reported ORG/FLU stock may be overstated and should be shelf-checked manually")
+        protect_from_auto_remove = True
     elif (
         reorder_needed
         and isinstance(reorder_trigger_threshold, (int, float))
@@ -179,5 +183,4 @@ def not_needed_reason(app, item, max_exceed_abs_buffer):
         auto_remove = False
 
     return "; ".join(reasons), auto_remove
-
 

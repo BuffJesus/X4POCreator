@@ -8,7 +8,63 @@ import reorder_flow
 import shipping_flow
 import storage
 from item_workflow import apply_recent_order_context
-from rules import enrich_item, get_rule_float, get_rule_int, get_rule_pack_size, has_exact_qty_override
+from rules import enrich_item, evaluate_item_status, get_rule_float, get_rule_int, get_rule_pack_size, has_exact_qty_override
+
+
+SUSPECT_QOH_LINE_CODES = frozenset({"FLU-", "ORG-"})
+SUSPECT_QOH_MAX_DAYS_SINCE_SALE = 180
+SUSPECT_QOH_MIN_ANNUALIZED_SALES = 12.0
+SUSPECT_QOH_MIN_EXCESS_UNITS = 4
+SUSPECT_QOH_TARGET_RATIO = 3.0
+
+
+def suspect_inventory_count_reason(item, inv):
+    """Return a review reason when reported QOH likely suppresses a valid reorder.
+
+    This is intentionally narrow and only fires for FLU-/ORG- items whose
+    reorder target is purely sales-driven (no current min/max anchor), with
+    recent demand, but with a reported inventory position far above that
+    target.  These rows stay in the bulk review flow so operators can
+    manually verify the shelf count instead of losing them to a zero-qty
+    suggestion.
+    """
+    line_code = str(item.get("line_code", "") or "").strip().upper()
+    if line_code not in SUSPECT_QOH_LINE_CODES:
+        return ""
+    if not isinstance(inv, dict):
+        return ""
+    if inv.get("min") is not None or inv.get("max") is not None:
+        return ""
+    if (item.get("suggested_qty", 0) or 0) > 0:
+        return ""
+    demand_signal = item.get("demand_signal", 0) or 0
+    if demand_signal <= 0:
+        return ""
+    target_basis = str(item.get("target_basis", "") or "").strip()
+    if target_basis not in ("suggested_max", "suggested_min", "demand_fallback"):
+        return ""
+    days_since_last_sale = item.get("days_since_last_sale")
+    if not isinstance(days_since_last_sale, (int, float)) or days_since_last_sale > SUSPECT_QOH_MAX_DAYS_SINCE_SALE:
+        return ""
+    annualized_sales = item.get("annualized_sales_loaded")
+    if not isinstance(annualized_sales, (int, float)) or annualized_sales < SUSPECT_QOH_MIN_ANNUALIZED_SALES:
+        return ""
+    inventory_position = item.get("inventory_position")
+    if not isinstance(inventory_position, (int, float)):
+        inventory_position = max(0, inv.get("qoh", 0) or 0) + (item.get("qty_on_po", 0) or 0)
+    target_stock = item.get("target_stock")
+    if not isinstance(target_stock, (int, float)) or target_stock <= 0:
+        return ""
+    suspect_threshold = max(
+        float(target_stock) * SUSPECT_QOH_TARGET_RATIO,
+        float(target_stock) + SUSPECT_QOH_MIN_EXCESS_UNITS,
+    )
+    if inventory_position < suspect_threshold:
+        return ""
+    return (
+        "Review: ORG/FLU inventory count may be overstated; recent demand exists "
+        "but reported stock sits far above the unanchored sales-driven target"
+    )
 
 
 def _compute_override_pattern(entries):
@@ -466,6 +522,17 @@ def prepare_assignment_session(
                 "source_mapping_unresolved",
                 "Review: detailed sales rows could not be resolved to a supported line code",
             )
+        suspect_qoh_reason = suspect_inventory_count_reason(item, inv)
+        if suspect_qoh_reason:
+            item["suspect_inventory_count"] = True
+            if str(item.get("reorder_attention_signal", "") or "").strip().lower() in ("", "normal"):
+                item["reorder_attention_signal"] = "review_inventory_count"
+            _append_review_reason(item, "suspect_inventory_count", suspect_qoh_reason)
+            status, flags = evaluate_item_status(item)
+            if "suspect_inventory_count" not in flags:
+                flags.append("suspect_inventory_count")
+            item["status"] = status
+            item["data_flags"] = flags
         _t_before_gap = time.perf_counter()
         local_append_suggestion_reason(item)
         local_apply_suggestion_gap(item)
