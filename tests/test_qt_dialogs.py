@@ -3,10 +3,12 @@
 import unittest
 import sys
 import os
+from unittest.mock import patch
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 try:
+    from PySide6.QtCore import Qt
     from PySide6.QtWidgets import QApplication
     HAS_QT = True
 except ImportError:
@@ -134,6 +136,27 @@ class TestRemoveNotNeededSignal(unittest.TestCase):
         tab.ignore_item.connect(lambda lc, ic: signals.append((lc, ic)))
         tab._ctx_ignore_item({"line_code": "A", "item_code": "001"})
         self.assertEqual(signals, [("A", "001")])
+
+    def test_shift_header_click_uses_model_sort_stack(self):
+        from ui_qt.bulk_model import COL_INDEX
+        from ui_qt.bulk_tab import BulkTab
+
+        tab = BulkTab()
+        tab.set_data([
+            _item(item_code="003", vendor="BETA"),
+            _item(item_code="001", vendor="ALFA"),
+            _item(item_code="002", vendor="ALFA"),
+        ], {}, {})
+        tab.model.set_primary_sort(COL_INDEX["vendor"], Qt.AscendingOrder)
+        tab.table.horizontalHeader().setSortIndicator(COL_INDEX["item_code"], Qt.AscendingOrder)
+
+        with patch("PySide6.QtWidgets.QApplication.keyboardModifiers", return_value=Qt.ShiftModifier):
+            tab._on_header_clicked(COL_INDEX["item_code"])
+
+        self.assertEqual(
+            [(tab.model.item_at(i)["vendor"], tab.model.item_at(i)["item_code"]) for i in range(tab.model.rowCount())],
+            [("ALFA", "001"), ("ALFA", "002"), ("BETA", "003")],
+        )
 
 
 if __name__ == "__main__":

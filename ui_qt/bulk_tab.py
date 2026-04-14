@@ -687,11 +687,11 @@ class BulkTab(QWidget):
         header = self._table.horizontalHeader()
         order = header.sortIndicatorOrder()
         if modifiers & Qt.ShiftModifier:
-            self._proxy.add_sort_key(logical_index, order)
+            self._model.add_sort_key(logical_index, order)
             write_debug("qt.sort.secondary", col=COLUMNS[logical_index] if logical_index < len(COLUMNS) else logical_index,
-                         keys=len(self._proxy.sort_keys))
+                         keys=len(self._model.sort_keys))
         else:
-            self._proxy.set_primary_sort(logical_index, order)
+            self._model.set_primary_sort(logical_index, order)
 
     def _on_header_context_menu(self, pos):
         """Column visibility toggle via header right-click."""

@@ -289,6 +289,8 @@ class BulkTableModel(QAbstractTableModel):
         self._filter_item_status: str = "ALL"
         self._filter_special: str = ""
         self._filter_vendor_ws: str = ""
+        self._sort_keys: list[tuple[int, Qt.SortOrder]] = []
+        self._max_sort_keys = 3
 
     # ── Data loading ──────────────────────────────────────────────
 
@@ -502,6 +504,40 @@ class BulkTableModel(QAbstractTableModel):
         except ValueError:
             return -1
 
+    def _sort_value_from_values(self, values: tuple, col: int) -> Any:
+        if col < 0 or col >= len(values):
+            return ""
+        val = values[col]
+        if val is None:
+            return ""
+        if isinstance(val, str):
+            cleaned = val.replace("$", "").replace(",", "").replace("%", "").strip()
+            if cleaned:
+                try:
+                    return float(cleaned)
+                except ValueError:
+                    return val.lower()
+            return ""
+        if isinstance(val, (int, float)):
+            return float(val)
+        return str(val).lower()
+
+    def _apply_sort(self):
+        if not self._sort_keys or len(self._visible_indices) < 2:
+            return
+
+        decorated = [
+            (src, self._row_values(visible_row))
+            for visible_row, src in enumerate(self._visible_indices)
+        ]
+        for col, order in reversed(self._sort_keys):
+            reverse = order == Qt.DescendingOrder
+            decorated.sort(
+                key=lambda entry, c=col: self._sort_value_from_values(entry[1], c),
+                reverse=reverse,
+            )
+        self._visible_indices = [src for src, _ in decorated]
+
     # ── Fast Python-side filtering ──────────────────────────────
 
     def _rebuild_visible(self):
@@ -561,6 +597,7 @@ class BulkTableModel(QAbstractTableModel):
                     continue
             indices.append(i)
         self._visible_indices = indices
+        self._apply_sort()
 
     def apply_filters(self, *, text=None, line_code=None, status=None,
                       source=None, item_status=None, vendor_ws=None,
@@ -636,6 +673,30 @@ class BulkTableModel(QAbstractTableModel):
                 self.index(min(vis_rows), 0),
                 self.index(max(vis_rows), len(COLUMNS) - 1),
             )
+
+    def add_sort_key(self, column: int, order: Qt.SortOrder):
+        """Add a secondary sort key (Shift+click). Removes duplicates."""
+        self._sort_keys = [(c, o) for c, o in self._sort_keys if c != column]
+        self._sort_keys.append((column, order))
+        if len(self._sort_keys) > self._max_sort_keys:
+            self._sort_keys = self._sort_keys[-self._max_sort_keys:]
+        self.sort(column, order)
+
+    def set_primary_sort(self, column: int, order: Qt.SortOrder):
+        """Replace sort stack with a single primary sort (normal click)."""
+        self._sort_keys = [(column, order)]
+        self.sort(column, order)
+
+    @property
+    def sort_keys(self) -> list[tuple[int, Qt.SortOrder]]:
+        return list(self._sort_keys)
+
+    def sort(self, column: int, order: Qt.SortOrder = Qt.AscendingOrder):
+        if not self._sort_keys:
+            return
+        self.layoutAboutToBeChanged.emit()
+        self._apply_sort()
+        self.layoutChanged.emit()
 
 
 # ─── Filter proxy model ──────────────────────────────────────────────────

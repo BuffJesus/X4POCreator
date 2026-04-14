@@ -155,6 +155,42 @@ class TestBulkTableModel(unittest.TestCase):
         # Should not raise
         model.refresh_rows([0, 2, 4])
 
+    def test_primary_sort_reorders_visible_rows(self):
+        from ui_qt.bulk_model import BulkTableModel, Qt, COL_INDEX
+        model = BulkTableModel()
+        items = [
+            _make_item(ic="003", vendor="BETA"),
+            _make_item(ic="001", vendor="ALFA"),
+            _make_item(ic="002", vendor="CHARLIE"),
+        ]
+        model.set_data(items, {}, {})
+
+        model.set_primary_sort(COL_INDEX["item_code"], Qt.AscendingOrder)
+
+        self.assertEqual(
+            [model.item_at(i)["item_code"] for i in range(model.rowCount())],
+            ["001", "002", "003"],
+        )
+
+    def test_secondary_sort_breaks_ties_with_shift_style_stack(self):
+        from ui_qt.bulk_model import BulkTableModel, Qt, COL_INDEX
+        model = BulkTableModel()
+        items = [
+            _make_item(ic="003", vendor="BETA"),
+            _make_item(ic="001", vendor="ALFA"),
+            _make_item(ic="002", vendor="ALFA"),
+            _make_item(ic="004", vendor="BETA"),
+        ]
+        model.set_data(items, {}, {})
+
+        model.set_primary_sort(COL_INDEX["vendor"], Qt.AscendingOrder)
+        model.add_sort_key(COL_INDEX["item_code"], Qt.AscendingOrder)
+
+        self.assertEqual(
+            [(model.item_at(i)["vendor"], model.item_at(i)["item_code"]) for i in range(model.rowCount())],
+            [("ALFA", "001"), ("ALFA", "002"), ("BETA", "003"), ("BETA", "004")],
+        )
+
 
 @unittest.skipUnless(HAS_QT, "PySide6 not available")
 class TestBulkFilterProxyModel(unittest.TestCase):
