@@ -643,6 +643,12 @@ def parse_all_files(
             warnings.append(("Suspended Parse Warning", f"Could not parse suspended items:\n{exc}\nContinuing without it."))
 
     inventory_lookup = {}
+    # Track whether an inventory file was *provided* but failed to parse. A
+    # provided-but-failed/empty inventory file must be FATAL: leaving
+    # inventory_lookup empty makes every item default to QOH=0 downstream
+    # (rules/calc.py), which fires the reorder trigger fleet-wide and orders
+    # full target stock — a silent, massive over-order behind a yellow warning.
+    inventory_parse_failed = False
     if paths.get("onhand"):
         if callable(progress_callback):
             progress_callback("Parsing on hand report...")
@@ -661,7 +667,8 @@ def parse_all_files(
                     "last_sale": "",
                 }
         except Exception as exc:
-            warnings.append(("On Hand Parse Warning", f"Could not parse On Hand Report:\n{exc}\nContinuing without it."))
+            inventory_parse_failed = True
+            warnings.append(("On Hand Parse Warning", f"Could not parse On Hand Report:\n{exc}"))
 
     if paths.get("minmax"):
         if callable(progress_callback):
@@ -678,7 +685,24 @@ def parse_all_files(
                     merged["repl_cost"] = existing.get("repl_cost")
                 inventory_lookup[key] = merged
         except Exception as exc:
-            warnings.append(("Min/Max Parse Warning", f"Could not parse Min/Max report:\n{exc}\nContinuing without it."))
+            inventory_parse_failed = True
+            warnings.append(("Min/Max Parse Warning", f"Could not parse Min/Max report:\n{exc}"))
+
+    # Hard gate: a provided inventory file that failed to parse, or produced an
+    # empty lookup, aborts the load rather than silently over-ordering. (If no
+    # inventory file was provided at all, an empty lookup is legitimately
+    # allowed and downstream warnings are already scoped for it.)
+    inventory_file_provided = bool(paths.get("onhand") or paths.get("minmax"))
+    if inventory_file_provided and (inventory_parse_failed or not inventory_lookup):
+        raise ValueError(
+            "An inventory report (On Hand / Min-Max) was provided but produced "
+            "no usable inventory data (parse failed or file was empty).\n\n"
+            "The load has been stopped to avoid treating every item as "
+            "Qty-On-Hand = 0, which would trigger a reorder for the entire "
+            "catalogue and massively over-order.\n\n"
+            "Check that the correct On Hand / Min-Max report was exported and "
+            "re-run the load."
+        )
 
     inventory_lookup, min_max_issues = _normalize_inventory_min_max(inventory_lookup)
     result["inventory_lookup"] = inventory_lookup

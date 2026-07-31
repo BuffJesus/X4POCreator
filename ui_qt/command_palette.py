@@ -197,11 +197,11 @@ class CommandPaletteDialog(QDialog):
             for row in range(model.rowCount()):
                 item = model.item_at(row)
                 if item and item.get("line_code") == line_code and item.get("item_code") == item_code:
-                    vis_row = model.visible_row_for_source(row)
-                    if vis_row >= 0:
-                        vis_idx = model.index(vis_row, 0)
-                        shell.bulk_tab.table.selectRow(vis_row)
-                        shell.bulk_tab.table.scrollTo(vis_idx)
+                    # `row` is already a visible row index (rowCount/item_at are
+                    # visible-space); use it directly — do not remap as a source index.
+                    vis_idx = model.index(row, 0)
+                    shell.bulk_tab.table.selectRow(row)
+                    shell.bulk_tab.table.scrollTo(vis_idx)
                     break
 
     def _filter_to_vendor(self, vendor: str):

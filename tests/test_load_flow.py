@@ -541,18 +541,19 @@ class LoadFlowTests(unittest.TestCase):
         ), patch(
             "load_flow.parsers.build_detailed_sales_stats_lookup",
             return_value={("", "K-D-1708"): {"transaction_count": 1, "qty_sold_total": 4}},
-        ), patch(
-            "load_flow.parsers.parse_on_hand_report",
-            return_value={},
         ):
             result = load_flow.parse_all_files(
                 {
                     "sales": "",
-                    "detailedsales": "detailed.csv",
-                    "receivedparts": "received.csv",
+                    # Distinct filenames so this test's parse-cache signature
+                    # does not collide with the other empty-inventory tests.
+                    "detailedsales": "detailed_ambiguous.csv",
+                    "receivedparts": "received_ambiguous.csv",
                     "po": "",
                     "susp": "",
-                    "onhand": "onhand.csv",
+                    # No inventory file for this sales-resolution test; providing
+                    # an empty On Hand now (correctly) aborts the load.
+                    "onhand": "",
                     "minmax": "",
                     "packsize": "",
                 },

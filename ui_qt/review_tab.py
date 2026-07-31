@@ -270,11 +270,14 @@ class ReviewTab(QWidget):
             by_vendor[str(item.get("vendor", "")).strip().upper()].append(item)
 
         self._table.blockSignals(True)
-        self._visible_items = visible
         self._table.setRowCount(len(visible))
+        # _visible_items must match the painted (vendor-grouped/sorted) row
+        # order, not encounter order, or cell edits/removes hit the wrong item.
+        painted_items = []
         row_idx = 0
         for vendor_code in sorted(by_vendor.keys()):
             for item in by_vendor[vendor_code]:
+                painted_items.append(item)
                 is_exc = _is_exception(item)
                 values = [
                     item.get("vendor", ""),
@@ -298,6 +301,7 @@ class ReviewTab(QWidget):
                         cell.setTextAlignment(Qt.AlignCenter)
                     self._table.setItem(row_idx, col, cell)
                 row_idx += 1
+        self._visible_items = painted_items
         self._table.blockSignals(False)
 
         total = len(self._items)

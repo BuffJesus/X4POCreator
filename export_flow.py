@@ -264,7 +264,11 @@ def do_export(
         return
 
     # Show export preview dialog; user can set per-vendor scope overrides there
-    preview = build_export_preview(selected_export_items)
+    preview = build_export_preview(
+        selected_export_items,
+        getattr(app, "inventory_lookup", {}),
+        getattr(app, "receipt_cost_lookup", {}),
+    )
     if not _show_export_preview_dialog(app, preview):
         return
 
@@ -404,11 +408,19 @@ def build_session_snapshot(app, output_dir, created_files, maintenance_issues, *
     )
 
 
-def build_export_preview(items):
+def build_export_preview(items, inventory_lookup=None, receipt_cost_lookup=None):
     """
     Build a preview summary for the given export candidate items.
     Returns a dict with vendor_summaries, total_item_count, total_estimated_value.
+
+    Costs are computed through shipping_flow.item_cost_data so the go/no-go
+    dollar figure matches the real per-line export cost logic (rejects
+    suspicious repl_cost, handles zero, and applies the receipt-cost fallback)
+    rather than a raw final_qty * repl_cost that can be wildly off.
     """
+    import shipping_flow
+
+    inventory_lookup = inventory_lookup or {}
     vendor_items = defaultdict(list)
     for item in items:
         vendor = item.get("vendor") or "UNKNOWN"
@@ -419,7 +431,9 @@ def build_export_preview(items):
     total_count = 0
     for vendor, vitems in sorted(vendor_items.items()):
         est_value = sum(
-            (item.get("final_qty") or 0) * (item.get("repl_cost") or 0)
+            shipping_flow.item_cost_data(item, inventory_lookup, receipt_cost_lookup)[
+                "estimated_order_value"
+            ]
             for item in vitems
         )
         vendor_summaries.append({

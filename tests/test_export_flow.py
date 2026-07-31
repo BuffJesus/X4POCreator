@@ -652,11 +652,16 @@ class ExportFlowTests(unittest.TestCase):
 class ExportPreviewTests(unittest.TestCase):
     def test_build_export_preview_groups_by_vendor(self):
         items = [
-            {"vendor": "MOTION", "final_qty": 5, "repl_cost": 10.0, "release_decision": "release_now"},
-            {"vendor": "SOURCE", "final_qty": 2, "repl_cost": 20.0, "release_decision": "release_now"},
-            {"vendor": "MOTION", "final_qty": 3, "repl_cost": 5.0, "release_decision": "release_now"},
+            {"vendor": "MOTION", "line_code": "A", "item_code": "1", "final_qty": 5, "release_decision": "release_now"},
+            {"vendor": "SOURCE", "line_code": "A", "item_code": "2", "final_qty": 2, "release_decision": "release_now"},
+            {"vendor": "MOTION", "line_code": "A", "item_code": "3", "final_qty": 3, "release_decision": "release_now"},
         ]
-        preview = export_flow.build_export_preview(items)
+        inv = {
+            ("A", "1"): {"repl_cost": 10.0},
+            ("A", "2"): {"repl_cost": 20.0},
+            ("A", "3"): {"repl_cost": 5.0},
+        }
+        preview = export_flow.build_export_preview(items, inv)
         vendors = [s["vendor"] for s in preview["vendor_summaries"]]
         self.assertIn("MOTION", vendors)
         self.assertIn("SOURCE", vendors)
@@ -664,11 +669,13 @@ class ExportPreviewTests(unittest.TestCase):
         self.assertEqual(motion_summary["item_count"], 2)
 
     def test_build_export_preview_sums_values(self):
+        # Cost is sourced from inventory_lookup (the vetted path), not the item.
         items = [
-            {"vendor": "MOTION", "final_qty": 5, "repl_cost": 10.0, "release_decision": "release_now"},
-            {"vendor": "MOTION", "final_qty": 3, "repl_cost": 5.0, "release_decision": "release_now"},
+            {"vendor": "MOTION", "line_code": "A", "item_code": "1", "final_qty": 5, "release_decision": "release_now"},
+            {"vendor": "MOTION", "line_code": "A", "item_code": "2", "final_qty": 3, "release_decision": "release_now"},
         ]
-        preview = export_flow.build_export_preview(items)
+        inv = {("A", "1"): {"repl_cost": 10.0}, ("A", "2"): {"repl_cost": 5.0}}
+        preview = export_flow.build_export_preview(items, inv)
         motion_summary = next(s for s in preview["vendor_summaries"] if s["vendor"] == "MOTION")
         self.assertAlmostEqual(motion_summary["estimated_value"], 65.0)
         self.assertAlmostEqual(preview["total_estimated_value"], 65.0)
@@ -676,12 +683,31 @@ class ExportPreviewTests(unittest.TestCase):
 
     def test_build_export_preview_handles_missing_cost(self):
         items = [
-            {"vendor": "MOTION", "final_qty": 5, "release_decision": "release_now"},
-            {"vendor": "MOTION", "final_qty": None, "repl_cost": None, "release_decision": "release_now"},
+            {"vendor": "MOTION", "line_code": "A", "item_code": "1", "final_qty": 5, "release_decision": "release_now"},
+            {"vendor": "MOTION", "line_code": "A", "item_code": "2", "final_qty": None, "release_decision": "release_now"},
         ]
-        preview = export_flow.build_export_preview(items)
+        # No inventory_lookup cost available -> value must be 0, never guessed.
+        preview = export_flow.build_export_preview(items, {})
         motion_summary = next(s for s in preview["vendor_summaries"] if s["vendor"] == "MOTION")
         self.assertAlmostEqual(motion_summary["estimated_value"], 0.0)
+
+    def test_build_export_preview_rejects_suspicious_cost(self):
+        # A garbage repl_cost must NOT inflate the go/no-go total (parity with
+        # the real export cost logic, which rejects >500k / <0.0001).
+        items = [
+            {"vendor": "MOTION", "line_code": "A", "item_code": "1", "final_qty": 2, "release_decision": "release_now"},
+        ]
+        inv = {("A", "1"): {"repl_cost": 9_000_000.0}}
+        preview = export_flow.build_export_preview(items, inv)
+        self.assertAlmostEqual(preview["total_estimated_value"], 0.0)
+
+    def test_build_export_preview_uses_receipt_cost_fallback(self):
+        # Missing repl_cost but a receipt cost exists -> use it (not 0).
+        items = [
+            {"vendor": "MOTION", "line_code": "A", "item_code": "1", "final_qty": 4, "release_decision": "release_now"},
+        ]
+        preview = export_flow.build_export_preview(items, {}, {("A", "1"): 2.5})
+        self.assertAlmostEqual(preview["total_estimated_value"], 10.0)
 
     def test_build_export_preview_empty_items(self):
         preview = export_flow.build_export_preview([])

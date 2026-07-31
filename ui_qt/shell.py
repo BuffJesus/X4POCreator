@@ -1021,7 +1021,9 @@ class POBuilderShell(QMainWindow):
             self.undo_stack.push_edit(f"vendor:{vendor}", model.items, source_rows)
         changed_rows = []
         for row in source_rows:
-            item = model.item_at(row) if model else None
+            # source_rows are SOURCE indices (from selected_source_rows/
+            # visible_source_rows); use source_item_at, not item_at (visible).
+            item = model.source_item_at(row) if model else None
             if item is not None:
                 item["vendor"] = vendor
                 item.pop("_text_haystack", None)
@@ -1335,7 +1337,7 @@ class POBuilderShell(QMainWindow):
         ws.column_dimensions["A"].width = 16
         ws.column_dimensions["B"].width = 20
         ws.column_dimensions["C"].width = 16
-        if has_notes:
+        if include_notes:
             ws.column_dimensions["D"].width = 32
 
         safe_name = "".join(c if c.isalnum() or c in "-_ " else "_" for c in vendor)
