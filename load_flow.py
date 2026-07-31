@@ -321,6 +321,55 @@ def _parse_sales_inputs(paths, *, progress_callback=None):
     }
 
 
+def _sales_inputs_from_bundle(source_bundle):
+    """Adapt a db_source bundle into the shape _parse_sales_inputs returns."""
+    return {
+        "sales_source_mode": "database",
+        "detailed_sales_rows": source_bundle.get("detailed_sales_rows", []),
+        "sales_items": source_bundle.get("sales_items", []),
+        "sales_window": source_bundle.get("sales_window", (None, None)),
+        "receipt_history_lookup": source_bundle.get("receipt_history_lookup", {}),
+        "receipt_cost_lookup": source_bundle.get("receipt_cost_lookup", {}),
+        "detailed_sales_stats_lookup": source_bundle.get("detailed_sales_stats_lookup", {}),
+    }
+
+
+def parse_from_database(
+    connection,
+    *,
+    old_po_warning_days,
+    short_sales_window_days,
+    now=None,
+    progress_callback=None,
+    warehouse_num=1,
+):
+    """Load the full workflow result directly from the X4 Informix DB.
+
+    Reads the same data the CSV reports carry (sales, receipts, inventory,
+    pack sizes) straight from Informix via parsers.db_source, then runs the
+    IDENTICAL downstream pipeline as parse_all_files by handing it a
+    ``source_bundle``. This eliminates the export-and-browse step and the whole
+    "wrong file / stale export / mismatched window" error class.
+
+    ``connection`` is any DB-API 2.0 connection (e.g. pyodbc against DSN
+    ``rinax4gl``). Remember X4 requires ``SET ROLE Rinax_Select_Only`` on the
+    connection before any select returns rows.
+    """
+    from parsers import db_source
+
+    if callable(progress_callback):
+        progress_callback("Querying X4 database...")
+    bundle = db_source.build_source_bundle(connection, warehouse_num=warehouse_num)
+    return parse_all_files(
+        {},
+        old_po_warning_days=old_po_warning_days,
+        short_sales_window_days=short_sales_window_days,
+        now=now,
+        progress_callback=progress_callback,
+        source_bundle=bundle,
+    )
+
+
 def _normalize_inventory_min_max(inventory_lookup):
     normalized = {}
     issues = []
@@ -378,6 +427,7 @@ def parse_all_files(
     now=None,
     progress_callback=None,
     stored_schema_hashes=None,
+    source_bundle=None,
 ):
     """Parse the selected input files into a single workflow result.
 
@@ -395,7 +445,9 @@ def parse_all_files(
         old_po_warning_days=old_po_warning_days,
         short_sales_window_days=short_sales_window_days,
     )
-    cached = _load_parse_cache(cache_signature)
+    # The on-disk parse cache is keyed on file signatures; a DB source has no
+    # files, so bypass the cache entirely when parsing from a source_bundle.
+    cached = _load_parse_cache(cache_signature) if source_bundle is None else None
     if cached is not None:
         if callable(progress_callback):
             progress_callback("Using cached parse result...")
@@ -443,7 +495,10 @@ def parse_all_files(
 
     if callable(progress_callback):
         progress_callback("Starting file load...")
-    sales_inputs = _parse_sales_inputs(paths, progress_callback=progress_callback)
+    if source_bundle is not None:
+        sales_inputs = _sales_inputs_from_bundle(source_bundle)
+    else:
+        sales_inputs = _parse_sales_inputs(paths, progress_callback=progress_callback)
     result["sales_source_mode"] = sales_inputs.get("sales_source_mode", "none")
     result["detailed_sales_resolution"] = {"row_count": 0, "item_count": 0, "items": []}
     result["detailed_sales_corrections"] = {"row_count": 0, "item_count": 0, "item_codes": []}
@@ -649,7 +704,11 @@ def parse_all_files(
     # (rules/calc.py), which fires the reorder trigger fleet-wide and orders
     # full target stock — a silent, massive over-order behind a yellow warning.
     inventory_parse_failed = False
-    if paths.get("onhand"):
+    if source_bundle is not None:
+        # DB source supplies a fully-built inventory lookup; skip CSV parsing
+        # and the file gate (the DB always returns the whse rows or none).
+        inventory_lookup = dict(source_bundle.get("inventory_lookup") or {})
+    if source_bundle is None and paths.get("onhand"):
         if callable(progress_callback):
             progress_callback("Parsing on hand report...")
         try:
@@ -670,7 +729,7 @@ def parse_all_files(
             inventory_parse_failed = True
             warnings.append(("On Hand Parse Warning", f"Could not parse On Hand Report:\n{exc}"))
 
-    if paths.get("minmax"):
+    if source_bundle is None and paths.get("minmax"):
         if callable(progress_callback):
             progress_callback("Parsing min/max report...")
         try:
@@ -968,7 +1027,10 @@ def parse_all_files(
                 ),
             ))
 
-    if paths.get("packsize"):
+    if source_bundle is not None:
+        if source_bundle.get("pack_size_lookup"):
+            result["pack_size_lookup"] = dict(source_bundle["pack_size_lookup"])
+    elif paths.get("packsize"):
         if callable(progress_callback):
             progress_callback("Parsing pack-size report...")
         try:
@@ -977,12 +1039,14 @@ def parse_all_files(
             warnings.append(("Pack Size Parse Warning", f"Could not parse pack sizes:\n{exc}\nContinuing without it."))
 
     result["all_line_codes"] = all_line_codes
-    if callable(progress_callback):
-        progress_callback("Saving parse cache...")
-    try:
-        _save_parse_cache(cache_signature, result)
-    except Exception:
-        pass
+    # Do not persist DB-sourced results to the file-signature-keyed cache.
+    if source_bundle is None:
+        if callable(progress_callback):
+            progress_callback("Saving parse cache...")
+        try:
+            _save_parse_cache(cache_signature, result)
+        except Exception:
+            pass
     return result
 
 

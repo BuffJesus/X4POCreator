@@ -362,8 +362,20 @@ def _finalize_streamed_sales_stats(stats_lookup):
 
 
 @perf_trace.timed("parsers.parse_detailed_pair_aggregates")
-def parse_detailed_pair_aggregates(detailed_sales_path, received_parts_path, *, parse_date=None):
+def parse_detailed_pair_aggregates(detailed_sales_path, received_parts_path, *,
+                                   parse_date=None, sales_rows=None, receipt_rows=None):
+    """Aggregate detailed sales + received-parts into the workflow lookups.
+
+    By default the rows are streamed from the two CSV paths. A non-CSV source
+    (e.g. the Informix DB via parsers.db_source) can instead pass ``sales_rows``
+    / ``receipt_rows`` as iterables of the same per-row dicts the CSV iterators
+    yield — every derived field (vendor confidence, receipt_cost_lookup, sales
+    stats) is then built by the identical code, guaranteeing an identical
+    contract regardless of source.
+    """
     parse_date = parse_date or parse_x4_date
+    sales_source = sales_rows if sales_rows is not None else _iter_detailed_part_sales_csv(detailed_sales_path)
+    receipt_source = receipt_rows if receipt_rows is not None else _iter_received_parts_detail_csv(received_parts_path)
     sales_summary = {}
     detailed_stats_lookup = {}
     detailed_sales_rollup = {}
@@ -374,7 +386,7 @@ def parse_detailed_pair_aggregates(detailed_sales_path, received_parts_path, *, 
     _max = max
     sales_row_count = 0
 
-    for row in _iter_detailed_part_sales_csv(detailed_sales_path):
+    for row in sales_source:
         sales_row_count += 1
         key = (row.get("line_code", ""), row.get("item_code", ""))
         if not key[1]:
@@ -440,7 +452,7 @@ def parse_detailed_pair_aggregates(detailed_sales_path, received_parts_path, *, 
     receipt_history_lookup = {}
     receipt_cost_accum = {}  # key → {"total_cost": float, "total_qty": float}
     receipt_row_count = 0
-    for row in _iter_received_parts_detail_csv(received_parts_path):
+    for row in receipt_source:
         receipt_row_count += 1
         key = (row.get("line_code", ""), row.get("item_code", ""))
         if not key[1]:
