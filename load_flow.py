@@ -1084,6 +1084,9 @@ def apply_load_result(session, result, *, parsers_module=parsers):
         policy = dict(session.vendor_policies.get(vendor, {}))
         policy["estimated_lead_days"] = lead_days
         session.vendor_policies[vendor] = policy
+    # Compute the data-quality summary now so the load->assign transition can
+    # gate on it (previously computed by nothing but tests).
+    session.data_quality_summary = compute_data_quality_summary(session)
     return session
 
 
@@ -1123,7 +1126,12 @@ def compute_data_quality_summary(session):
     )
 
     denominator = max(total_items, 1)
-    gap_fraction = unresolved_item_codes / denominator
+    # Gate on the hard-signal gaps: item codes that could not be resolved to a
+    # line code AND items whose detailed-sales vs X4 min/max signals conflict.
+    # Both feed straight into wrong reorder math, so both should hold up the
+    # transition. (missing_last_sale/last_receipt are surfaced in the summary
+    # for visibility but are softer and do not force the gate.)
+    gap_fraction = (unresolved_item_codes + conflicting_items) / denominator
     quality_score = max(0.0, 1.0 - gap_fraction)
     gate_required = gap_fraction > DATA_QUALITY_GATE_THRESHOLD
 

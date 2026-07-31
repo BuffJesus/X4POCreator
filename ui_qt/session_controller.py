@@ -358,14 +358,29 @@ class QtSessionController:
         self.session.order_rules = self.order_rules
         self.session.vendor_policies = self.vendor_policies
 
-    def prepare_assignment(self, progress_cb=None) -> bool:
+    def prepare_assignment(self, progress_cb=None, confirm_cb=None) -> bool:
         """Run the full assignment pipeline.
 
         Returns True if items are available for assignment.
         ``progress_cb`` receives status strings for UI feedback.
+        ``confirm_cb`` is an optional data-quality gate: when the load's
+        ``data_quality_summary`` reports ``gate_required`` (too many unresolved
+        or conflicting items to trust the reorder math), it is called with the
+        summary dict and must return True to proceed or False to abort. When
+        omitted, the transition proceeds (backwards-compatible).
         """
         import time
         _t = time.perf_counter
+
+        summary = getattr(self.session, "data_quality_summary", None)
+        if confirm_cb is not None and isinstance(summary, dict) and summary.get("gate_required"):
+            write_debug("qt.controller.prepare_assignment.data_quality_gate",
+                        quality_score=summary.get("quality_score"),
+                        unresolved=summary.get("unresolved_item_codes"),
+                        conflicting=summary.get("conflicting_items"))
+            if not confirm_cb(summary):
+                write_debug("qt.controller.prepare_assignment.gate_aborted")
+                return False
         write_debug("qt.controller.prepare_assignment.begin",
                      excluded_lc=len(self.excluded_line_codes),
                      excluded_cust=len(self.excluded_customers),

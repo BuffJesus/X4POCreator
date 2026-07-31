@@ -539,6 +539,18 @@ class POBuilderShell(QMainWindow):
         self._excluded_lc_snapshot = set(excluded_lc)
         self._excluded_cust_snapshot = set(excluded_cust)
 
+        # Data-quality gate — must run on the main (UI) thread, before the
+        # background assignment worker starts.  If too many item codes are
+        # unresolved or conflict with X4 min/max, the reorder math can't be
+        # trusted; block but let the operator override.
+        summary = getattr(ctrl.session, "data_quality_summary", None)
+        if isinstance(summary, dict) and summary.get("gate_required") and not self._confirm_data_quality_gate(summary):
+            write_debug("qt.assignment.data_quality_gate_declined")
+            self.status.showMessage("Assignment cancelled — resolve data-quality issues and reload.", 8000)
+            if self.filter_tab:
+                self.filter_tab._apply_btn.setEnabled(True)
+            return
+
         # Disable sidebar and filter button during pipeline
         self.sidebar.setEnabled(False)
         if self.filter_tab:
@@ -560,6 +572,34 @@ class POBuilderShell(QMainWindow):
         self._assign_worker.failed.connect(self._assign_thread.quit)
         self._assign_thread.finished.connect(self._cleanup_assign_thread)
         self._assign_thread.start()
+
+    def _confirm_data_quality_gate(self, summary: dict) -> bool:
+        """Show a blocking-but-overridable data-quality warning.
+
+        Returns True if the operator chooses to proceed anyway.
+        """
+        total = summary.get("total_items", 0)
+        unresolved = summary.get("unresolved_item_codes", 0)
+        conflicting = summary.get("conflicting_items", 0)
+        score = summary.get("quality_score", 0.0)
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Warning)
+        box.setWindowTitle("Data Quality Check")
+        box.setText(
+            f"This load has data-quality gaps that affect reorder accuracy "
+            f"(quality score {score:.0%})."
+        )
+        box.setInformativeText(
+            f"• {unresolved} sales item code(s) could not be matched to a line code\n"
+            f"• {conflicting} item(s) conflict with X4 min/max signals\n"
+            f"   (out of {total} items)\n\n"
+            "Proceeding may produce inaccurate order quantities for the affected "
+            "items. Recommended: fix the source data and reload.\n\n"
+            "Proceed with assignment anyway?"
+        )
+        box.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
+        box.setDefaultButton(QMessageBox.No)
+        return box.exec() == QMessageBox.Yes
 
     def _cleanup_assign_thread(self):
         if hasattr(self, "_assign_worker") and self._assign_worker:
